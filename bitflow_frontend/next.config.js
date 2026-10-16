@@ -35,13 +35,14 @@ const nextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net https://unpkg.com",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com",
-              "font-src 'self' https://fonts.gstatic.com data: https://cdn.jsdelivr.net https://unpkg.com",
+              // Monaco is self-hosted under /monaco (no CDN needed)
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: blob:",
               // Simulation + AI calls go through our own /api routes (server-side)
-              "connect-src 'self' https://cdn.jsdelivr.net https://unpkg.com",
-              "worker-src 'self' blob: https://cdn.jsdelivr.net https://unpkg.com",
+              "connect-src 'self'",
+              "worker-src 'self' blob:",
               "frame-ancestors 'none'",
             ].join("; "),
           },

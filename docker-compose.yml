@@ -5,9 +5,17 @@
 #   VPS with HTTPS:  set DOMAIN (and FRONTEND_BIND=127.0.0.1) in .env, then
 #                    docker compose --profile https up -d --build   → https://$DOMAIN
 #   Postgres:        add --profile postgres and set DATABASE_URL (see .env.example)
+#   Daily backups:   add --profile backup  (writes ./backups, see README)
 #   Stop:            docker compose down
 #
 # setup_server.sh does the VPS steps for you.
+
+# Rotate container logs so a long-running VPS doesn't fill its disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   # ── FastAPI Backend (Python 3.11 + Icarus Verilog compiler) ──────────────────
@@ -17,6 +25,7 @@ services:
       dockerfile: Dockerfile.api
     container_name: bitflow-api
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8080"
     environment:
@@ -37,6 +46,7 @@ services:
       dockerfile: Dockerfile
     container_name: bitflow-frontend
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${FRONTEND_BIND:-0.0.0.0}:3000:3000"
     # Optional settings (AI provider keys/models, …) come straight from .env so
@@ -68,6 +78,7 @@ services:
     profiles: ["postgres"]
     container_name: bitflow-postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - POSTGRES_DB=bitflow
       - POSTGRES_USER=bitflow
@@ -87,6 +98,7 @@ services:
     profiles: ["https"]
     container_name: bitflow-caddy
     restart: unless-stopped
+    logging: *default-logging
     command: caddy reverse-proxy --from ${DOMAIN:-localhost} --to frontend:3000
     ports:
       - "80:80"
@@ -95,6 +107,24 @@ services:
       - caddy-data:/data
     depends_on:
       - frontend
+
+  # ── Optional: daily database backups (--profile backup) ──────────────────────
+  # SQLite: online .backup of the bitflow-data volume. Postgres: pg_dump of
+  # DATABASE_URL. Keeps the newest BACKUP_KEEP files in ./backups on the host.
+  backup:
+    image: postgres:16-alpine          # has pg_dump; the script adds sqlite3
+    profiles: ["backup"]
+    container_name: bitflow-backup
+    restart: unless-stopped
+    logging: *default-logging
+    entrypoint: ["sh", "/backup.sh"]
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-}
+      - BACKUP_KEEP=${BACKUP_KEEP:-14}
+    volumes:
+      - bitflow-data:/data:ro
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
 
 volumes:
   bitflow-data:

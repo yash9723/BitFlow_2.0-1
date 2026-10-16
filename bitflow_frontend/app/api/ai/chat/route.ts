@@ -38,7 +38,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser }            from "@/lib/auth-utils";
 import { rateLimit }                 from "@/lib/rate-limit";
-import { getProvider }               from "@/lib/ai-providers";
+import { AINotConfiguredError, getProvider } from "@/lib/ai-providers";
 import {
   SANDBOX_SYSTEM_PROMPT,
   buildContextMessage,
@@ -125,16 +125,17 @@ export async function POST(req: NextRequest) {
     // Log server-side (never leaks API keys — we only log the message string)
     console.error("[BitFlow AI] /api/ai/chat error:", message);
 
-    // Return a generic error to the client for provider auth failures to avoid
-    // leaking which provider is configured or key format details.
-    const isAuthError = /api key|unauthorized|authentication/i.test(message);
-    const clientMessage = isAuthError
-      ? "AI provider authentication failed. Check server environment variables."
-      : message;
-
+    // Never forward raw provider errors (they can name the provider, model or
+    // key format); the details are in the server log above.
+    if (err instanceof AINotConfiguredError) {
+      return NextResponse.json(
+        { error: "The AI assistant isn't configured on this server." },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
-      { error: clientMessage },
-      { status: isAuthError ? 503 : 500 },
+      { error: "The AI assistant is unavailable right now. Please try again later." },
+      { status: 502 },
     );
   }
 }

@@ -40,6 +40,9 @@ export interface AIResponse {
   provider:      string;
 }
 
+/** Thrown when the selected provider has no API key configured (→ HTTP 503). */
+export class AINotConfiguredError extends Error {}
+
 export interface AIProvider {
   name:    string;
   chat(messages: AIMessage[], systemPrompt: string): Promise<AIResponse>;
@@ -55,16 +58,18 @@ function openaiProvider(): AIProvider {
 
     async chat(messages, systemPrompt) {
       const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) throw new Error("OPENAI_API_KEY not set in environment.");
+      if (!apiKey) throw new AINotConfiguredError("OPENAI_API_KEY not set in environment.");
 
+      // gpt-4o-mini shuts down 2027-01-14 (OpenAI recommends gpt-6-luna; set
+      // OPENAI_MODEL). max_completion_tokens + default temperature work on both
+      // old and new chat models — newer ones reject max_tokens / custom temperature.
       const body = {
         model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
         ],
-        max_tokens: 1500,
-        temperature: 0.2,
+        max_completion_tokens: 4096,
       };
 
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -101,9 +106,10 @@ function geminiProvider(): AIProvider {
 
     async chat(messages, systemPrompt) {
       const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("GEMINI_API_KEY not set in environment.");
+      if (!apiKey) throw new AINotConfiguredError("GEMINI_API_KEY not set in environment.");
 
-      const model = process.env.GEMINI_MODEL ?? "gemini-1.5-flash";
+      // gemini-1.5-flash was shut down in Sept 2025; Google recommends 3.8 Flash for new projects.
+      const model = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
 
       // Gemini uses a different message format — merge system into first user message
       const contents = messages.map((m) => ({
@@ -114,7 +120,9 @@ function geminiProvider(): AIProvider {
       const body = {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
-        generationConfig: { maxOutputTokens: 1500, temperature: 0.2 },
+        // Newer Gemini models think before answering and that counts toward
+        // maxOutputTokens, so leave headroom; keep the default temperature.
+        generationConfig: { maxOutputTokens: 8192 },
       };
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -131,7 +139,9 @@ function geminiProvider(): AIProvider {
       }
 
       const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      const parts: Array<{ text?: string; thought?: boolean }> =
+        data.candidates?.[0]?.content?.parts ?? [];
+      const text = parts.filter((p) => !p.thought && p.text).map((p) => p.text).join("");
       return {
         content:    text,
         tokensUsed: data.usageMetadata?.totalTokenCount ?? null,
@@ -151,16 +161,19 @@ function anthropicProvider(): AIProvider {
 
     async chat(messages, systemPrompt) {
       const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set in environment.");
+      if (!apiKey) throw new AINotConfiguredError("ANTHROPIC_API_KEY not set in environment.");
 
-      const model = process.env.ANTHROPIC_MODEL ?? "claude-3-haiku-20240307";
+      const model = process.env.ANTHROPIC_MODEL ?? "claude-haiku-5-5";
 
       // Anthropic API: system is a top-level field, not a message role
+      // Claude Haiku 5.5 thinks by default; thinking shares max_tokens with the
+      // answer, so leave headroom. Low effort suits short tutoring replies.
       const body = {
         model,
-        system:     systemPrompt,
-        messages:   messages.filter((m) => m.role !== "system"),
-        max_tokens: 1500,
+        system:        systemPrompt,
+        messages:      messages.filter((m) => m.role !== "system"),
+        max_tokens:    8192,
+        output_config: { effort: "low" },
       };
 
       const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -179,7 +192,15 @@ function anthropicProvider(): AIProvider {
       }
 
       const data = await res.json();
-      const text = data.content?.[0]?.text ?? "";
+      // Safety classifiers can decline (HTTP 200, stop_reason "refusal").
+      // Otherwise the answer is in the "text" blocks — the first block may be
+      // a "thinking" block, so never just read content[0].
+      const text = data.stop_reason === "refusal"
+        ? "Sorry — I can't help with that request."
+        : (data.content ?? [])
+            .filter((b: { type: string }) => b.type === "text")
+            .map((b: { text: string }) => b.text)
+            .join("");
       return {
         content:    text,
         tokensUsed: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0),
@@ -201,7 +222,7 @@ function groqProvider(): AIProvider {
 
     async chat(messages, systemPrompt) {
       const apiKey = process.env.GROQ_API_KEY;
-      if (!apiKey) throw new Error("GROQ_API_KEY not set in environment.");
+      if (!apiKey) throw new AINotConfiguredError("GROQ_API_KEY not set in environment.");
 
       const body = {
         model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",

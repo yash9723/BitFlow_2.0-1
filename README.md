@@ -45,9 +45,28 @@ Optional profiles:
 |---------|------|
 | `https` | Caddy reverse proxy with automatic TLS for `$DOMAIN` |
 | `postgres` | A Postgres 16 container; set `DATABASE_URL` as shown in `.env.example` |
+| `backup` | Daily database backup into `./backups` (newest 14 kept) — on by default in `setup_server.sh` |
 
 Re-running `setup_server.sh` pulls and rebuilds. Schema changes that would
 drop data are refused at startup (no `--accept-data-loss`); apply those by hand.
+
+## Backups
+
+The `backup` profile writes one compressed backup a day to `./backups` on the
+host (`bitflow-<UTC time>.db.gz` for SQLite, `.sql.gz` for Postgres) and keeps
+the newest 14 (`BACKUP_KEEP`). Copy that folder off the server regularly.
+
+Restore SQLite:
+
+```bash
+docker compose stop frontend
+gunzip -c backups/bitflow-<time>.db.gz > restore.db
+docker run --rm -v bitflow_20_bitflow-data:/data -v "$PWD":/r alpine cp /r/restore.db /data/dev.db
+docker compose start frontend
+```
+
+(The volume is `<project>_bitflow-data`; check with `docker volume ls`.)
+Restore Postgres: `gunzip -c backups/bitflow-<time>.sql.gz | docker compose exec -T postgres psql -U bitflow -d bitflow`.
 
 ## Configuration
 

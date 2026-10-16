@@ -53,7 +53,7 @@ set_env() {  # set_env KEY VALUE — add or replace a line in .env
     if grep -q "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else echo "$1=$2" >> .env; fi
 }
 
-PROFILES=()
+PROFILES=(--profile backup)   # daily DB backups into ./backups
 if [ -n "$DOMAIN" ]; then
     set_env DOMAIN "$DOMAIN"
     set_env HTTPS true
@@ -75,4 +75,5 @@ else
     echo "   For HTTPS, re-run with your domain: ./setup_server.sh your.domain"
 fi
 echo "   (The simulation API listens on 127.0.0.1 only; it is not exposed publicly.)"
+echo "   Daily database backups go to $(pwd)/backups (newest 14 kept)."
 echo "=================================================="

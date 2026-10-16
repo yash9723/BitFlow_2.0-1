@@ -23,3 +23,9 @@ a.out
 tmp/
 bitflow_frontend/bitflow_test_report_*.md
 bitflow_frontend/prisma/*.db
+
+# Database backups (docker compose --profile backup)
+backups/
+
+# Monaco editor copied from node_modules at build time
+bitflow_frontend/public/monaco/

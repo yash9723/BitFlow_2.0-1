@@ -28,10 +28,11 @@ import { useRef, useCallback } from "react";
 import MonacoEditor, { OnMount, BeforeMount, loader } from "@monaco-editor/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
 
-// Configure Monaco loader to use jsDelivr CDN
+// Load Monaco from our own origin (copied into public/ by scripts/copy-monaco.mjs)
+// so the editor works without a third-party CDN.
 loader.config({
   paths: {
-    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.49.0/min/vs",
+    vs: "/monaco/vs",
   },
 });
 
