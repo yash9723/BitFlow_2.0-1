@@ -19,14 +19,8 @@ import type { SimulateRequest, SimulateResponse } from "./types";
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Base URL for the FastAPI backend.
- *
- * In development this talks directly to the uvicorn process.
- * In production, set NEXT_PUBLIC_API_URL to your deployed backend URL,
- * or rely on the /api rewrite in next.config.js to proxy requests.
- *
- * NEXT_PUBLIC_ prefix is required by Next.js for variables that must be
- * visible in the browser bundle.
+ * The browser only talks to our own Next.js routes; /api/simulate forwards to
+ * the FastAPI backend server-side (see lib/backend.ts, BACKEND_URL).
  */
 const BASE_URL = "/api/simulate";
 
@@ -54,22 +48,15 @@ function normaliseError(err: unknown): Error {
   if (axios.isAxiosError(err)) {
     const axErr = err as AxiosError<{ error?: string; detail?: string }>;
 
-    const effectiveBackendUrl =
-      process.env.NEXT_PUBLIC_API_URL ||
-      (process.env.NODE_ENV === "production"
-        ? "https://bitflow-backend-uyji.onrender.com"
-        : "http://127.0.0.1:8000");
-
-    // Network-level failure (backend not running, CORS, timeout)
+    // Network-level failure (server down, connection dropped, timeout)
     if (!axErr.response) {
       return new Error(
-        `Cannot reach the backend at ${effectiveBackendUrl}. ` +
-        "Is the FastAPI server running? (uvicorn api.main:app --reload)"
+        "Cannot reach the BitFlow server. Check your connection and try again."
       );
     }
 
     // Backend returned a response body
-    const data = axErr.response.data;
+    const data: any = axErr.response.data; // may be a plain string (e.g. proxy 429 page)
     if (typeof data === "string" && data.includes("Too Many Requests")) {
       return new Error("Rate limit reached. Please wait a few seconds before retrying.");
     }
@@ -89,7 +76,7 @@ function normaliseError(err: unknown): Error {
       axErr.response.status === 504
     ) {
       return new Error(
-        "Backend server is rate-limited or cold starting (Render Free Limit). Retrying automatically..."
+        "Simulation server is busy or restarting. Please try again in a few seconds."
       );
     }
 
@@ -131,17 +118,41 @@ export async function runSimulation(
     );
     return data;
   } catch (err) {
-    // If connection dropped, socket timed out, cold starting, or rate limited (429/502/503/504), auto-retry
+    // Retry only real outages (connection dropped, server restarting: 502/503/504).
+    // Never retry 429 — each retry would count against the same rate-limit window.
     const isRetryable =
       axios.isAxiosError(err) &&
-      (!err.response || (err.response.status && [429, 502, 503, 504].includes(err.response.status)));
+      (!err.response || (err.response.status && [502, 503, 504].includes(err.response.status)));
 
     if (isRetryable && retries > 0) {
       const delayMs = Math.min((7 - retries) * 3000, 10000); // 3s, 6s, 9s, 10s, 10s, 10s backoff
-      console.log(`[BitFlow] Server connection/response issue (Render cold start). Auto-retrying in ${delayMs / 1000}s (${retries} attempts left)...`);
+      console.log(`[BitFlow] Simulation server unavailable. Auto-retrying in ${delayMs / 1000}s (${retries} attempts left)...`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       return runSimulation(payload, retries - 1);
     }
+    throw normaliseError(err);
+  }
+}
+
+/**
+ * POST /api/problems/[slug]/submit
+ *
+ * Grade a solution on the server against the problem's hidden tests.
+ * Returns the SubmissionResult; XP and progress are recorded server-side.
+ */
+export async function submitSolution<T>(
+  slug: string,
+  designCode: string,
+  testbenchCode: string
+): Promise<T> {
+  try {
+    const { data } = await axios.post<{ submission: T }>(
+      `/api/problems/${encodeURIComponent(slug)}/submit`,
+      { designCode, testbenchCode },
+      { timeout: 300_000 } // several hidden testcases, each up to 30 s
+    );
+    return data.submission;
+  } catch (err) {
     throw normaliseError(err);
   }
 }

@@ -1,8 +1,13 @@
-# docker-compose.yml — BitFlow Full Stack Deployment (Frontend + FastAPI Backend)
+# docker-compose.yml — BitFlow (frontend + simulation API). This is the
+# supported deployment: a single VPS running Docker Compose.
 #
-# Usage:
-#   docker compose up -d --build     # start everything in background
-#   docker compose down              # stop containers
+#   Local:           docker compose up -d --build                   → http://localhost:3000
+#   VPS with HTTPS:  set DOMAIN (and FRONTEND_BIND=127.0.0.1) in .env, then
+#                    docker compose --profile https up -d --build   → https://$DOMAIN
+#   Postgres:        add --profile postgres and set DATABASE_URL (see .env.example)
+#   Stop:            docker compose down
+#
+# setup_server.sh does the VPS steps for you.
 
 services:
   # ── FastAPI Backend (Python 3.11 + Icarus Verilog compiler) ──────────────────
@@ -13,11 +18,12 @@ services:
     container_name: bitflow-api
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8000:8080"
+      - "127.0.0.1:${API_PORT:-8000}:8080"
     environment:
       - PORT=8080
       - TIMEOUT_SECONDS=30
-      - JWT_SECRET=${JWT_SECRET:-bitflow-dev-secret-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env, e.g. openssl rand -hex 32}
+      - MAX_CONCURRENT_SIMULATIONS=${MAX_CONCURRENT_SIMULATIONS:-4}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 15s
@@ -32,20 +38,65 @@ services:
     container_name: bitflow-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${FRONTEND_BIND:-0.0.0.0}:3000:3000"
+    # Optional settings (AI provider keys/models, …) come straight from .env so
+    # unset ones stay unset and the app's defaults apply.
+    env_file:
+      - path: .env
+        required: false
     environment:
       - PORT=3000
-      - NEXT_PUBLIC_API_URL=http://api:8080
+      - BACKEND_URL=http://api:8080
       - DATABASE_URL=${DATABASE_URL:-file:/app/data/dev.db}
       - DIRECT_URL=${DIRECT_URL:-}
-      - JWT_SECRET=${JWT_SECRET:-bitflow-dev-secret-change-in-production}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env, e.g. openssl rand -hex 32}
+      - ADMIN_SECRET=${ADMIN_SECRET:-}   # empty = admin self-registration disabled
+      - HTTPS=${HTTPS:-false}            # true behind TLS → Secure session cookies
     volumes:
       - bitflow-data:/app/data
     depends_on:
       api:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+        required: false
+
+  # ── Optional: Postgres (--profile postgres) ──────────────────────────────────
+  # Reachable only on the compose network (no published port).
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    container_name: bitflow-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=bitflow
+      - POSTGRES_USER=bitflow
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-bitflow-local}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bitflow -d bitflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Optional: automatic HTTPS via Caddy (--profile https) ────────────────────
+  # Gets and renews a Let's Encrypt certificate for $DOMAIN (DNS must point here).
+  caddy:
+    image: caddy:2.8.4
+    profiles: ["https"]
+    container_name: bitflow-caddy
+    restart: unless-stopped
+    command: caddy reverse-proxy --from ${DOMAIN:-localhost} --to frontend:3000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      - frontend
 
 volumes:
   bitflow-data:
-
-
+  postgres-data:
+  caddy-data:

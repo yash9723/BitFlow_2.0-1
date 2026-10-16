@@ -17,7 +17,6 @@ export async function GET(
 ) {
   try {
     const { slug } = params;
-    console.log("slug =", slug);
     const question = await prisma.question.findUnique({
       where: { slug },
     });
@@ -30,13 +29,13 @@ export async function GET(
     }
 
     // Parse all JSON-stringified fields back to arrays/objects
+    const { hiddenTestbench: _hb, hiddenTestcases: _ht, ...publicQuestion } = question;
     const parsed = {
-      ...question,
+      ...publicQuestion,
       tags:           safeParseJson(question.tags,           []),
       constraints:    safeParseJson(question.constraints,    []),
       examples:       safeParseJson(question.examples,       []),
       hints:          safeParseJson(question.hints,          []),
-      hiddenTestcases: safeParseJson(question.hiddenTestcases, []),
       publicTestcases: safeParseJson(question.publicTestcases, []),
     };
 

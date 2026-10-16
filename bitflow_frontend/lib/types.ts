@@ -28,6 +28,9 @@ export interface SimulateRequest {
    * Omit to use the server default (30 s).
    */
   timeout?: number;
+
+  /** Also run Verilator lint on design_v; findings are appended to stdout. */
+  lint?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

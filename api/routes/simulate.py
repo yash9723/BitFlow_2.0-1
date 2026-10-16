@@ -22,7 +22,10 @@ Flow for every request:
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import time
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import JSONResponse
@@ -43,6 +46,10 @@ from api.jwt_auth import verify_jwt
 logger  = logging.getLogger(__name__)
 router  = APIRouter(prefix="/simulate", tags=["Simulation"])
 
+# Caps CPU-heavy iverilog/vvp runs per API process; extra requests queue here.
+# ponytail: per-process limit — with several API replicas, use a shared queue.
+_sim_slots = asyncio.Semaphore(settings.max_concurrent_simulations)
+
 
 # =============================================================================
 # Shared simulation executor
@@ -52,6 +59,7 @@ async def _execute_simulation(
     design_v: str,
     testbench_v: str,
     timeout: int,
+    lint: bool = False,
 ) -> SimulateResponse:
     """
     Core simulation pipeline shared by both endpoints.
@@ -73,14 +81,30 @@ async def _execute_simulation(
         write_source_files(tmpdir, design_v, testbench_v)
         logger.debug("ws=%s | Source files written to %s", workspace_id, tmpdir)
 
-        # Launch the sandbox container and wait for it to finish.
+        # Run the simulation (waits for a free slot first).
         # This is the only async-blocking call in the pipeline.
-        result = await run_simulation(tmpdir, workspace_id, timeout)
+        t_queued = time.monotonic()
+        async with _sim_slots:
+            queue_ms = (time.monotonic() - t_queued) * 1000
+            result = await run_simulation(tmpdir, workspace_id, timeout, lint)
 
         # Read the VCD file if the testbench produced one.
         vcd_base64, vcd_size = (None, 0)
         if settings.include_vcd_in_response:
             vcd_base64, vcd_size = read_vcd(tmpdir)
+
+        # One machine-readable line per run, for log aggregation / alerting.
+        logger.info(json.dumps({
+            "event":        "simulation",
+            "workspace_id": workspace_id,
+            "status":       result.status,
+            "exit_code":    result.exit_code,
+            "duration_ms":  result.duration_ms,
+            "queue_ms":     round(queue_ms, 1),
+            "timeout_s":    timeout,
+            "source_bytes": len(design_v) + len(testbench_v),
+            "vcd_bytes":    vcd_size,
+        }))
 
         return SimulateResponse(
             status       = result.status,
@@ -151,7 +175,7 @@ async def simulate_json(body: SimulateJsonRequest) -> SimulateResponse:
     # Clamp timeout to the server ceiling
     timeout = min(body.timeout or settings.timeout_seconds, settings.max_timeout_seconds)
 
-    return await _execute_simulation(body.design_v, body.testbench_v, timeout)
+    return await _execute_simulation(body.design_v, body.testbench_v, timeout, body.lint)
 
 
 # =============================================================================

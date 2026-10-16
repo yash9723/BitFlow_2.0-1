@@ -15,7 +15,7 @@ pydantic-settings>=2.2.0,<3.0.0  # settings management with env / .env support
 PyJWT>=2.8.0,<3.0.0                 # JSON Web Token encoding / decoding
 
 # ── Docker integration ────────────────────────────────────────────────────────
-# docker SDK removed — simulations now run natively via subprocess (Railway-compatible)
+# docker SDK removed — simulations now run natively via subprocess
 
 # ── Multipart upload support ──────────────────────────────────────────────────
 python-multipart>=0.0.9           # required for UploadFile endpoints

@@ -37,26 +37,11 @@ export function useProgress(): UseProgressReturn {
     fetchProgress();
   }, [fetchProgress]);
 
-  const recordSolve = useCallback(async (result: SubmissionResult, moduleId: string) => {
-    try {
-      const res = await fetch("/api/progress", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actionType: "solve",
-          problemId: result.problemId,
-          moduleId,
-          xpReward: result.xpEarned,
-        }),
-      });
-      const data = await res.json();
-      if (data.progress) {
-        setProgress(data.progress);
-      }
-    } catch (err) {
-      console.error("[BitFlow] Failed to record solve in DB:", err);
-    }
-  }, []);
+  // The solve, XP and module unlock were already recorded by the server when it
+  // graded the submission — just pull the fresh progress.
+  const recordSolve = useCallback(async (_result: SubmissionResult, _moduleId: string) => {
+    await fetchProgress();
+  }, [fetchProgress]);
 
   const recordAttempt = useCallback(async (problemId: string) => {
     try {

@@ -37,6 +37,8 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/scripts ./scripts
+# prisma/seed.ts (run at startup) resolves "@/..." imports via tsconfig paths
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/app ./app
 COPY --from=builder /app/lib ./lib
 COPY --from=builder /app/next.config.js ./next.config.js

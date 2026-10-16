@@ -6,3 +6,20 @@ node_modules
 dist
 build
 *.log
+
+# Secrets — use .env.example as the template
+.env
+secret_password.txt
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Build / simulation artifacts
+a.out
+*.vcd
+*.zip
+tmp/
+bitflow_frontend/bitflow_test_report_*.md
+bitflow_frontend/prisma/*.db

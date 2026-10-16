@@ -159,6 +159,7 @@ export function useSimulation(): UseSimulationReturn {
         design_v:    designCode,
         testbench_v: testbenchCode,
         timeout:     30,
+        lint:        true,
       });
 
       // The response is always a valid SimulateResponse — even compile errors

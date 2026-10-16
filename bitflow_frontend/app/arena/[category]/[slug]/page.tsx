@@ -38,7 +38,7 @@ export default async function ArenaPage({ params }: PageProps) {
     starterCode:      problem.starterCode,
     testbenchSkeleton: problem.testbenchSkeleton ?? problem.publicTestbench,
     publicTestbench:  problem.publicTestbench,
-    hiddenTestcases:  problem.hiddenTestcases as import("@/lib/arena/types").ArenaTestcase[],
+    hiddenTestcases:  [],   // graded server-side; never sent to the browser
     xpReward:         problem.xpReward,
     estimatedMin:     30,
   };

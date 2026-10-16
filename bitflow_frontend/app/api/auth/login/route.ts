@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/auth-utils";
+import { createSession, hashPassword, verifyPassword } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -55,22 +54,21 @@ export async function POST(request: Request) {
     }
 
     // Verify password hash
-    const inputHash = hashPassword(password);
-    if (user.password !== inputHash) {
+    const { ok, needsRehash } = verifyPassword(password, user.password);
+    if (!ok) {
       return NextResponse.json(
         { error: "Invalid username or password." },
         { status: 400 }
       );
     }
+    if (needsRehash) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data:  { password: hashPassword(password) },
+      });
+    }
 
-    // Set HTTP-only session cookie
-    cookies().set("bitflow_session", user.id, {
-      httpOnly: true,
-      secure: process.env.HTTPS === "true",
-      sameSite: "lax",   // prevents CSRF attacks
-      maxAge: 60 * 60 * 24 * 7, // 1 week
-      path: "/",
-    });
+    await createSession(user.id);
 
     return NextResponse.json({
       user: {

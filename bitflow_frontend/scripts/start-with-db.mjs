@@ -8,6 +8,12 @@ const __dirname = dirname(__filename);
 
 const databaseUrl = process.env.DATABASE_URL || "file:/app/data/dev.db";
 
+// Postgres needs a directUrl for schema pushes; default it to the pooled URL
+// (Neon and other poolers should set DIRECT_URL explicitly).
+if (/^postgres(ql)?:\/\//.test(databaseUrl) && !process.env.DIRECT_URL) {
+  process.env.DIRECT_URL = databaseUrl;
+}
+
 // 1. Ensure local SQLite file directory exists
 if (databaseUrl.startsWith("file:")) {
   try {
@@ -88,9 +94,12 @@ try {
   console.error("[DB Setup] Failed to dynamically adjust prisma schema:", err);
 }
 
-// 3. Push schema to database
+// 3. Push schema to database. No --accept-data-loss: a change that would drop
+//    columns/tables fails loudly here instead of silently deleting user data.
+//    ponytail: db push has no migration history; switch to `prisma migrate
+//    deploy` once schema changes need to be reviewed and replayed.
 console.log("[DB Setup] Pushing schema to database...");
-runPrisma(["db", "push", "--accept-data-loss"], true);
+runPrisma(["db", "push", "--skip-generate"], true);
 
 // 4. Seed database (non-fatal)
 console.log("[DB Setup] Seeding database...");

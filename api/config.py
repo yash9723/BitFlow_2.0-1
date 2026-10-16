@@ -56,6 +56,11 @@ class Settings(BaseSettings):
         le=300,
         description="Hard ceiling a caller may request via the API.",
     )
+    max_concurrent_simulations: int = Field(
+        default=4,
+        ge=1,
+        description="Simulations run at once; further requests wait their turn.",
+    )
 
     # ── Container resource caps ───────────────────────────────────────────────
     mem_limit: str = Field(
@@ -127,8 +132,10 @@ class Settings(BaseSettings):
     )
 
     # ── JWT authentication & Security ─────────────────────────────────────
+    # Required — no default. A public default secret lets anyone mint tokens.
     jwt_secret: str = Field(
-        default="bitflow-dev-secret-change-in-production",
+        ...,
+        min_length=32,
         description="Shared HMAC-SHA256 secret for signing/verifying JWTs between frontend and backend.",
     )
     enable_docs: bool = Field(

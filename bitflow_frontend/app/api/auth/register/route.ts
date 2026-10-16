@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import fs from "fs";
-import path from "path";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/auth-utils";
+import { createSession, hashPassword } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -50,21 +48,19 @@ export async function POST(request: Request) {
 
     // Check admin secret password if admin role is selected
     if (role === "ADMIN") {
-      try {
-        const secretPath = path.join(process.cwd(), "..", "secret_password.txt");
-        const correctSecret = fs.readFileSync(secretPath, "utf-8").trim();
-
-        if (secretPassword !== correctSecret) {
-          return NextResponse.json(
-            { error: "Incorrect Admin Secret Password. Access Denied." },
-            { status: 400 }
-          );
-        }
-      } catch (err) {
-        console.error("Error reading secret_password.txt:", err);
+      const correctSecret = process.env.ADMIN_SECRET;
+      if (!correctSecret) {
         return NextResponse.json(
-          { error: "Server error checking admin privileges. Please contact administrator." },
-          { status: 500 }
+          { error: "Admin registration is disabled on this server." },
+          { status: 403 }
+        );
+      }
+      const given = crypto.createHash("sha256").update(String(secretPassword ?? "")).digest();
+      const want  = crypto.createHash("sha256").update(correctSecret).digest();
+      if (!crypto.timingSafeEqual(given, want)) {
+        return NextResponse.json(
+          { error: "Incorrect Admin Secret Password. Access Denied." },
+          { status: 400 }
         );
       }
     }
@@ -91,14 +87,7 @@ export async function POST(request: Request) {
       },
     });
 
-    // Set HTTP-only session cookie
-    cookies().set("bitflow_session", user.id, {
-      httpOnly: true,
-      secure: process.env.HTTPS === "true",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 1 week
-      path: "/",
-    });
+    await createSession(user.id);
 
     return NextResponse.json({ user });
   } catch (err: any) {

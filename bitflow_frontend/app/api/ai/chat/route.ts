@@ -28,13 +28,16 @@
  * Error response:
  *   { error: string }  — with appropriate 4xx/5xx status
  *
- * TODO: Add per-session rate limiting
+ * Every call costs real API credits, so it requires a signed-in user and is
+ * rate-limited and size-capped.
+ *
  * TODO: Add credit deduction when Oogway credit system launches
  * TODO: Add streaming (ReadableStream + SSE) for long responses
- * TODO: Add request signing/validation for production
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser }            from "@/lib/auth-utils";
+import { rateLimit }                 from "@/lib/rate-limit";
 import { getProvider }               from "@/lib/ai-providers";
 import {
   SANDBOX_SYSTEM_PROMPT,
@@ -48,11 +51,35 @@ interface RequestBody {
   context:  IDEContext;
 }
 
+const MAX_MESSAGES     = 40;
+const MAX_INPUT_CHARS  = 100_000; // whole conversation + IDE context
+
 export async function POST(req: NextRequest) {
+  if (!(await getSessionUser())) {
+    return NextResponse.json({ error: "Sign in to use the AI assistant." }, { status: 401 });
+  }
+  const { success } = rateLimit(req, { limit: 20, windowMs: 60_000, prefix: "ai" });
+  if (!success) {
+    return NextResponse.json(
+      { error: "Too many AI requests. Please wait a moment and try again." },
+      { status: 429 },
+    );
+  }
+
   try {
     const body = (await req.json()) as RequestBody;
 
     // ── Input validation ────────────────────────────────────────────────────
+    if (
+      JSON.stringify(body ?? {}).length > MAX_INPUT_CHARS ||
+      (Array.isArray(body.messages) && body.messages.length > MAX_MESSAGES)
+    ) {
+      return NextResponse.json(
+        { error: "Conversation too long — clear the chat and try again." },
+        { status: 413 },
+      );
+    }
+
     if (!Array.isArray(body.messages)) {
       return NextResponse.json(
         { error: "messages must be an array" },

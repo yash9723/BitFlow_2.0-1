@@ -1,9 +1,11 @@
 /**
  * app/api/submissions/route.ts
  *
- * POST /api/submissions — Save a simulation result to the Submission table
- *                          Called by useArenaProblem and useProblem hooks
- *                          after every run/submit.
+ * POST /api/submissions — Save a RUN (public-testbench) result to the
+ *                          Submission table. Called by useArenaProblem and
+ *                          useProblem after every run. Graded SUBMITs go
+ *                          through POST /api/problems/[slug]/submit instead,
+ *                          so nothing posted here can award XP.
  *
  * GET  /api/submissions — Fetch submission history for the current user
  *
@@ -11,13 +13,14 @@
  */
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth-utils";
+import { recordSubmission } from "@/lib/record-submission";
 
 export const dynamic = "force-dynamic";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST — Save a submission (from run or submit)
+// POST — Save a run
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -25,34 +28,34 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     const {
-      userId,           // string | null (optional, for guest submissions)
       problemSlug,      // string (required) — used to find Question.id
       designCode,       // string (required)
       testbenchCode,    // string (required)
-      submissionType,   // "RUN" | "SUBMIT"
+      submissionType,   // must be "RUN"
       simStatus,        // "SUCCESS" | "COMPILE_ERROR" | "RUNTIME_ERROR" | "TIMEOUT"
       simStdout,        // string | null
       simStderr,        // string | null
       simExitCode,      // number | null
       durationMs,       // number | null
-      testcaseResults,  // Array<{id, description, passed, expected, actual}>
       waveformVcd,      // string | null (base64)
-      xpEarned,         // number
-      accepted,         // boolean
     } = body;
 
-    // Validate required fields
     if (!problemSlug || !designCode || !testbenchCode) {
       return NextResponse.json(
         { error: "problemSlug, designCode, and testbenchCode are required." },
         { status: 400 }
       );
     }
+    if (submissionType && submissionType !== "RUN") {
+      return NextResponse.json(
+        { error: "Submissions are graded via POST /api/problems/[slug]/submit." },
+        { status: 400 }
+      );
+    }
 
-    // Look up the Question by slug
     const question = await prisma.question.findUnique({
-      where: { slug: problemSlug },
-      select: { id: true },
+      where:  { slug: problemSlug },
+      select: { id: true, moduleId: true },
     });
 
     if (!question) {
@@ -63,119 +66,31 @@ export async function POST(request: Request) {
       );
     }
 
-    const sessionUserId = cookies().get("bitflow_session")?.value;
-    const effectiveUserId = sessionUserId ?? userId;
+    const user = await getSessionUser();
 
-    // Prefer the signed-in session user. The body userId is only a legacy fallback.
-    let dbUserId: string | null = null;
-    if (effectiveUserId) {
-      const user = await prisma.user.findUnique({
-        where: { id: effectiveUserId },
-        select: { id: true },
-      });
-      if (user) {
-        dbUserId = user.id;
-      }
-    }
-
-    // Count previous attempts for this user + problem (optional, for metrics)
-    const attemptCount = dbUserId
-      ? await prisma.submission.count({
-          where: { userId: dbUserId, problemId: question.id },
-        })
-      : 0;
-
-    // Save submission
-    const submission = await prisma.submission.create({
-      data: {
-        userId:         dbUserId ?? undefined,
-        problemId:      question.id,
-        designCode,
-        testbenchCode,
-        submissionType: submissionType ?? "RUN",
-        attemptNumber:  attemptCount + 1,
-        simStatus:      simStatus ?? "SUCCESS",
-        simStdout:      simStdout ?? null,
-        simStderr:      simStderr ?? null,
-        simExitCode:    simExitCode ?? null,
-        durationMs:     durationMs ?? null,
-        testcaseResults: JSON.stringify(testcaseResults ?? []),
-        numTestsPassed: Array.isArray(testcaseResults)
-          ? testcaseResults.filter((t: any) => t.passed).length
-          : 0,
-        numTestsTotal: Array.isArray(testcaseResults)
-          ? testcaseResults.length
-          : 0,
-        waveformVcd:   waveformVcd ?? null,
-        xpEarned:      xpEarned ?? 0,
-        accepted:      accepted ?? false,
-      },
-      select: {
-        id:             true,
-        attemptNumber:  true,
-        accepted:       true,
-        numTestsPassed: true,
-        numTestsTotal:  true,
-        xpEarned:       true,
-        createdAt:      true,
-      },
+    const submission = await recordSubmission({
+      userId:          user?.id ?? null,
+      question,
+      designCode,
+      testbenchCode,
+      submissionType:  "RUN",
+      simStatus:       simStatus ?? "SUCCESS",
+      simStdout:       simStdout ?? null,
+      simStderr:       simStderr ?? null,
+      simExitCode:     simExitCode ?? null,
+      durationMs:      durationMs ?? null,
+      testcaseResults: [],
+      waveformVcd:     waveformVcd ?? null,
+      xpEarned:        0,
+      accepted:        false,
     });
-
-    // If this was a SUBMIT and ACCEPTED, update UserProgress
-    if (dbUserId && accepted && submissionType === "SUBMIT") {
-      // Get existing progress to check if this is first solve
-      const existing = await prisma.userProgress.findUnique({
-        where: {
-          userId_problemId: { userId: dbUserId, problemId: question.id },
-        },
-        select: { solved: true, firstSolvedAt: true },
-      });
-
-      const isFirstSolve = !existing?.solved;
-
-      await prisma.userProgress.upsert({
-        where: {
-          userId_problemId: { userId: dbUserId, problemId: question.id },
-        },
-        create: {
-          userId:        dbUserId,
-          problemId:     question.id,
-          solved:        true,
-          attempts:      attemptCount + 1,
-          firstSolvedAt: new Date(),
-          xpEarned:      xpEarned ?? 0,
-        },
-        update: {
-          attempts:  { increment: 1 },
-          // Only set firstSolvedAt on first solve
-          ...(isFirstSolve
-            ? {
-                solved:        true,
-                firstSolvedAt: new Date(),
-                xpEarned:      { increment: xpEarned ?? 0 },
-              }
-            : {
-                attempts: { increment: 1 },
-              }),
-        },
-      });
-
-      // Update user's total XP (only if first solve)
-      if (isFirstSolve && (xpEarned ?? 0) > 0) {
-        await prisma.userXp.upsert({
-          where:  { userId: dbUserId },
-          create: { userId: dbUserId, totalXp: xpEarned ?? 0 },
-          update: { totalXp: { increment: xpEarned ?? 0 } },
-        });
-      }
-    }
 
     return NextResponse.json({ submission }, { status: 201 });
 
   } catch (err) {
     console.error("[submissions POST] error:", err);
     return NextResponse.json(
-      { error: "Internal Server Error", details: String(err) },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }

@@ -559,13 +559,13 @@ type ProfileStats = {
   totalActiveDays: number;
   maxStreak: number;
 };
-type ArenaProblemLite = { slug: string; title: string; category: string };
-type Challenge = { title: string; href: string; kind: "Arena" | "Academy" };
+type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean };
 
 function DashboardContent() {
   const { user, logout } = useAuth();
   const [stats, setStats] = useState<ProfileStats | null>(null);
-  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  // undefined = loading, null = none available
+  const [daily, setDaily] = useState<Daily | null | undefined>(undefined);
   const [academy, setAcademy] = useState<{ done: number; total: number; lastTitle: string | null; lastSlug: string | null }>({
     done: 0,
     total: ACADEMY_TOPIC_META.length,
@@ -597,25 +597,19 @@ function DashboardContent() {
       lastSlug: lastTopic?.slug ?? null,
     });
 
-    (async () => {
-      const wantArena = Math.random() < 0.5;
-      if (wantArena) {
-        try {
-          const res = await fetch("/api/problems");
-          const json = await res.json();
-          const list: ArenaProblemLite[] = Array.isArray(json?.problems) ? json.problems : [];
-          if (list.length > 0) {
-            const q = list[Math.floor(Math.random() * list.length)];
-            setChallenge({ title: q.title, href: `/arena/${q.category.toLowerCase()}/${q.slug}`, kind: "Arena" });
-            return;
-          }
-        } catch {
-          /* fall through to academy pick below */
-        }
-      }
-      const t = ACADEMY_TOPIC_META[Math.floor(Math.random() * ACADEMY_TOPIC_META.length)];
-      setChallenge({ title: t.title, href: `/academy/${t.slug}`, kind: "Academy" });
-    })();
+    fetch("/api/daily")
+      .then((r) => r.json())
+      .then((json) => {
+        const p = json?.problem;
+        setDaily(p ? {
+          title:        p.title,
+          href:         p.href,
+          level:        p.learningLevel,
+          bonusXp:      json.bonusXp,
+          claimedToday: json.claimedToday,
+        } : null);
+      })
+      .catch(() => setDaily(null));
   }, []);
 
   const pct = academy.total > 0 ? Math.round((academy.done / academy.total) * 100) : 0;
@@ -632,6 +626,9 @@ function DashboardContent() {
           <span className="font-display font-bold text-lg">BitFlow</span>
         </Link>
         <div className="flex items-center gap-4">
+          <Link href="/leaderboard" className="text-[12px] text-ghost hover:text-bright transition-colors">
+            Leaderboard
+          </Link>
           <Link
             href="/profile"
             className="flex items-center gap-2 group px-2 py-1 rounded-lg hover:bg-pit/60 transition-colors"
@@ -773,18 +770,24 @@ function DashboardContent() {
 
           <GlassCard>
             <div className="text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)] mb-3">
-              Your Challenge
+              Daily Challenge
             </div>
-            {challenge ? (
-              <Link href={challenge.href} className="block group">
-                <span className="text-xs uppercase tracking-wide text-dim">{challenge.kind}</span>
+            {daily ? (
+              <Link href={daily.href} className="block group">
+                <span className="text-xs uppercase tracking-wide text-dim">{daily.level}</span>
                 <div className="text-[13px] text-pale group-hover:text-phosphor transition-colors leading-snug mt-1">
-                  {challenge.title}
+                  {daily.title}
+                </div>
+                <div className={`text-[11px] mt-2 ${daily.claimedToday ? "text-phosphor" : "text-warn"}`}>
+                  {daily.claimedToday ? "✓ Bonus claimed today" : `+${daily.bonusXp} XP bonus if solved today`}
                 </div>
               </Link>
             ) : (
-              <div className="text-xs text-dim">Loading…</div>
+              <div className="text-xs text-dim">{daily === undefined ? "Loading…" : "No challenge today."}</div>
             )}
+            <Link href="/leaderboard" className="block text-[11px] text-ghost hover:text-phosphor transition-colors mt-3">
+              View leaderboard →
+            </Link>
           </GlassCard>
         </aside>
       </div>

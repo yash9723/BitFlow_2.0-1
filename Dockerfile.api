@@ -12,6 +12,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     iverilog \
+    verilator \
     coreutils \
     && rm -rf /var/lib/apt/lists/*
 
@@ -31,7 +32,7 @@ RUN cp /app/api/.env /app/.env || true
 
 
 
-# Expose the port Railway will route traffic to
+# Port the API listens on inside the compose network
 EXPOSE 8080
 
 # Run the API server — shell form so ${PORT} expands correctly

@@ -58,7 +58,6 @@ export async function GET(request: Request) {
         starterCode:   true,
         publicTestbench:  true,
         testbenchSkeleton: true,
-        hiddenTestcases:  true,
         publicTestcases:  true,
         expectedOutputMode: true,
         waveformRequired:   true,
@@ -74,7 +73,6 @@ export async function GET(request: Request) {
       constraints:     safeParseJson(q.constraints,     []),
       examples:        safeParseJson(q.examples,        []),
       hints:           safeParseJson(q.hints,           []),
-      hiddenTestcases: safeParseJson(q.hiddenTestcases, []),
       publicTestcases: safeParseJson(q.publicTestcases, []),
     }));
 

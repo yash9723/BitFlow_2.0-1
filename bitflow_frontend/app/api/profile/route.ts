@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { getSessionUser } from "@/lib/auth-utils";
+import { problemHref } from "@/lib/problem-href";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ function toDateKey(d: Date) {
 // GET /api/profile — aggregated stats for the logged-in user's profile page
 export async function GET() {
   try {
-    const userId = cookies().get("bitflow_session")?.value;
+    const userId = (await getSessionUser())?.id;
 
     if (!userId) {
       return NextResponse.json({ user: null });
@@ -48,7 +49,7 @@ export async function GET() {
           select: {
             createdAt: true,
             problemId: true,
-            question: { select: { title: true, slug: true, difficulty: true } },
+            question: { select: { title: true, slug: true, difficulty: true, category: true, learningLevel: true } },
           },
         }),
         prisma.submission.count({ where: { userId } }),
@@ -86,13 +87,14 @@ export async function GET() {
 
     // Recent accepted submissions, deduped to one entry per problem
     const seen = new Set<string>();
-    const recentAC: Array<{ title: string; slug: string; difficulty: string; submittedAt: string }> = [];
+    const recentAC: Array<{ title: string; slug: string; href: string; difficulty: string; submittedAt: string }> = [];
     for (const s of recentAcceptedRaw) {
       if (seen.has(s.problemId)) continue;
       seen.add(s.problemId);
       recentAC.push({
         title: s.question.title,
         slug: s.question.slug,
+        href: problemHref(s.question),
         difficulty: s.question.difficulty,
         submittedAt: s.createdAt.toISOString(),
       });

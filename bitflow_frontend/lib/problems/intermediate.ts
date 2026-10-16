@@ -2443,19 +2443,19 @@ module tb_johnson_hidden;
     reg clk, rst; wire [3:0] q;
     integer errors;
     integer i;
-    reg [3:0] sequence [0:7];
+    reg [3:0] expected_seq [0:7];
     johnson_counter dut (.clk(clk),.rst(rst),.q(q));
     initial clk = 0;
     always #5 clk = ~clk;
     initial begin
-        sequence[0] = 4'b0000;
-        sequence[1] = 4'b0001;
-        sequence[2] = 4'b0011;
-        sequence[3] = 4'b0111;
-        sequence[4] = 4'b1111;
-        sequence[5] = 4'b1110;
-        sequence[6] = 4'b1100;
-        sequence[7] = 4'b1000;
+        expected_seq[0] = 4'b0000;
+        expected_seq[1] = 4'b0001;
+        expected_seq[2] = 4'b0011;
+        expected_seq[3] = 4'b0111;
+        expected_seq[4] = 4'b1111;
+        expected_seq[5] = 4'b1110;
+        expected_seq[6] = 4'b1100;
+        expected_seq[7] = 4'b1000;
     end
     initial begin
         errors = 0;
@@ -2465,8 +2465,8 @@ module tb_johnson_hidden;
         // Test two full cycles (16 clocks)
         for (i=0; i<16; i=i+1) begin
             @(posedge clk); #1;
-            if (q!==sequence[(i+1)%8]) begin
-                $display("FAIL cycle %0d: exp %b got %b",i+1,sequence[(i+1)%8],q);
+            if (q!==expected_seq[(i+1)%8]) begin
+                $display("FAIL cycle %0d: exp %b got %b",i+1,expected_seq[(i+1)%8],q);
                 errors=errors+1;
             end
         end

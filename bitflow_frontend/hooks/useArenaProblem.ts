@@ -5,17 +5,14 @@
  * Parallel to hooks/useProblem.ts but operates on ArenaProblem objects.
  * Reuses the same backend /simulate endpoint via lib/api.ts runSimulation().
  *
- * Key differences from useProblem:
- *   - No hiddenTestbench string fallback (Arena always uses hiddenTestcases[])
- *   - No moduleId / learning-path coupling
- *   - Verdict comparison uses the same compareStdout sentinel logic
- *   - ✅ NOW: Saves all submissions to Prisma via saveSubmission()
+ * submit() is graded server-side (POST /api/problems/[slug]/submit), same as
+ * useProblem; hidden testcases never reach the browser.
  */
 
 import { useState, useCallback } from "react";
-import type { ArenaProblem, ArenaSubmissionResult, ArenaVerdictItem } from "@/lib/arena/types";
+import type { ArenaProblem, ArenaSubmissionResult } from "@/lib/arena/types";
 import type { SimulateResponse } from "@/lib/types";
-import { runSimulation } from "@/lib/api";
+import { runSimulation, submitSolution } from "@/lib/api";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -59,31 +56,6 @@ export interface UseArenaProblemReturn {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Verdict comparison
-// ─────────────────────────────────────────────────────────────────────────────
-
-function compareStdout(actual: string, expected: string): boolean {
-  const normalise = (s: string) =>
-    s.trim().split("\n").map((l) => l.trim()).filter(Boolean);
-
-  const actualLines   = normalise(actual);
-  const expectedLines = normalise(expected);
-
-  // Fast path: "ALL TESTS PASSED" sentinel
-  if (expectedLines.length === 1 && expectedLines[0] === "ALL TESTS PASSED") {
-    return (
-      actual.includes("ALL TESTS PASSED") &&
-      !actual.includes("TESTS FAILED") &&
-      !actual.includes("FAIL:")
-    );
-  }
-
-  return expectedLines.every((el) =>
-    actualLines.some((al) => al.includes(el)),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Hook
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -110,6 +82,7 @@ export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
         design_v:    designCode,
         testbench_v: testbenchCode,
         timeout:     30,
+        lint:        true,
       });
       setRunResult(result);
       setRunState("run_done");
@@ -138,117 +111,24 @@ export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
     }
   }, [runState, designCode, testbenchCode, problem, user?.id]);
 
-  // ── Submit against all hidden testcases ───────────────────────────────────
+  // ── Submit (graded on the server against hidden tests) ────────────────────
   const submit = useCallback(async (): Promise<ArenaSubmissionResult | null> => {
     if (runState === "running" || runState === "submitting") return null;
-
-    const testcases = problem.hiddenTestcases ?? [];
-
     setRunState("submitting");
-    setSubmittingTotal(testcases.length);
+    setSubmittingTotal(1);
     setSubmittingIndex(0);
     setErrorMsg(null);
-
-    const verdicts: ArenaVerdictItem[] = [];
-    let totalDurationMs = 0;
-
-    for (let i = 0; i < testcases.length; i++) {
-      setSubmittingIndex(i);
-      const tc = testcases[i];
-
-      let verdict: ArenaVerdictItem;
-      try {
-        const t0     = performance.now();
-        const result = await runSimulation({
-          design_v:    designCode,
-          testbench_v: tc.testbench,
-          timeout:     30,
-        });
-        const elapsed = performance.now() - t0;
-        totalDurationMs += elapsed;
-
-        if (!result.success) {
-          verdict = {
-            testcaseId:     tc.id,
-            description:    tc.description,
-            passed:         false,
-            actualOutput:   result.stdout ?? "",
-            expectedOutput: tc.expected,
-            durationMs:     elapsed,
-            error:          result.stderr || `Exit status: ${result.status}`,
-          };
-        } else {
-          const stdout = result.stdout ?? "";
-          const passed = compareStdout(stdout, tc.expected);
-          verdict = {
-            testcaseId:     tc.id,
-            description:    tc.description,
-            passed,
-            actualOutput:   stdout,
-            expectedOutput: tc.expected,
-            durationMs:     elapsed,
-          };
-        }
-      } catch (err) {
-        verdict = {
-          testcaseId:     tc.id,
-          description:    tc.description,
-          passed:         false,
-          actualOutput:   "",
-          expectedOutput: tc.expected,
-          durationMs:     0,
-          error:          err instanceof Error ? err.message : "Network error",
-        };
-      }
-
-      verdicts.push(verdict);
+    try {
+      const sub = await submitSolution<ArenaSubmissionResult>(problem.slug, designCode, testbenchCode);
+      setSubmission(sub);
+      setRunState("submitted");
+      return sub;
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Network error");
+      setRunState("error");
+      return null;
     }
-
-    const passedCount = verdicts.filter((v) => v.passed).length;
-    const accepted    = passedCount === testcases.length;
-
-    const sub: ArenaSubmissionResult = {
-      id:              crypto.randomUUID(),
-      problemId:       problem.id,
-      timestamp:       Date.now(),
-      verdicts,
-      passed:          passedCount,
-      total:           testcases.length,
-      accepted,
-      totalDurationMs,
-      submittedCode:   designCode,
-      xpEarned:        accepted ? problem.xpReward : 0,
-    };
-
-    setSubmission(sub);
-    setRunState("submitted");
-
-    // ✅ Save submission to database (fire-and-forget)
-    saveSubmission({
-      userId:         user?.id,
-      problemSlug:    problem.slug,
-      designCode:     designCode,
-      testbenchCode:  testbenchCode,
-      submissionType: "SUBMIT",
-      simStatus:      accepted ? "SUCCESS" : "RUNTIME_ERROR",
-      simStdout:      null,
-      simStderr:      null,
-      simExitCode:    null,
-      durationMs:     totalDurationMs,
-      testcaseResults: verdicts.map(v => ({
-        id:          v.testcaseId,
-        description: v.description,
-        passed:      v.passed,
-        expected:    v.expectedOutput,
-        actual:      v.actualOutput || null,
-      })),
-      waveformVcd:    null,
-      xpEarned:       accepted ? problem.xpReward : 0,
-      accepted:       accepted,
-    }).catch(err => console.warn("[useArenaProblem.submit] submission save:", err));
-
-    return sub;
-  }, [runState, problem, designCode, testbenchCode, user?.id]);
+  }, [runState, problem.slug, designCode, testbenchCode]);
 
   // ── Reset ─────────────────────────────────────────────────────────────────
   const resetToStarter = useCallback(() => {

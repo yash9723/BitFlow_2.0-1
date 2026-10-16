@@ -16,7 +16,7 @@ type ProfileData = {
   totalActiveDays: number;
   maxStreak: number;
   activity: Record<string, number>;
-  recentAC: Array<{ title: string; slug: string; difficulty: string; submittedAt: string }>;
+  recentAC: Array<{ title: string; slug: string; href: string; difficulty: string; submittedAt: string }>;
 };
 
 const DIFF_ORDER = ["Easy", "Medium", "Hard"];
@@ -122,6 +122,7 @@ function ProfileContent() {
           <Link href="/learn" className="hover:text-bright transition-colors">Learning</Link>
           <Link href="/academy" className="hover:text-bright transition-colors">Academy</Link>
           <Link href="/arena" className="hover:text-bright transition-colors">Arena</Link>
+          <Link href="/leaderboard" className="hidden sm:inline hover:text-bright transition-colors">Leaderboard</Link>
         </div>
       </header>
 
@@ -292,7 +293,7 @@ function ProfileContent() {
                 {data.recentAC.map((s, i) => (
                   <Link
                     key={i}
-                    href={`/arena/${s.slug}`}
+                    href={s.href}
                     className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-void/60 transition-colors group"
                   >
                     <span className="text-[12.5px] text-pale group-hover:text-bright transition-colors truncate">

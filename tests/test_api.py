@@ -22,16 +22,22 @@ from __future__ import annotations
 
 import base64
 import os
+import shutil
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 # Patch settings BEFORE importing the app so the lru_cache picks up test values
+TEST_JWT_SECRET = "test-secret-0123456789abcdef0123456789abcdef"
 os.environ.setdefault("DOCKER_IMAGE", "verilog-sandbox:latest")
 os.environ.setdefault("NETWORK_DISABLED", "true")
+os.environ["JWT_SECRET"] = TEST_JWT_SECRET
 
 from api.main import create_app  # noqa: E402 — import after env setup
 
@@ -39,11 +45,24 @@ from api.main import create_app  # noqa: E402 — import after env setup
 # Fixtures
 # ---------------------------------------------------------------------------
 
+def _token(secret: str = TEST_JWT_SECRET, exp_in: int = 60) -> str:
+    return jwt.encode({"iss": "test", "exp": int(time.time()) + exp_in}, secret, algorithm="HS256")
+
+
+@pytest.fixture(scope="module")
+def anon_client() -> TestClient:
+    """TestClient with no Authorization header."""
+    return TestClient(create_app(), raise_server_exceptions=False)
+
+
 @pytest.fixture(scope="module")
 def client() -> TestClient:
-    """Create a TestClient for the full application."""
-    app = create_app()
-    return TestClient(app, raise_server_exceptions=False)
+    """TestClient that sends a valid backend JWT, like the Next.js proxy does."""
+    return TestClient(
+        create_app(),
+        raise_server_exceptions=False,
+        headers={"Authorization": f"Bearer {_token()}"},
+    )
 
 
 def _make_sandbox_result(
@@ -160,10 +179,115 @@ class TestHealth:
         assert body["status"]      == "degraded"
         assert body["image_found"] is False
 
-    def test_root_redirects_to_docs(self, client):
+    def test_root_without_docs_returns_status(self, client):
+        # /docs is disabled by default (ENABLE_DOCS=false), so / returns JSON
         resp = client.get("/", follow_redirects=False)
-        assert resp.status_code in (301, 302, 307, 308)
-        assert "/docs" in resp.headers["location"]
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+
+# ===========================================================================
+# TestAuth — /simulate must reject missing, forged and expired tokens
+# ===========================================================================
+
+class TestAuth:
+
+    BODY = {"design_v": "module a; endmodule", "testbench_v": "module t; endmodule"}
+
+    def test_missing_token_rejected(self, anon_client):
+        resp = anon_client.post("/simulate", json=self.BODY)
+        assert resp.status_code in (401, 403)
+
+    def test_wrong_secret_rejected(self, anon_client):
+        bad = _token(secret="attacker-guess-0123456789abcdef0123456789")
+        resp = anon_client.post("/simulate", json=self.BODY,
+                                headers={"Authorization": f"Bearer {bad}"})
+        assert resp.status_code == 401
+
+    def test_old_public_default_secret_rejected(self, anon_client):
+        bad = _token(secret="bitflow-dev-secret-change-in-production")
+        resp = anon_client.post("/simulate", json=self.BODY,
+                                headers={"Authorization": f"Bearer {bad}"})
+        assert resp.status_code == 401
+
+    def test_expired_token_rejected(self, anon_client):
+        resp = anon_client.post("/simulate", json=self.BODY,
+                                headers={"Authorization": f"Bearer {_token(exp_in=-10)}"})
+        assert resp.status_code == 401
+
+    def test_upload_requires_token(self, anon_client):
+        files = {"design": ("design.v", b"module a; endmodule"),
+                 "testbench": ("tb.v", b"module t; endmodule")}
+        assert anon_client.post("/simulate/upload", files=files).status_code in (401, 403)
+
+
+# ===========================================================================
+# TestSandboxLimits — real iverilog/vvp; skipped where they aren't installed
+# ===========================================================================
+
+needs_iverilog = pytest.mark.skipif(
+    not (shutil.which("iverilog") and shutil.which("vvp")),
+    reason="iverilog/vvp not installed",
+)
+
+
+def _run_real(design: str, tb: str, timeout: int = 10, lint: bool = False):
+    from api.sandbox import _run_simulation_sync
+    tmpdir = tempfile.mkdtemp()
+    os.chmod(tmpdir, 0o777)
+    Path(tmpdir, "design.v").write_text(design)
+    Path(tmpdir, "tb.v").write_text(tb)
+    try:
+        return _run_simulation_sync(tmpdir, "test", timeout, lint)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@needs_iverilog
+class TestSandboxLimits:
+
+    def test_real_simulation_succeeds(self):
+        result = _run_real(GOOD_DESIGN, GOOD_TESTBENCH)
+        assert result.status == "success", result.stdout + result.stderr
+
+    def test_output_flood_is_truncated(self):
+        flood = """
+module tb;
+  integer i;
+  initial begin
+    for (i = 0; i < 2000000; i = i + 1) $display("spam spam spam spam spam spam %0d", i);
+    $finish;
+  end
+endmodule"""
+        result = _run_real("module a; endmodule", flood)
+        assert len(result.stdout) < 2 * 1024 * 1024
+        assert "truncated" in result.stdout or "limit" in result.stdout
+
+    def test_secrets_not_readable_from_environ(self):
+        # environ is NUL-separated, so dump it byte by byte
+        reader = """
+module tb;
+  integer fd, c;
+  initial begin
+    fd = $fopen("/proc/self/environ", "r");
+    if (fd) begin
+      c = $fgetc(fd);
+      while (c != -1) begin
+        if (c == 0) $write("\\n"); else $write("%c", c);
+        c = $fgetc(fd);
+      end
+    end
+    $finish;
+  end
+endmodule"""
+        result = _run_real("module a; endmodule", reader)
+        assert TEST_JWT_SECRET not in result.stdout
+        assert "JWT_SECRET" not in result.stdout
+
+    def test_infinite_loop_times_out(self):
+        spin = "module tb; initial begin forever #1; end endmodule"
+        result = _run_real("module a; endmodule", spin, timeout=2)
+        assert result.status == "timeout"
 
 
 # ===========================================================================
@@ -332,3 +456,105 @@ class TestSimulateUpload:
         binary = b"\xff\xfe" + GOOD_DESIGN.encode("utf-16-le")
         resp = self._upload(client, design=binary, testbench=GOOD_TESTBENCH.encode())
         assert resp.status_code == 422
+
+
+# ===========================================================================
+# TestConcurrencyCap — no more than max_concurrent_simulations run at once
+# ===========================================================================
+
+class TestConcurrencyCap:
+
+    def test_simulations_are_capped(self):
+        import asyncio
+        import httpx
+        from api.routes import simulate as sim_route
+
+        active = peak = 0
+
+        async def fake_run(tmpdir, workspace_id, timeout, lint=False):
+            nonlocal active, peak
+            active += 1
+            peak = max(peak, active)
+            await asyncio.sleep(0.05)
+            active -= 1
+            return _make_sandbox_result()
+
+        async def fire(n: int):
+            transport = httpx.ASGITransport(app=create_app())
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test",
+                headers={"Authorization": f"Bearer {_token()}"},
+            ) as c:
+                body = {"design_v": GOOD_DESIGN, "testbench_v": GOOD_TESTBENCH}
+                return await asyncio.gather(*[c.post("/simulate", json=body) for _ in range(n)])
+
+        with patch.object(sim_route, "run_simulation", fake_run):
+            resps = asyncio.run(fire(10))
+
+        assert all(r.status_code == 200 for r in resps)
+        assert peak == sim_route.settings.max_concurrent_simulations
+
+
+# ===========================================================================
+# TestSystemVerilog — iverilog runs in -g2012 mode
+# ===========================================================================
+
+@needs_iverilog
+class TestSystemVerilog:
+
+    def test_always_ff_and_logic_compile(self):
+        design = """
+module counter(input logic clk, input logic rst, output logic [3:0] count);
+  always_ff @(posedge clk) count <= rst ? 4'd0 : count + 4'd1;
+endmodule"""
+        tb = """
+module tb;
+  logic clk = 0, rst = 1;
+  logic [3:0] count;
+  counter dut(.clk, .rst, .count);
+  always #5 clk = ~clk;
+  initial begin
+    #12 rst = 0;
+    #40;
+    if (count == 4'd4) $display("ALL TESTS PASSED"); else $display("FAIL: count=%0d", count);
+    $finish;
+  end
+endmodule"""
+        result = _run_real(design, tb)
+        assert result.status == "success", result.stdout
+        assert "ALL TESTS PASSED" in result.stdout, result.stdout
+
+
+# ===========================================================================
+# TestLint — optional Verilator lint, reported but never affecting the verdict
+# ===========================================================================
+
+needs_verilator = pytest.mark.skipif(not shutil.which("verilator"), reason="verilator not installed")
+
+TRUNCATING_DESIGN = """
+module trunc(input [7:0] a, output [3:0] y);
+  assign y = a;
+endmodule"""
+
+TRUNC_TB = """
+module tb;
+  reg [7:0] a = 8'hAB;
+  wire [3:0] y;
+  trunc dut(.a(a), .y(y));
+  initial begin #1 $display("y=%h", y); $finish; end
+endmodule"""
+
+
+@needs_iverilog
+@needs_verilator
+class TestLint:
+
+    def test_lint_reports_width_mismatch(self):
+        result = _run_real(TRUNCATING_DESIGN, TRUNC_TB, lint=True)
+        assert "Lint (Verilator)" in result.stdout
+        assert "WIDTH" in result.stdout, result.stdout
+        assert result.status == "success"          # lint never fails the run
+
+    def test_no_lint_unless_requested(self):
+        result = _run_real(TRUNCATING_DESIGN, TRUNC_TB)
+        assert "Lint (Verilator)" not in result.stdout

@@ -10,19 +10,22 @@
 
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "bitflow-dev-secret-change-in-production";
-
 /**
  * Generate a short-lived JWT for authenticating with the FastAPI backend.
  * Called server-side only (from Next.js API routes).
+ * There is deliberately no default secret: a public default lets anyone mint tokens.
  */
 export function generateBackendJwt(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET is not set (must match the backend's JWT_SECRET)");
+  }
   return jwt.sign(
     {
       iss: "bitflow-frontend",
       purpose: "simulate",
     },
-    JWT_SECRET,
+    secret,
     {
       algorithm: "HS256",
       expiresIn: "60s",

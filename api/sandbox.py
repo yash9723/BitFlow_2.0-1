@@ -5,7 +5,7 @@ sandbox.py — Native subprocess simulation engine
 Runs Verilog simulations natively using iverilog/vvp installed in the
 container, instead of launching a Docker-in-Docker child container.
 
-This approach is compatible with PaaS platforms like Railway where the
+This also works on hosts where the
 Docker daemon is not available inside the running container.
 
 Public surface:
@@ -19,11 +19,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
 from typing import Optional
 
+from api.config import settings
 from api.models import SandboxExitCode, exit_code_to_status
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,92 @@ class ImageInfo:
 
 
 # =============================================================================
+# Resource-limited child processes
+# =============================================================================
+
+# ponytail: prlimit + a dedicated uid + a scrubbed env stop resource abuse and
+# secret reads (e.g. $fopen("/proc/self/environ")), but every run shares one uid
+# and the container's filesystem view. Real isolation needs gVisor/nsjail or a
+# separate runner service.
+MAX_OUTPUT_BYTES = 1 * 1024 * 1024     # stdout returned to the client
+MAX_FILE_BYTES   = 32 * 1024 * 1024    # any file a child writes (log, VCD, $fopen)
+MAX_MEMORY_BYTES = 512 * 1024 * 1024   # address space per process
+MAX_PROCS        = 64                  # processes for the sandbox uid (fork bombs)
+
+
+def _run_limited(
+    cmd: list[str],
+    cwd: str,
+    timeout: int,
+    extra_env: Optional[dict] = None,
+) -> tuple[int, str]:
+    """
+    Run cmd under rlimits as the sandbox user, with a minimal environment.
+    stdout+stderr go to a size-capped file (not a pipe) so a $display flood
+    can't exhaust API memory. Returns (returncode, output text).
+    Raises subprocess.TimeoutExpired / FileNotFoundError like subprocess.run.
+    """
+    kwargs: dict = {}
+    if os.name == "posix" and shutil.which("prlimit"):
+        limits = [
+            f"--as={MAX_MEMORY_BYTES}",
+            f"--fsize={MAX_FILE_BYTES}",
+            f"--cpu={timeout + 1}",
+        ]
+        if os.geteuid() == 0:   # drop root for user code
+            kwargs = {"user": settings.sandbox_uid, "group": settings.sandbox_gid, "extra_groups": []}
+            # NPROC counts every process of the uid, so only cap the dedicated
+            # sandbox uid — never the server's own user (CI, local dev).
+            limits.append(f"--nproc={MAX_PROCS}")
+        cmd = ["prlimit", *limits, "--", *cmd]
+
+    env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME": cwd, **(extra_env or {})}
+    log_path = os.path.join(cwd, ".proc_output.log")
+    with open(log_path, "w+b") as log:
+        proc = subprocess.run(
+            cmd, stdout=log, stderr=subprocess.STDOUT,
+            cwd=cwd, env=env, timeout=timeout, **kwargs,
+        )
+        log.seek(0)
+        data = log.read(MAX_OUTPUT_BYTES + 1)
+
+    text = data[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
+    if len(data) > MAX_OUTPUT_BYTES:
+        text += f"\n[WARN] Output truncated at {MAX_OUTPUT_BYTES // 1024} KB."
+    if proc.returncode < 0:
+        text += f"\n[ERROR] Process killed by signal {-proc.returncode} (CPU, memory or file-size limit)."
+    return proc.returncode, text
+
+
+LINT_TIMEOUT_SECONDS = 15
+
+
+def _lint_design(design_file: str, cwd: str) -> str:
+    """
+    Verilator lint of design.v. Never affects the simulation verdict: issues
+    are reported as text, and a missing verilator just yields a note.
+    """
+    if not shutil.which("verilator"):
+        return "[INFO] Lint unavailable (verilator not installed)."
+    try:
+        rc, out = _run_limited(
+            [
+                "verilator", "--lint-only", "-Wall", "-Wno-fatal",
+                "-Wno-DECLFILENAME", "-Wno-EOFNEWLINE", "--timing",
+                os.path.basename(design_file),
+            ],
+            cwd=cwd,
+            timeout=LINT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return "[WARN] Lint timed out."
+    out = out.strip()
+    if rc == 0 and not out:
+        return "[OK] No lint warnings."
+    return out
+
+
+# =============================================================================
 # Public helpers
 # =============================================================================
 
@@ -84,6 +172,7 @@ def _run_simulation_sync(
     tmpdir: str,
     workspace_id: str,
     timeout: int,
+    lint: bool = False,
 ) -> SandboxResult:
     """
     Runs iverilog compilation and vvp simulation directly as subprocesses.
@@ -126,22 +215,25 @@ def _run_simulation_sync(
                 workspace_id = workspace_id,
             )
 
+    # ── Step 1b: optional Verilator lint of the design (feedback only) ────────
+    if lint:
+        combined_stdout.append("--- Lint (Verilator) ---")
+        combined_stdout.append(_lint_design(design_file, tmpdir))
+
     # ── Step 2: compile with iverilog ─────────────────────────────────────────
     combined_stdout.append("--- Compiling ---")
     try:
-        compile_proc = subprocess.run(
-            ["iverilog", "-o", output_bin, "-Wall", design_file, testbench_file],
-            capture_output=True,
-            text=True,
+        # iverilog warnings/errors are shown inline with the compile output.
+        # -g2012: accept SystemVerilog (logic, always_ff, multi-statement tasks…).
+        compile_rc, compile_out = _run_limited(
+            ["iverilog", "-g2012", "-o", output_bin, "-Wall", design_file, testbench_file],
+            cwd=tmpdir,
             timeout=30,
         )
-        # iverilog prints warnings/errors to stderr, info to stdout
-        if compile_proc.stdout:
-            combined_stdout.append(compile_proc.stdout)
-        if compile_proc.stderr:
-            combined_stdout.append(compile_proc.stderr)   # show warnings inline
+        if compile_out:
+            combined_stdout.append(compile_out)
 
-        if compile_proc.returncode != 0:
+        if compile_rc != 0:
             combined_stdout.append("[ERROR] Compilation failed (iverilog exited with error).")
             logger.warning("ws=%s | Compilation failed", workspace_id)
             exit_code = SandboxExitCode.COMPILE_ERROR
@@ -187,26 +279,18 @@ def _run_simulation_sync(
     # ── Step 3: simulate with vvp ─────────────────────────────────────────────
     combined_stdout.append(f"\n--- Simulating (limit: {timeout}s) ---")
     try:
-        sim_env = os.environ.copy()
-        sim_env["VCD_FILE"]    = vcd_file
-        sim_env.pop("IVERILOG_DUMPER", None)
-
-        sim_proc = subprocess.run(
+        sim_rc, sim_out = _run_limited(
             ["vvp", output_bin],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=sim_env,
             cwd=tmpdir,
+            timeout=timeout,
+            extra_env={"VCD_FILE": vcd_file},
         )
-        if sim_proc.stdout:
-            combined_stdout.append(sim_proc.stdout)
-        if sim_proc.stderr:
-            combined_stdout.append(sim_proc.stderr)
+        if sim_out:
+            combined_stdout.append(sim_out)
 
-        if sim_proc.returncode != 0:
+        if sim_rc != 0:
             combined_stdout.append(
-                f"[ERROR] Simulation runtime error (vvp exit code: {sim_proc.returncode})."
+                f"[ERROR] Simulation runtime error (vvp exit code: {sim_rc})."
             )
             exit_code = SandboxExitCode.RUNTIME_ERROR
         else:
@@ -261,6 +345,7 @@ async def run_simulation(
     tmpdir: str,
     workspace_id: str,
     timeout: int,
+    lint: bool = False,
 ) -> SandboxResult:
     """
     Async entry-point for the route handlers.
@@ -283,5 +368,6 @@ async def run_simulation(
         tmpdir,
         workspace_id,
         timeout,
+        lint,
     )
     return result

@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
+import { backendUrl } from "@/lib/backend";
 
 export const dynamic = "force-dynamic";
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (process.env.NODE_ENV === "production"
-    ? "https://bitflow-backend-uyji.onrender.com"
-    : "http://127.0.0.1:8000");
-
 export async function GET() {
   try {
-    const res = await fetch(`${BACKEND_URL}/health`, { cache: "no-store" });
+    const res = await fetch(`${backendUrl()}/health`, { cache: "no-store" });
     const text = await res.text();
     let data: any;
     try {

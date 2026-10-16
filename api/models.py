@@ -81,6 +81,10 @@ class SimulateJsonRequest(BaseModel):
         description="Full contents of the Verilog testbench file (tb.v).",
         examples=["module tb; top dut(.clk(clk)); endmodule"],
     )
+    lint: bool = Field(
+        default=False,
+        description="Also run Verilator lint on design_v; findings are appended to stdout.",
+    )
     timeout: Optional[int] = Field(
         default=None,
         ge=1,
