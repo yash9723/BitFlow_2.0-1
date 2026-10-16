@@ -558,3 +558,10 @@ class TestLint:
     def test_no_lint_unless_requested(self):
         result = _run_real(TRUNCATING_DESIGN, TRUNC_TB)
         assert "Lint (Verilator)" not in result.stdout
+
+    def test_clean_design_reports_no_warnings(self):
+        clean = "module pass4(input [3:0] a, output [3:0] y);\n  assign y = a;\nendmodule"
+        tb = "module tb; reg [3:0] a = 4'h5; wire [3:0] y; pass4 d(.a(a), .y(y)); initial begin #1 $finish; end endmodule"
+        result = _run_real(clean, tb, lint=True)
+        assert "[OK] No lint warnings." in result.stdout, result.stdout
+        assert "V e r i l a t i o n" not in result.stdout

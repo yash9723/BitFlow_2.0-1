@@ -138,7 +138,12 @@ def _lint_design(design_file: str, cwd: str) -> str:
         )
     except subprocess.TimeoutExpired:
         return "[WARN] Lint timed out."
-    out = out.strip()
+    # Drop Verilator's "- V e r i l a t i o n   R e p o r t" / "- Verilator: ..." stats
+    # banner (printed even on clean code; --quiet isn't available in older releases).
+    out = "\n".join(
+        line for line in out.splitlines()
+        if not line.startswith(("- V e r i l a t i o n", "- Verilator:"))
+    ).strip()
     if rc == 0 and not out:
         return "[OK] No lint warnings."
     return out
