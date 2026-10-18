@@ -626,6 +626,9 @@ function DashboardContent() {
           <span className="font-display font-bold text-lg">BitFlow</span>
         </Link>
         <div className="flex items-center gap-4">
+          <Link href="/classes" className="text-[12px] text-ghost hover:text-bright transition-colors">
+            Classes
+          </Link>
           <Link href="/leaderboard" className="text-[12px] text-ghost hover:text-bright transition-colors">
             Leaderboard
           </Link>

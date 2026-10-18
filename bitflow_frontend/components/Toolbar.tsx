@@ -116,6 +116,7 @@ export default function Toolbar({
             { href: "/learn", label: "Learn" },
             { href: "/arena", label: "Arena" },
             { href: "/academy", label: "Academy" },
+            { href: "/classes", label: "Classes" },
             ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
           ].map(({ href, label }) => {
             const active = pathname.startsWith(href);

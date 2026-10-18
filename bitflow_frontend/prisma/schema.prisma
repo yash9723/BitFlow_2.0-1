@@ -24,6 +24,8 @@ model User {
   xp          UserXp?
   submissions Submission[]
   sessions    Session[]
+  ownedClasses     Classroom[]   @relation("OwnedClasses")
+  classMemberships ClassMember[]
 }
 
 // ============================================================================
@@ -178,4 +180,48 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
+}
+
+// ============================================================================
+// CLASSROOMS — any signed-in user can create a class and teaches it
+// (global User.role is unchanged; class roles live on ClassMember)
+// ============================================================================
+
+model Classroom {
+  id          String        @id @default(uuid())
+  name        String
+  joinCode    String        @unique
+  ownerId     String
+  createdAt   DateTime      @default(now())
+
+  owner       User          @relation("OwnedClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     ClassMember[]
+  assignments Assignment[]
+}
+
+model ClassMember {
+  id        String    @id @default(uuid())
+  classId   String
+  userId    String
+  role      String    @default("STUDENT") // "TEACHER" | "STUDENT"
+  joinedAt  DateTime  @default(now())
+
+  classroom Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([userId])
+}
+
+model Assignment {
+  id           String    @id @default(uuid())
+  classId      String
+  title        String
+  dueAt        DateTime
+  problemSlugs String    // JSON stringified string[] (Question.slug)
+  createdAt    DateTime  @default(now())
+
+  classroom    Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId])
 }
