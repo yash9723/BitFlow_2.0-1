@@ -34,6 +34,7 @@ interface ProblemToolbarProps {
   submittingTotal:  number;
   onRun:            () => void;
   onSubmit:         () => void;
+  onToggleTutor?:   () => void;
 }
 
 function SubmittingProgress({
@@ -68,6 +69,7 @@ export default function ProblemToolbar({
   submittingTotal,
   onRun,
   onSubmit,
+  onToggleTutor,
 }: ProblemToolbarProps) {
   const isRunning    = runState === "running";
   const isSubmitting = runState === "submitting";
@@ -119,6 +121,16 @@ export default function ProblemToolbar({
         {/* Submission progress */}
         {isSubmitting && (
           <SubmittingProgress index={submittingIndex} total={submittingTotal} />
+        )}
+
+        {onToggleTutor && (
+          <button
+            onClick={onToggleTutor}
+            className="px-3 py-1.5 rounded font-mono text-[11px] tracking-wider uppercase border border-rim text-ghost hover:text-bright hover:border-dim transition-colors"
+            title="Ask the AI tutor for a hint"
+          >
+            Tutor
+          </button>
         )}
 
         {/* Run Code button */}

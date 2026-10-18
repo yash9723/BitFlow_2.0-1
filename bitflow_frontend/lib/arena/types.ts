@@ -102,4 +102,6 @@ export interface ArenaSubmissionResult {
   submittedCode:   string;
   xpEarned:        number;
   errorMessage?:   string;
+  /** Your design's own signals on the first failing hidden test (wrong answers only). */
+  failingWaveform?: import("@/lib/grading").FailingWaveform | null;
 }

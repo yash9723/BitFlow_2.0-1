@@ -25,6 +25,7 @@ import ProblemToolbar         from "../../../components/ProblemToolbar";
 import ProblemStatement       from "../../../components/ProblemStatement";
 import Terminal               from "../../../components/Terminal";
 import WaveformPanel          from "../../../components/WaveformPanel";
+import AIAssistantPanel       from "../../../components/AIAssistantPanel";
 import { useProblem }         from "../../../hooks/useProblem";
 import { useProgress }        from "../../../hooks/useProgress";
 import { useSplitter }        from "../../../hooks/useSplitter";
@@ -91,6 +92,8 @@ function ProblemSolverInner({ problem }: { problem: any }) {
     recordSolve,
     recordAttempt,
   } = useProgress();
+
+  const [tutorOpen, setTutorOpen] = useState(false);
 
   // ── VCD parsing ────────────────────────────────────────────────────────────
   const [parsedVcd, setParsedVcd] = useState<ParsedVcd | null>(null);
@@ -237,6 +240,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         submittingTotal={submittingTotal}
         onRun={run}
         onSubmit={submit}
+        onToggleTutor={() => setTutorOpen((v) => !v)}
       />
 
       {/* ── Main content ─────────────────────────────────────────────── */}
@@ -252,6 +256,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
             progress={progress}
             submission={submission}
             onUnlockHint={handleUnlockHint}
+            history={{ slug: problem.slug, currentCode: designCode, onLoad: setDesignCode, refreshOn: [runResult, submission] }}
           />
         </div>
 
@@ -349,6 +354,17 @@ function ProblemSolverInner({ problem }: { problem: any }) {
           </div>
         </div>
       </div>
+
+      <AIAssistantPanel
+        isOpen={tutorOpen}
+        onClose={() => setTutorOpen(false)}
+        designCode={designCode}
+        testbenchCode={testbenchCode}
+        result={runResult}
+        setDesignCode={setDesignCode}
+        setTestbenchCode={setTestbenchCode}
+        problemSlug={problem.slug}
+      />
     </div>
   );
 }

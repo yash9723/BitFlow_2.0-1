@@ -10,6 +10,7 @@
  * from the Learning Path type system.
  */
 
+import type { ReactNode } from "react";
 import type { ArenaProblem } from "@/lib/arena/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,9 +127,11 @@ function renderMarkdown(md: string): React.ReactNode {
 
 interface Props {
   problem: ArenaProblem;
+  /** Extra panel content shown under the header (e.g. attempt history). */
+  children?: ReactNode;
 }
 
-export function ArenaProblemStatement({ problem }: Props) {
+export function ArenaProblemStatement({ problem, children }: Props) {
   const diffCls = DIFF_COLOUR[problem.difficulty] ?? "text-ghost border-rim/40 bg-surface/10";
 
   return (
@@ -163,6 +166,8 @@ export function ArenaProblemStatement({ problem }: Props) {
           ))}
         </div>
       </div>
+
+      {children}
 
       <hr className="border-rim/30" />
 

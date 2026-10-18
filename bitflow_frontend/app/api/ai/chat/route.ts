@@ -18,6 +18,10 @@
  *     context:  IDEContext    // current editor + simulation state
  *   }
  *
+ * Tutor mode: when context.problemSlug is set (graded problem pages), the
+ * server adds the problem statement and the user's latest graded result from
+ * the DB and uses the hint-only TUTOR_SYSTEM_PROMPT.
+ *
  * Response:
  *   {
  *     content:    string        // AI response text
@@ -37,11 +41,14 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser }            from "@/lib/auth-utils";
+import { prisma }                    from "@/lib/prisma";
 import { rateLimit }                 from "@/lib/rate-limit";
 import { AINotConfiguredError, getProvider } from "@/lib/ai-providers";
 import {
   SANDBOX_SYSTEM_PROMPT,
+  TUTOR_SYSTEM_PROMPT,
   buildContextMessage,
+  buildTutorContext,
 }                                    from "@/lib/ai-prompts";
 import type { AIMessage }            from "@/lib/ai-providers";
 import type { IDEContext }           from "@/lib/ai-prompts";
@@ -107,13 +114,32 @@ export async function POST(req: NextRequest) {
     // AI always sees the current editor state, even mid-conversation.
     // We skip injection if the history already starts with a context message
     // (identified by the [Current IDE State] prefix) to avoid duplication.
-    const contextMessage: AIMessage = {
-      role:    "user",
-      content: buildContextMessage(body.context),
-    };
+    let contextText  = buildContextMessage(body.context);
+    let systemPrompt = SANDBOX_SYSTEM_PROMPT;
+
+    const slug = body.context.problemSlug;
+    if (typeof slug === "string" && slug) {
+      const question = await prisma.question.findUnique({
+        where:  { slug },
+        select: { id: true, title: true, statement: true, constraints: true },
+      });
+      if (!question) {
+        return NextResponse.json({ error: "Problem not found." }, { status: 404 });
+      }
+      const last = await prisma.submission.findFirst({
+        where:   { userId: user.id, problemId: question.id, submissionType: "SUBMIT" },
+        orderBy: { createdAt: "desc" },
+        select:  { accepted: true, numTestsPassed: true, numTestsTotal: true, testcaseResults: true, simStdout: true },
+      });
+      contextText  = `${buildTutorContext(question, last)}\n\n${contextText}`;
+      systemPrompt = TUTOR_SYSTEM_PROMPT;
+    }
+
+    const contextMessage: AIMessage = { role: "user", content: contextText };
 
     const firstMsg  = body.messages[0];
     const hasContext =
+      systemPrompt === SANDBOX_SYSTEM_PROMPT &&
       firstMsg?.role === "user" &&
       firstMsg.content.startsWith("[Current IDE State]");
 
@@ -123,7 +149,7 @@ export async function POST(req: NextRequest) {
 
     // ── Dispatch to configured provider ─────────────────────────────────────
     const provider = getProvider();
-    const response = await provider.chat(messages, SANDBOX_SYSTEM_PROMPT);
+    const response = await provider.chat(messages, systemPrompt);
 
     return NextResponse.json(response);
 

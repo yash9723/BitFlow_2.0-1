@@ -9,6 +9,7 @@
 import type { Testcase, TestcaseVerdict } from "@/lib/problem-types";
 import type { SimulateResponse } from "@/lib/types";
 import { simulateOnBackend } from "@/lib/backend";
+import { parseVcd, type ParsedVcd } from "@/lib/vcd-parser";
 
 export interface GradableQuestion {
   learningLevel:      string;
@@ -210,4 +211,62 @@ export async function gradeDesign(q: GradableQuestion, designCode: string): Prom
     stderr:   null,
     exitCode: null,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Waveform of the design on the first failing hidden test
+//
+// The test is re-run with an extra top module that dumps only the DUT
+// instance, and the VCD is filtered to that scope here, so testbench
+// internals (expected values, checkers) never reach the browser.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_WAVEFORM_CHANGES = 200_000;
+
+/** "<tbModule>.<dutInstance>" for the instance of a design module in the testbench. */
+export function dutScope(design: string, testbench: string): string | null {
+  const tbModule = testbench.match(/\bmodule\s+([A-Za-z_]\w*)/)?.[1];
+  if (!tbModule) return null;
+  for (const [, mod] of design.matchAll(/\bmodule\s+([A-Za-z_]\w*)/g)) {
+    // <mod> [#(...)] <instance> (
+    const inst = testbench.match(new RegExp(`\\b${mod}\\s*(?:#\\s*\\([^;]*?\\)\\s*)?([A-Za-z_]\\w*)\\s*\\(`));
+    if (inst) return `${tbModule}.${inst[1]}`;
+  }
+  return null;
+}
+
+export interface FailingWaveform {
+  /** Hidden testcase it was captured on (null for single-testbench problems). */
+  testcaseId: string | null;
+  waveform:   ParsedVcd;
+}
+
+/** DUT-only waveform for the first failing test, or null if unavailable. */
+export async function failingTestWaveform(
+  q: GradableQuestion, designCode: string, grade: GradeResult,
+): Promise<FailingWaveform | null> {
+  if (grade.accepted) return null;
+  const cases  = parseTestcases(q.hiddenTestcases);
+  const failed = grade.verdicts.findIndex((v) => !v.passed);
+  const testbench = cases.length ? cases[failed]?.testbench : q.hiddenTestbench || q.publicTestbench;
+  if (!testbench) return null;
+
+  const scope = dutScope(designCode, testbench);
+  if (!scope) return null;
+
+  try {
+    const r = await simulate(
+      designCode,
+      `${testbench}\nmodule __bf_dump;\n  initial begin $dumpfile("wave.vcd"); $dumpvars(0, ${scope}); end\nendmodule\n`,
+    );
+    const b64 = r.waveform?.vcd_base64;
+    if (!b64) return null;
+    const waveform = parseVcd(Buffer.from(b64, "base64").toString("utf8"), scope);
+    const changes  = waveform.signals.reduce((n, s) => n + s.changes.length, 0);
+    if (waveform.signals.length === 0 || changes > MAX_WAVEFORM_CHANGES) return null;
+    return { testcaseId: cases.length ? grade.verdicts[failed].testcaseId : null, waveform };
+  } catch (err) {
+    console.warn("[grading] failing-test waveform unavailable:", err);
+    return null;
+  }
 }

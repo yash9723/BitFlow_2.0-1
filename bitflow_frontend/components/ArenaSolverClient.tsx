@@ -4,11 +4,13 @@ import { useState, useRef, useEffect } from "react";
 import type { ArenaProblem } from "@/lib/arena/types";
 import { useArenaProblem } from "@/hooks/useArenaProblem";
 import { ArenaProblemStatement } from "@/components/ArenaProblemStatement";
+import SubmissionHistory from "@/components/SubmissionHistory";
 import { ArenaToolbar } from "@/components/ArenaToolbar";
 import ScrollUnlock from "@/components/ScrollUnlock";
 import Editor from "@/components/Editor";
+import AIAssistantPanel from "@/components/AIAssistantPanel";
 import Terminal from "@/components/Terminal";
-import WaveformPanel from "@/components/WaveformPanel";
+import WaveformPanel, { FailingWaveformView } from "@/components/WaveformPanel";
 import { WaveformPanelWrapper } from "./WaveformPanelWrapper";
 
 function useWaveformSplitter(initial: number) {
@@ -113,6 +115,7 @@ export function ArenaSolverClient({ problem }: Props) {
   const horiz = useHorizSplitter(380);
   const termSpl = useArenaSplitter(200);
   const waveSpl = useWaveformSplitter(200);
+  const [tutorOpen, setTutorOpen] = useState(false);
 
   const showWaveform =
     hook.runResult?.waveform?.available ||
@@ -128,6 +131,7 @@ export function ArenaSolverClient({ problem }: Props) {
         category={problem.category}
         hook={hook}
         onReset={hook.resetToStarter}
+        onToggleTutor={() => setTutorOpen((v) => !v)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -135,7 +139,20 @@ export function ArenaSolverClient({ problem }: Props) {
           className="shrink-0 border-r border-rim/60 overflow-hidden flex flex-col"
           style={{ width: horiz.width }}
         >
-          <ArenaProblemStatement problem={problem} />
+          <ArenaProblemStatement problem={problem}>
+            {hook.submission?.failingWaveform && <FailingWaveformView data={hook.submission.failingWaveform} />}
+            <details className="group">
+              <summary className="font-mono text-[11px] font-semibold text-pale cursor-pointer select-none">Your attempts</summary>
+              <div className="mt-2">
+                <SubmissionHistory
+                  slug={problem.slug}
+                  currentCode={hook.designCode}
+                  onLoad={hook.setDesignCode}
+                  refreshOn={[hook.runResult, hook.submission]}
+                />
+              </div>
+            </details>
+          </ArenaProblemStatement>
         </div>
 
         <div
@@ -214,6 +231,17 @@ export function ArenaSolverClient({ problem }: Props) {
           )}
         </div>
       </div>
+
+      <AIAssistantPanel
+        isOpen={tutorOpen}
+        onClose={() => setTutorOpen(false)}
+        designCode={hook.designCode}
+        testbenchCode={hook.testbenchCode}
+        result={hook.runResult}
+        setDesignCode={hook.setDesignCode}
+        setTestbenchCode={hook.setTestbenchCode}
+        problemSlug={problem.slug}
+      />
     </div>
   );
 }

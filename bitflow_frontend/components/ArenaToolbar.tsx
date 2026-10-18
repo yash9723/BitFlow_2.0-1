@@ -16,6 +16,7 @@ interface Props {
   category:   string;
   hook:       UseArenaProblemReturn;
   onReset:    () => void;
+  onToggleTutor?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ function VerdictBadge({ sub }: { sub: ArenaSubmissionResult | null }) {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ArenaToolbar({ title, category, hook, onReset }: Props) {
+export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor }: Props) {
   const { isRunning, isSubmitting, run, submit, submission, submittingIndex, submittingTotal } = hook;
 
   const busy = isRunning || isSubmitting;
@@ -90,6 +91,16 @@ export function ArenaToolbar({ title, category, hook, onReset }: Props) {
       <div className="flex items-center gap-2 shrink-0">
         {/* Last submission verdict */}
         <VerdictBadge sub={submission} />
+
+        {onToggleTutor && (
+          <button
+            onClick={onToggleTutor}
+            className="font-mono text-[9px] text-dim hover:text-ghost border border-rim/40 hover:border-rim px-2 py-1 rounded transition-all"
+            title="Ask the AI tutor for a hint"
+          >
+            Tutor
+          </button>
+        )}
 
         {/* Reset button */}
         <button

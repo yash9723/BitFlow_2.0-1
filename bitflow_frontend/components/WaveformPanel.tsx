@@ -78,7 +78,8 @@ const MAX_ZOOM  = 60;    // 60× fit-to-width — extreme close-up
 
 interface WaveformPanelProps {
   parsedVcd : ParsedVcd;
-  result    : SimulateResponse;
+  /** The run it came from — enables the VCD download button. */
+  result?   : SimulateResponse;
 }
 
 /** Captured on every mouse-move; drives the label-column value badges. */
@@ -805,7 +806,7 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
 
   // ── Misc derived values ───────────────────────────────────────────────────
 
-  const hasVcd      = result.waveform.available && result.waveform.vcd_base64;
+  const hasVcd      = result?.waveform.available && result.waveform.vcd_base64;
   const zoomPercent = Math.round(zoom * 100);
   const isAtFit     = Math.abs(zoom - 1.0) < 0.01;
 
@@ -885,7 +886,7 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
           {/* Download VCD */}
           {hasVcd && (
             <button
-              onClick={() => downloadVcd(result.waveform.vcd_base64!, "wave.vcd")}
+              onClick={() => downloadVcd(result!.waveform.vcd_base64!, "wave.vcd")}
               className={[
                 "flex items-center gap-1 px-2 py-0.5",
                 "font-mono text-[9px] tracking-wider uppercase",
@@ -1066,6 +1067,19 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
           </div>
         </div>
       )}
+    </div>
+  );
+}
+/** The learner's own signals on the first failing hidden test (from the submit response). */
+export function FailingWaveformView({ data }: { data: { testcaseId: string | null; waveform: ParsedVcd } }) {
+  return (
+    <div className="space-y-1">
+      <p className="font-mono text-[9px] text-dim">
+        Your design on {data.testcaseId ? `failing test ${data.testcaseId}` : "the failing test"}: only signals inside your module are shown.
+      </p>
+      <div className="h-64 border border-rim/60 rounded overflow-hidden">
+        <WaveformPanel parsedVcd={data.waveform} />
+      </div>
     </div>
   );
 }

@@ -65,12 +65,14 @@ export interface ParsedVcd {
  * Parse a raw VCD text string into a ParsedVcd object.
  *
  * @param text — raw VCD file content (decoded from base64).
+ * @param scope — optional dotted scope (e.g. "tb.dut"): keep only signals
+ *   declared inside it, named relative to it ("q", "u_sub.q").
  * @returns ParsedVcd — structured signal data ready for rendering.
  *
  * Never throws: parse errors are logged as warnings and the parser
  * continues best-effort, returning whatever it has collected so far.
  */
-export function parseVcd(text: string): ParsedVcd {
+export function parseVcd(text: string, scope?: string): ParsedVcd {
   // ── Tokenise ──────────────────────────────────────────────────────────────
   // Split on any whitespace. Filter empties. This handles both Windows (\r\n)
   // and Unix (\n) line endings automatically.
@@ -82,6 +84,7 @@ export function parseVcd(text: string): ParsedVcd {
   let timescale = "1ns";
   let currentTime = 0;
   let maxTime = 0;
+  const scopeStack: string[] = [];
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -139,9 +142,26 @@ export function parseVcd(text: string): ParsedVcd {
       // Consume $end
       if (tokens[i] === "$end") i++;
 
+      const path = scopeStack.join(".");
+      if (scope !== undefined) {
+        if (path !== scope && !path.startsWith(scope + ".")) continue;
+        const rel = path.slice(scope.length + 1);
+        if (rel) name = `${rel}.${name}`;
+      }
       if (id && name) {
         signals.set(id, { id, name, width: isNaN(width) ? 1 : width, type, changes: [] });
       }
+      continue;
+    }
+
+    if (tok === "$scope") {
+      const parts = consumeBlock();          // e.g. ["module", "dut"]
+      scopeStack.push(parts[1] ?? "");
+      continue;
+    }
+    if (tok === "$upscope") {
+      consumeBlock();
+      scopeStack.pop();
       continue;
     }
 
@@ -150,10 +170,9 @@ export function parseVcd(text: string): ParsedVcd {
       break;          // everything after this is value-change data
     }
 
-    // $date, $version, $comment, $scope, $upscope — consume and skip
+    // $date, $version, $comment — consume and skip
     if (
-      tok === "$date"    || tok === "$version" || tok === "$comment" ||
-      tok === "$scope"   || tok === "$upscope"
+      tok === "$date"    || tok === "$version" || tok === "$comment"
     ) {
       consumeBlock();
       continue;

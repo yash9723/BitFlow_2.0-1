@@ -266,6 +266,8 @@ export interface SubmissionResult {
   xpEarned:       number;
   /** Compile or runtime error message, if any */
   errorMessage?:  string;
+  /** Your design's own signals on the first failing hidden test (wrong answers only). */
+  failingWaveform?: import("@/lib/grading").FailingWaveform | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

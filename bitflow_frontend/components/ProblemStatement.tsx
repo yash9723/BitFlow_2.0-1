@@ -18,12 +18,16 @@
 import React, { useState, memo } from "react";
 import type { Problem, SubmissionResult, Hint } from "@/lib/problem-types";
 import type { ProgressRecord } from "@/lib/problem-types";
+import SubmissionHistory from "./SubmissionHistory";
+import { FailingWaveformView } from "./WaveformPanel";
 
 interface ProblemStatementProps {
   problem:    Problem;
   progress:   ProgressRecord;
   submission: SubmissionResult | null;
   onUnlockHint?: (tier: 1 | 2 | 3) => void;
+  /** Attempt history (Load / Diff) — shown when given. */
+  history?: React.ComponentProps<typeof SubmissionHistory>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -186,6 +190,7 @@ export default function ProblemStatement({
   progress,
   submission,
   onUnlockHint,
+  history,
 }: ProblemStatementProps) {
   const problemProgress = progress.problems[problem.id];
   const hintsUnlocked   = problemProgress?.hintsUnlocked ?? [];
@@ -234,6 +239,13 @@ export default function ProblemStatement({
         {submission && (
           <Section title="Last Submission">
             <VerdictPanel result={submission} />
+            {submission.failingWaveform && <FailingWaveformView data={submission.failingWaveform} />}
+          </Section>
+        )}
+
+        {history && (
+          <Section title="Your Attempts">
+            <SubmissionHistory {...history} />
           </Section>
         )}
 
