@@ -51,6 +51,12 @@ const nextConfig = {
     ];
   },
 
+  // elkjs (schematic/FSM layout in /api/synthesize) is a large prebuilt
+  // bundle: load it from node_modules at runtime instead of re-bundling it.
+  experimental: {
+    serverComponentsExternalPackages: ["elkjs"],
+  },
+
   // Proxy rewrites removed — simulation requests now go through
   // the authenticated server-side API route at /api/simulate
 

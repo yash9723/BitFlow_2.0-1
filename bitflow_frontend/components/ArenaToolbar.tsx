@@ -17,6 +17,7 @@ interface Props {
   hook:       UseArenaProblemReturn;
   onReset:    () => void;
   onToggleTutor?: () => void;
+  onSynthesize?:  () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ function VerdictBadge({ sub }: { sub: ArenaSubmissionResult | null }) {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor }: Props) {
+export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, onSynthesize }: Props) {
   const { isRunning, isSubmitting, run, submit, submission, submittingIndex, submittingTotal } = hook;
 
   const busy = isRunning || isSubmitting;
@@ -91,6 +92,16 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor }: 
       <div className="flex items-center gap-2 shrink-0">
         {/* Last submission verdict */}
         <VerdictBadge sub={submission} />
+
+        {onSynthesize && (
+          <button
+            onClick={onSynthesize}
+            className="font-mono text-[9px] text-dim hover:text-ghost border border-rim/40 hover:border-rim px-2 py-1 rounded transition-all"
+            title="Synthesize with Yosys: cells, latches, schematic, FSM diagram"
+          >
+            Synth
+          </button>
+        )}
 
         {onToggleTutor && (
           <button

@@ -565,3 +565,110 @@ class TestLint:
         result = _run_real(clean, tb, lint=True)
         assert "[OK] No lint warnings." in result.stdout, result.stdout
         assert "V e r i l a t i o n" not in result.stdout
+
+
+# ===========================================================================
+# TestSynthesis — POST /synthesize (Yosys)
+# ===========================================================================
+
+from api.routes.synthesize import param_names, parse_fsm_info  # noqa: E402
+
+needs_yosys = pytest.mark.skipif(not shutil.which("yosys"), reason="yosys not installed")
+
+FSM_INFO_SAMPLE = r"""
+FSM `$fsm$\state$20' from module `det':
+-------------------------------------
+
+  Information on FSM $fsm$\state$20 (\state):
+
+  Input signals:
+    0: \rst
+    1: \x
+    2: $auto$opt_reduce.cc:137:opt_pmux$19
+
+  State encoding:
+    0:       2'00  <RESET STATE>
+    1:       2'10
+    2:       2'01
+
+  Transition Table (state_in, ctrl_in, state_out, ctrl_out):
+      0:     0 3'-00   ->     0 5'01000
+      1:     0 3'-10   ->     2 5'01001
+      2:     0 3'--1   ->     0 5'01000
+      3:     2 3'-10   ->     1 5'00110
+"""
+
+
+class TestSynthesisParsing:
+
+    def test_param_names_maps_unique_values(self):
+        src = "localparam [1:0] S0 = 2'd0, S1 = 2'b01, S2 = 2;\nparameter W = 8; // S9 = 9"
+        assert param_names(src) == {0: "S0", 1: "S1", 2: "S2", 8: "W"}
+
+    def test_parse_fsm_info(self):
+        (fsm,) = parse_fsm_info(FSM_INFO_SAMPLE, {0: "S0", 1: "S1", 2: "S2"})
+        assert fsm["module"] == "det" and fsm["stateReg"] == "state"
+        assert [(s["id"], s["code"], s["name"], s["reset"]) for s in fsm["states"]] == [
+            (0, 0, "S0", True), (1, 2, "S2", False), (2, 1, "S1", False)]
+        t = {(x["from"], x["to"]): x["conditions"] for x in fsm["transitions"]}
+        assert t[(0, 0)] == ["rst=0 & x=0", "rst=1"]     # merged, internal-only bits are don't-care here
+        assert t[(0, 2)] == ["rst=0 & x=1"]
+        assert fsm["reset"] is None          # not every state has the reset edge in this sample
+
+    def test_sync_reset_factored_out(self):
+        from api.routes.synthesize import _factor_out_reset
+        states = [{"id": 0, "reset": True}, {"id": 1, "reset": False}]
+        merged = {(0, 0): ["rst=0 & x=0", "rst=1"], (0, 1): ["rst=0 & x=1"],
+                  (1, 0): ["rst=1", "rst=0 & x=0"], (1, 1): ["rst=0"]}
+        assert _factor_out_reset(merged, states) == "rst=1"
+        assert merged == {(0, 0): ["x=0"], (0, 1): ["x=1"], (1, 0): ["x=0"], (1, 1): [""]}
+
+
+@needs_yosys
+class TestSynthesis:
+
+    def _synth(self, client, design):
+        r = client.post("/synthesize", json={"design_v": design})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_requires_jwt(self, anon_client):
+        assert anon_client.post("/synthesize", json={"design_v": "module m; endmodule"}).status_code == 401
+
+    def test_latch_is_flagged(self, client):
+        d = self._synth(client, "module l(input en, input [3:0] d, output reg [3:0] q);\n"
+                                "  always @(*) if (en) q = d;\nendmodule")
+        assert d["ok"] and d["latches"] == ["q"], d
+
+    def test_counter_flip_flops(self, client):
+        d = self._synth(client, "module c(input clk, input rst, output reg [3:0] q);\n"
+                                "  always @(posedge clk) if (rst) q <= 0; else q <= q + 1;\nendmodule")
+        assert d["ok"] and d["ffBits"] == 4 and d["latches"] == [], d
+        assert d["netlist"]["modules"]["c"]["attributes"]["top"]
+
+    def test_fsm_extraction(self, client):
+        d = self._synth(client, """
+module det(input clk, input rst, input x, output reg y);
+  localparam S0 = 2'd0, S1 = 2'd1, S2 = 2'd2;
+  reg [1:0] state, next;
+  always @(posedge clk) if (rst) state <= S0; else state <= next;
+  always @(*) begin
+    next = state; y = 0;
+    case (state)
+      S0: next = x ? S1 : S0;
+      S1: next = x ? S2 : S0;
+      S2: begin y = 1; next = x ? S2 : S0; end
+      default: next = S0;
+    endcase
+  end
+endmodule""")
+        assert d["ok"] and len(d["fsms"]) == 1, d
+        fsm = d["fsms"][0]
+        assert sorted(s["name"] for s in fsm["states"]) == ["S0", "S1", "S2"]
+        names = {s["id"]: s["name"] for s in fsm["states"]}
+        edges = {(names[t["from"]], names[t["to"]]) for t in fsm["transitions"]}
+        assert {("S0", "S1"), ("S1", "S2"), ("S2", "S2"), ("S1", "S0")} <= edges
+
+    def test_syntax_error_reported(self, client):
+        d = self._synth(client, "module broken(input a; endmodule")
+        assert d["ok"] is False and d["error"]

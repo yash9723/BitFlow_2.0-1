@@ -26,6 +26,7 @@ import ProblemStatement       from "../../../components/ProblemStatement";
 import Terminal               from "../../../components/Terminal";
 import WaveformPanel          from "../../../components/WaveformPanel";
 import AIAssistantPanel       from "../../../components/AIAssistantPanel";
+import SynthesisPanel         from "../../../components/SynthesisPanel";
 import { useProblem }         from "../../../hooks/useProblem";
 import { useProgress }        from "../../../hooks/useProgress";
 import { useSplitter }        from "../../../hooks/useSplitter";
@@ -94,6 +95,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
   } = useProgress();
 
   const [tutorOpen, setTutorOpen] = useState(false);
+  const [synthOpen, setSynthOpen] = useState(false);
 
   // ── VCD parsing ────────────────────────────────────────────────────────────
   const [parsedVcd, setParsedVcd] = useState<ParsedVcd | null>(null);
@@ -241,6 +243,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         onRun={run}
         onSubmit={submit}
         onToggleTutor={() => setTutorOpen((v) => !v)}
+        onSynthesize={() => setSynthOpen(true)}
       />
 
       {/* ── Main content ─────────────────────────────────────────────── */}
@@ -354,6 +357,8 @@ function ProblemSolverInner({ problem }: { problem: any }) {
           </div>
         </div>
       </div>
+
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} />
 
       <AIAssistantPanel
         isOpen={tutorOpen}

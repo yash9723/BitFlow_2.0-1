@@ -29,6 +29,7 @@ from api.config import settings
 from api.exceptions import VerilogSandboxError, sandbox_error_handler, unhandled_error_handler
 from api.routes.health import router as health_router
 from api.routes.simulate import router as simulate_router
+from api.routes.synthesize import router as synthesize_router
 from api.utils import configure_logging
 
 
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(health_router)    # GET /health, GET /status
     app.include_router(simulate_router)  # POST /simulate, POST /simulate/upload
+    app.include_router(synthesize_router)  # POST /synthesize
 
     # ── Root redirect ─────────────────────────────────────────────────────────
     @app.get("/", include_in_schema=False)

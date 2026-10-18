@@ -35,6 +35,7 @@ interface ProblemToolbarProps {
   onRun:            () => void;
   onSubmit:         () => void;
   onToggleTutor?:   () => void;
+  onSynthesize?:    () => void;
 }
 
 function SubmittingProgress({
@@ -70,6 +71,7 @@ export default function ProblemToolbar({
   onRun,
   onSubmit,
   onToggleTutor,
+  onSynthesize,
 }: ProblemToolbarProps) {
   const isRunning    = runState === "running";
   const isSubmitting = runState === "submitting";
@@ -121,6 +123,16 @@ export default function ProblemToolbar({
         {/* Submission progress */}
         {isSubmitting && (
           <SubmittingProgress index={submittingIndex} total={submittingTotal} />
+        )}
+
+        {onSynthesize && (
+          <button
+            onClick={onSynthesize}
+            className="px-3 py-1.5 rounded font-mono text-[11px] tracking-wider uppercase border border-rim text-ghost hover:text-bright hover:border-dim transition-colors"
+            title="Synthesize with Yosys: cells, latches, schematic, FSM diagram"
+          >
+            Synth
+          </button>
         )}
 
         {onToggleTutor && (

@@ -78,6 +78,7 @@ import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import AIAssistantPanel               from "@/components/AIAssistantPanel";
+import SynthesisPanel                 from "@/components/SynthesisPanel";
 import ExportCard                     from "@/components/ExportCard";
 import AuthGate                       from "@/components/AuthGate";
 import { useSimulation }              from "@/hooks/useSimulation";
@@ -305,6 +306,7 @@ function SandboxContent() {
    * remembers its open/closed state across refreshes.
    */
   const [isAIOpen, setIsAIOpen] = useState(false);
+  const [synthOpen, setSynthOpen] = useState(false);
   const toggleAI = useCallback(() => setIsAIOpen((v) => !v), []);
 
   // ── Export state ──────────────────────────────────────────────────────────
@@ -578,6 +580,7 @@ function SandboxContent() {
         onRun={simulate}
         isAIOpen={isAIOpen}
         onAIToggle={toggleAI}
+        onSynthesize={() => setSynthOpen(true)}
         onExportZip={result ? handleExportZip : undefined}
         onExportImage={result ? handleExportImage : undefined}
         isExporting={isExporting}
@@ -790,6 +793,8 @@ function SandboxContent() {
        * State (chat history) lives in useAI inside AIAssistantPanel so it
        * survives open/close cycles.
        */}
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} />
+
       <AIAssistantPanel
         isOpen={isAIOpen}
         onClose={() => setIsAIOpen(false)}

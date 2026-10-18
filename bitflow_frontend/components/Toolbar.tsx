@@ -29,6 +29,8 @@ interface ToolbarProps {
   isAIOpen:       boolean;
   /** Toggle the AI assistant panel */
   onAIToggle:     () => void;
+  /** Opens the Yosys synthesis panel. */
+  onSynthesize?:  () => void;
   /** Download project ZIP — only shown when result exists */
   onExportZip?:   () => void;
   /** Export snapshot PNG — only shown when result exists */
@@ -76,6 +78,7 @@ export default function Toolbar({
   onRun,
   isAIOpen,
   onAIToggle,
+  onSynthesize,
   onExportZip,
   onExportImage,
   isExporting = false,
@@ -199,6 +202,16 @@ export default function Toolbar({
 
         {/* Divider */}
         <div className="w-px h-4 bg-rim mx-1" />
+
+        {onSynthesize && (
+          <button
+            onClick={onSynthesize}
+            title="Synthesize with Yosys: cells, latches, schematic, FSM diagram"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            Synth
+          </button>
+        )}
 
         {/* ── AI toggle button ────────────────────────────────────────── */}
         <button

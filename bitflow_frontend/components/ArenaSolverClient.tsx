@@ -9,6 +9,7 @@ import { ArenaToolbar } from "@/components/ArenaToolbar";
 import ScrollUnlock from "@/components/ScrollUnlock";
 import Editor from "@/components/Editor";
 import AIAssistantPanel from "@/components/AIAssistantPanel";
+import SynthesisPanel from "@/components/SynthesisPanel";
 import Terminal from "@/components/Terminal";
 import WaveformPanel, { FailingWaveformView } from "@/components/WaveformPanel";
 import { WaveformPanelWrapper } from "./WaveformPanelWrapper";
@@ -116,6 +117,7 @@ export function ArenaSolverClient({ problem }: Props) {
   const termSpl = useArenaSplitter(200);
   const waveSpl = useWaveformSplitter(200);
   const [tutorOpen, setTutorOpen] = useState(false);
+  const [synthOpen, setSynthOpen] = useState(false);
 
   const showWaveform =
     hook.runResult?.waveform?.available ||
@@ -132,6 +134,7 @@ export function ArenaSolverClient({ problem }: Props) {
         hook={hook}
         onReset={hook.resetToStarter}
         onToggleTutor={() => setTutorOpen((v) => !v)}
+        onSynthesize={() => setSynthOpen(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -231,6 +234,8 @@ export function ArenaSolverClient({ problem }: Props) {
           )}
         </div>
       </div>
+
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={hook.designCode} />
 
       <AIAssistantPanel
         isOpen={tutorOpen}

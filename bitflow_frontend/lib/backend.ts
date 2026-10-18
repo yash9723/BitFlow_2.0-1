@@ -23,10 +23,17 @@ export function backendUrl(): string {
 }
 
 /** POST /simulate on the backend. Returns the HTTP status and parsed body. */
-export async function simulateOnBackend(
-  body: SimulateBody
-): Promise<{ status: number; data: any }> {
-  const res = await fetch(`${backendUrl()}/simulate`, {
+export function simulateOnBackend(body: SimulateBody): Promise<{ status: number; data: any }> {
+  return postToBackend("/simulate", body);
+}
+
+/** POST /synthesize (Yosys) on the backend. */
+export function synthesizeOnBackend(design_v: string): Promise<{ status: number; data: any }> {
+  return postToBackend("/synthesize", { design_v });
+}
+
+async function postToBackend(path: string, body: unknown): Promise<{ status: number; data: any }> {
+  const res = await fetch(`${backendUrl()}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
