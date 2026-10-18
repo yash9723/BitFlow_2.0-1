@@ -39,6 +39,7 @@ export function verifyPassword(
 /** Create a DB-backed session with a random token and set it as the cookie. */
 export async function createSession(userId: string): Promise<void> {
   const token = crypto.randomBytes(32).toString("hex");
+  await prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } });   // housekeeping
   await prisma.session.create({
     data: { userId, token, expiresAt: new Date(Date.now() + SESSION_TTL_MS) },
   });

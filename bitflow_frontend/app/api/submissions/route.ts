@@ -103,7 +103,13 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId       = searchParams.get("userId");
+    // Only your own history; admins may look up any user with ?userId=.
+    const me = await getSessionUser();
+    if (!me) {
+      return NextResponse.json({ error: "Sign in to view submissions." }, { status: 401 });
+    }
+    const requested    = searchParams.get("userId");
+    const userId       = me.role === "ADMIN" && requested ? requested : me.id;
     const problemSlug  = searchParams.get("slug");
     const limit        = Math.min(parseInt(searchParams.get("limit") ?? "50"), 200);
 

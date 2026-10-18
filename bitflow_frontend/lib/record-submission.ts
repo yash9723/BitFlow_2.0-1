@@ -29,6 +29,12 @@ export async function recordSubmission(input: RecordSubmissionInput) {
     ? await prisma.submission.count({ where: { userId, problemId: question.id } })
     : 0;
 
+  // input.xpEarned is what a first solve is worth; only award (and store) it
+  // when this really is the user's first accepted solve.
+  const xpAwarded = userId && input.accepted && input.submissionType === "SUBMIT"
+    ? await markSolved(userId, question, input.xpEarned)
+    : 0;
+
   const submission = await prisma.submission.create({
     data: {
       userId:          userId ?? undefined,
@@ -46,7 +52,7 @@ export async function recordSubmission(input: RecordSubmissionInput) {
       numTestsPassed:  input.testcaseResults.filter((t) => t.passed).length,
       numTestsTotal:   input.testcaseResults.length,
       waveformVcd:     input.waveformVcd,
-      xpEarned:        input.xpEarned,
+      xpEarned:        xpAwarded,
       accepted:        input.accepted,
     },
     select: {
@@ -60,9 +66,6 @@ export async function recordSubmission(input: RecordSubmissionInput) {
     },
   });
 
-  if (userId && input.accepted && input.submissionType === "SUBMIT") {
-    await markSolved(userId, question, input.xpEarned);
-  }
   return submission;
 }
 
@@ -71,7 +74,7 @@ export async function recordSubmission(input: RecordSubmissionInput) {
  * The `solved: false` filter / unique-constraint makes this race-safe:
  * two concurrent accepted submits can't both award XP.
  */
-async function markSolved(userId: string, question: { id: string; moduleId: string }, xp: number) {
+async function markSolved(userId: string, question: { id: string; moduleId: string }, xp: number): Promise<number> {
   const now = new Date();
   let firstSolve = false;
 
@@ -100,7 +103,7 @@ async function markSolved(userId: string, question: { id: string; moduleId: stri
     }
   }
 
-  if (!firstSolve) return;
+  if (!firstSolve) return 0;
 
   const userXp = await prisma.userXp.upsert({
     where:  { userId },
@@ -119,4 +122,5 @@ async function markSolved(userId: string, question: { id: string; moduleId: stri
       data:  { unlockedModules: JSON.stringify([...modules, question.moduleId]) },
     });
   }
+  return xp;
 }

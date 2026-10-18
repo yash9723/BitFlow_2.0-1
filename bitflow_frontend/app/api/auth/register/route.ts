@@ -7,8 +7,8 @@ import { rateLimit } from "@/lib/rate-limit";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  // Rate limit: max 5 registrations per minute per IP
-  const { success } = rateLimit(request, { limit: 5, windowMs: 60_000, prefix: "register" });
+  // 5/min per client IP; unidentified clients share a roomier bucket (class sign-ups).
+  const { success } = rateLimit(request, { limit: 5, anonymousLimit: 30, windowMs: 60_000, prefix: "register" });
   if (!success) {
     return NextResponse.json(
       { error: "Too many registration attempts. Please wait a moment and try again." },

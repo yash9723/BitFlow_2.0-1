@@ -75,6 +75,9 @@ export async function POST(request: Request) {
     if (!problemId) {
       return NextResponse.json({ error: "ProblemId is required." }, { status: 400 });
     }
+    if (!(await prisma.question.findUnique({ where: { id: problemId }, select: { id: true } }))) {
+      return NextResponse.json({ error: "Problem not found." }, { status: 404 });
+    }
 
     // Load or create UserProgress record
     let userProgress = await prisma.userProgress.findUnique({

@@ -62,6 +62,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env, e.g. openssl rand -hex 32}
       - ADMIN_SECRET=${ADMIN_SECRET:-}   # empty = admin self-registration disabled
       - HTTPS=${HTTPS:-false}            # true behind TLS → Secure session cookies
+      - TRUST_PROXY=${TRUST_PROXY:-false} # true only behind Caddy (rate limits use X-Forwarded-For)
     volumes:
       - bitflow-data:/app/data
     depends_on:

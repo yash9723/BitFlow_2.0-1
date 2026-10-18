@@ -55,10 +55,11 @@ const MAX_MESSAGES     = 40;
 const MAX_INPUT_CHARS  = 100_000; // whole conversation + IDE context
 
 export async function POST(req: NextRequest) {
-  if (!(await getSessionUser())) {
+  const user = await getSessionUser();
+  if (!user) {
     return NextResponse.json({ error: "Sign in to use the AI assistant." }, { status: 401 });
   }
-  const { success } = rateLimit(req, { limit: 20, windowMs: 60_000, prefix: "ai" });
+  const { success } = rateLimit(req, { limit: 20, windowMs: 60_000, prefix: "ai", key: `user:${user.id}` });
   if (!success) {
     return NextResponse.json(
       { error: "Too many AI requests. Please wait a moment and try again." },
@@ -90,6 +91,13 @@ export async function POST(req: NextRequest) {
     if (body.messages.length === 0) {
       return NextResponse.json(
         { error: "messages array is empty" },
+        { status: 400 },
+      );
+    }
+
+    if (typeof body.context?.designCode !== "string" || typeof body.context?.testbenchCode !== "string") {
+      return NextResponse.json(
+        { error: "context.designCode and context.testbenchCode are required" },
         { status: 400 },
       );
     }

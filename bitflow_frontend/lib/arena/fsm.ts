@@ -424,7 +424,7 @@ module two_zeros_ones_detector(
         end
     end
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -509,7 +509,7 @@ module tb_two_zeros_ones_detector;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -533,7 +533,7 @@ module tb_hidden1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 20
     },
@@ -558,7 +558,7 @@ module tb_hidden2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 20
     },
@@ -584,7 +584,7 @@ module tb_hidden3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 20
     },
@@ -615,7 +615,7 @@ module tb_hidden4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 20
     },
@@ -646,7 +646,7 @@ module tb_hidden5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 20
     }
@@ -773,7 +773,7 @@ module seq_detector_110_101(
     // Next-state logic
     
 endmodule
-\``,
+`,
 
 testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -800,7 +800,7 @@ module tb_seq_detector_110_101;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -823,7 +823,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 15
     },
@@ -847,7 +847,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 15
     },
@@ -872,7 +872,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 20
     },
@@ -897,7 +897,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 15
     },
@@ -928,7 +928,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 20
     }
@@ -1058,7 +1058,7 @@ module sliding_window_parity(
     // Sequential logic to shift and reset
     
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -1087,7 +1087,7 @@ module tb_sliding_window_parity;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -1112,7 +1112,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -1137,7 +1137,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -1163,7 +1163,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -1191,7 +1191,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -1220,7 +1220,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     }
@@ -1409,7 +1409,7 @@ module four_equal_detector(
     // Sequential state machine
     
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -1438,7 +1438,7 @@ module tb_four_equal_detector;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -1463,7 +1463,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -1490,7 +1490,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -1516,7 +1516,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -1546,7 +1546,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -1577,7 +1577,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     }
@@ -1731,7 +1731,7 @@ module first_bit_equality(
     // Sequential state machine
     
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -1761,7 +1761,7 @@ module tb_first_bit_equality;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -1787,7 +1787,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -1814,7 +1814,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -1839,7 +1839,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -1864,7 +1864,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -1892,7 +1892,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     }
@@ -2059,7 +2059,7 @@ module rotate_string_left(
     // Sequential state update
     
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -2092,7 +2092,7 @@ module tb_rotate_string_left;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -2121,7 +2121,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -2147,7 +2147,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -2175,7 +2175,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -2199,7 +2199,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -2229,7 +2229,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     }
@@ -2407,7 +2407,7 @@ module vending_machine(
     // Sequential state update
     
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -2436,7 +2436,7 @@ module tb_vending_machine;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -2458,7 +2458,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -2481,7 +2481,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -2505,7 +2505,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -2529,7 +2529,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -2556,7 +2556,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     }
@@ -2756,7 +2756,7 @@ module toggle_110_detector(
     // Sequential state update and output toggle on pattern detection
     
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -2785,7 +2785,7 @@ module tb_toggle_110_detector;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -2808,7 +2808,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -2835,7 +2835,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -2865,7 +2865,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 20
     },
@@ -2892,7 +2892,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -2922,7 +2922,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     }
@@ -3099,7 +3099,7 @@ module three_heads_detector(
     // Sequential state update
     
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -3128,7 +3128,7 @@ module tb_three_heads_detector;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -3151,7 +3151,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -3176,7 +3176,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -3203,7 +3203,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -3233,7 +3233,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -3263,7 +3263,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     }
@@ -3451,7 +3451,7 @@ module divisibility_by_3(
     // Sequential state update
     
 endmodule
-\``,
+`,
   
   testbenchSkeleton: `\`timescale 1ns / 1ps
 
@@ -3481,7 +3481,7 @@ module tb_divisibility_by_3;
         $finish;
     end
 endmodule
-\``,
+`,
   
   hiddenTestcases: [
     {
@@ -3505,7 +3505,7 @@ module tb_h1;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -3530,7 +3530,7 @@ module tb_h2;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 18
     },
@@ -3553,7 +3553,7 @@ module tb_h3;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -3577,7 +3577,7 @@ module tb_h4;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     },
@@ -3607,7 +3607,7 @@ module tb_h5;
         $finish;
     end
 endmodule
-\``,
+`,
       expected: "ALL TESTS PASSED",
       weight: 16
     }

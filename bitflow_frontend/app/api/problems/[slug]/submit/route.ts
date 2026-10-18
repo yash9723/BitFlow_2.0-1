@@ -12,7 +12,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
-import { gradeDesign } from "@/lib/grading";
+import { designPolicyViolation, gradeDesign, gradingTestbenches } from "@/lib/grading";
 import { recordSubmission } from "@/lib/record-submission";
 import { claimDailyBonus, getDailyQuestion } from "@/lib/daily";
 
@@ -24,7 +24,11 @@ export async function POST(
   request: Request,
   { params }: { params: { slug: string } }
 ) {
-  const { success } = rateLimit(request, { limit: 10, windowMs: 60_000, prefix: "submit" });
+  const user = await getSessionUser();
+  const { success } = rateLimit(request, {
+    limit: 10, anonymousLimit: 60, windowMs: 60_000, prefix: "submit",
+    key: user ? `user:${user.id}` : undefined,
+  });
   if (!success) {
     return NextResponse.json(
       { error: "Too many submissions. Please wait a moment and try again." },
@@ -47,6 +51,11 @@ export async function POST(
     return NextResponse.json({ error: `Problem not found: ${params.slug}` }, { status: 404 });
   }
 
+  const violation = designPolicyViolation(designCode, gradingTestbenches(question));
+  if (violation) {
+    return NextResponse.json({ error: violation }, { status: 422 });
+  }
+
   let grade;
   try {
     grade = await gradeDesign(question, designCode);
@@ -58,8 +67,7 @@ export async function POST(
     );
   }
 
-  const user     = await getSessionUser();
-  const xpEarned = grade.accepted ? question.xpReward : 0;
+  const xpReward = grade.accepted ? question.xpReward : 0;   // worth this much on a first solve
 
   const saved = await recordSubmission({
     userId:          user?.id ?? null,
@@ -80,7 +88,7 @@ export async function POST(
       actual:      v.actualOutput || null,
     })),
     waveformVcd: null,
-    xpEarned,
+    xpEarned:        xpReward,
     accepted:    grade.accepted,
   }).catch((err) => {
     // Grading succeeded; don't hide the verdict because the history write failed.
@@ -106,7 +114,7 @@ export async function POST(
       accepted:        grade.accepted,
       totalDurationMs: grade.totalDurationMs,
       submittedCode:   designCode,
-      xpEarned:        xpEarned + dailyBonusXp,
+      xpEarned:        (saved?.xpEarned ?? 0) + dailyBonusXp,   // what was actually awarded
       dailyBonusXp,
       errorMessage:    grade.errorMessage,
     },

@@ -58,6 +58,7 @@ if [ -n "$DOMAIN" ]; then
     set_env DOMAIN "$DOMAIN"
     set_env HTTPS true
     set_env FRONTEND_BIND 127.0.0.1   # only reachable through Caddy
+    set_env TRUST_PROXY true          # Caddy sets the real client IP header
     PROFILES+=(--profile https)
 fi
 

@@ -6,18 +6,21 @@ import { rateLimit } from "@/lib/rate-limit";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  // Rate limit: max 10 login attempts per minute per IP
-  const { success } = rateLimit(request, { limit: 10, windowMs: 60_000, prefix: "login" });
-  if (!success) {
-    return NextResponse.json(
-      { error: "Too many login attempts. Please wait a moment and try again." },
-      { status: 429 }
-    );
-  }
-
   try {
     const { username, password, role } = await request.json();
     const normalizedUsername = typeof username === "string" ? username.trim() : "";
+
+    // Max 10 attempts per minute per account: stops password guessing without
+    // letting one client lock everyone out (client IPs aren't always known).
+    const { success } = rateLimit(request, {
+      limit: 10, windowMs: 60_000, prefix: "login", key: `account:${normalizedUsername.toLowerCase()}`,
+    });
+    if (!success) {
+      return NextResponse.json(
+        { error: "Too many login attempts. Please wait a moment and try again." },
+        { status: 429 }
+      );
+    }
 
     if (!normalizedUsername || !password || !role) {
       return NextResponse.json(
