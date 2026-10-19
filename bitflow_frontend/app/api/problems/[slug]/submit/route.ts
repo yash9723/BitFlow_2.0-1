@@ -14,7 +14,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
-import { designPolicyViolation, failingTestWaveform, findCounterexample, gradeDesign, gradingTestbenches } from "@/lib/grading";
+import { counterexampleTable, designPolicyViolation, failingTestWaveform, findCounterexample, gradeDesign, gradingTestbenches } from "@/lib/grading";
 import { recordSubmission } from "@/lib/record-submission";
 import { metricsOnBackend } from "@/lib/backend";
 import { claimDailyBonus, getDailyQuestion } from "@/lib/daily";
@@ -116,6 +116,11 @@ export async function POST(
       data:  { gateCount: scores.gates, logicDepth: scores.depth, ffBits: scores.ffBits },
     }).catch((err) => console.error("[submit] failed to store metrics:", err));
   }
+  const cx = await counterexample;
+  if (saved && cx) {
+    await prisma.submission.update({ where: { id: saved.id }, data: { counterexample: counterexampleTable(cx) } })
+      .catch((err) => console.error("[submit] failed to store counterexample:", err));
+  }
 
   // Daily challenge: one-time bonus for solving today's problem today.
   let dailyBonusXp = 0;
@@ -139,7 +144,7 @@ export async function POST(
       dailyBonusXp,
       errorMessage:    grade.errorMessage,
       failingWaveform: await failingWaveform,
-      counterexample:  await counterexample,
+      counterexample:  cx,
       metrics:         scores,
     },
   });

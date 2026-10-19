@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
       const last = await prisma.submission.findFirst({
         where:   { userId: user.id, problemId: question.id, submissionType: "SUBMIT" },
         orderBy: { createdAt: "desc" },
-        select:  { accepted: true, numTestsPassed: true, numTestsTotal: true, testcaseResults: true, simStdout: true },
+        select:  { accepted: true, numTestsPassed: true, numTestsTotal: true, testcaseResults: true, simStdout: true, counterexample: true },
       });
       contextText  = `${buildTutorContext(question, last)}\n\n${contextText}`;
       systemPrompt = TUTOR_SYSTEM_PROMPT;

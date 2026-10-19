@@ -45,6 +45,8 @@ interface AIAssistantPanelProps {
   setTestbenchCode:(code: string) => void;
   /** Graded problem page: tutor mode (hints only, server adds the problem). */
   problemSlug?:    string;
+  /** A question to send once the panel is open (e.g. "Explain my failure"); a new id sends again. */
+  ask?:            { id: number; prompt: string } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,6 +259,7 @@ export default function AIAssistantPanel({
   setDesignCode,
   setTestbenchCode,
   problemSlug,
+  ask,
 }: AIAssistantPanelProps) {
   const {
     messages,
@@ -314,6 +317,13 @@ export default function AIAssistantPanel({
   const handleQuickAction = useCallback(async (prompt: string) => {
     await sendMessage(prompt, getContext());
   }, [sendMessage, getContext]);
+
+  const askedId = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isOpen || !ask || askedId.current === ask.id || isLoading) return;
+    askedId.current = ask.id;
+    sendMessage(ask.prompt, getContext());
+  }, [isOpen, ask, isLoading, sendMessage, getContext]);
 
   if (!isOpen) return null;
 

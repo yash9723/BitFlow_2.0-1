@@ -90,6 +90,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
     submit,
   } = useProblem(problem);
   const diagnostics = useMemo(() => parseDiagnostics(runResult?.stdout), [runResult]);
+  const [aiAsk, setAiAsk] = useState<{ id: number; prompt: string } | null>(null);
 
   const {
     progress,
@@ -258,6 +259,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
           style={{ width: `${leftFrac * 100}%` }}
         >
           <ProblemStatement
+            onExplainFailure={() => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt: "My last submission failed. Help me understand why, without giving me the answer." }); }}
             problem={problem}
             progress={progress}
             submission={submission}
@@ -374,6 +376,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         setDesignCode={setDesignCode}
         setTestbenchCode={setTestbenchCode}
         problemSlug={problem.slug}
+        ask={aiAsk}
       />
     </div>
   );

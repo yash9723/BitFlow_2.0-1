@@ -276,6 +276,14 @@ export function getProvider(): AIProvider {
     case "gemini":    return geminiProvider();
     case "anthropic": return anthropicProvider();
     case "groq":      return groqProvider();
+    // Testing only: replies with the exact system prompt and messages the model would
+    // get, so tests can check the context without an API key. Never set it in production.
+    case "echo":      return {
+      name: "echo",
+      async chat(messages, systemPrompt) {
+        return { content: [systemPrompt, ...messages.map((m) => `[${m.role}]\n${m.content}`)].join("\n\n"), tokensUsed: null, provider: "echo" };
+      },
+    };
     default:
       throw new Error(
         `Unknown BITFLOW_AI_PROVIDER: "${name}". ` +

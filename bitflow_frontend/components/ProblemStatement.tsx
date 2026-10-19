@@ -29,6 +29,8 @@ interface ProblemStatementProps {
   onUnlockHint?: (tier: 1 | 2 | 3) => void;
   /** Attempt history (Load / Diff) — shown when given. */
   history?: React.ComponentProps<typeof SubmissionHistory>;
+  /** Wrong answers: opens the AI tutor on this failure. */
+  onExplainFailure?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -186,12 +188,23 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** "Explain my failure": hands the failed submission to the AI tutor. */
+export function ExplainFailureButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-info/40 bg-info/10 font-mono text-[11px] text-info hover:bg-info/20 transition-colors">
+      ✦ Explain my failure
+    </button>
+  );
+}
+
 export default function ProblemStatement({
   problem,
   progress,
   submission,
   onUnlockHint,
   history,
+  onExplainFailure,
 }: ProblemStatementProps) {
   const problemProgress = progress.problems[problem.id];
   const hintsUnlocked   = problemProgress?.hintsUnlocked ?? [];
@@ -240,6 +253,7 @@ export default function ProblemStatement({
         {submission && (
           <Section title="Last Submission">
             <VerdictPanel result={submission} />
+            {!submission.accepted && onExplainFailure && <ExplainFailureButton onClick={onExplainFailure} />}
             {submission.counterexample && <CounterexampleView data={submission.counterexample} />}
             {submission.failingWaveform && <FailingWaveformView data={submission.failingWaveform} />}
           </Section>

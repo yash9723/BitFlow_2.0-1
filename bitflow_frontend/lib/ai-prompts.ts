@@ -178,6 +178,7 @@ invent it.
 5. Tiny generic syntax examples (a few lines, unrelated to this problem's logic) \
 are fine when the student is stuck on syntax.
 6. If the student asks for the full answer, decline kindly and give a stronger hint.
+6b. When a [Where the design differs] trace is given, use it: walk the student through what their design does on that input sequence, step by step, and ask about the step where their output first differs from the expected one. The expected values in that trace are already shown to the student, so you may refer to them.
 7. Keep replies short: a few sentences, plus at most one small code fragment.
 `;
 
@@ -193,6 +194,7 @@ export interface TutorLastSubmission {
   numTestsTotal:   number;
   testcaseResults: string;          // JSON: [{id, description, passed, actual, ...}]
   simStdout:       string | null;
+  counterexample?: string | null;   // text table from counterexampleTable()
 }
 
 const lastLines = (s: string, n: number) => s.trim().split("\n").slice(-n).join("\n");
@@ -222,6 +224,14 @@ export function buildTutorContext(problem: TutorProblem, last: TutorLastSubmissi
     const output = failed ? failed.actual : last.simStdout;
     if (failed?.description) lines.push(`First failing test: ${failed.description}`);
     if (output?.trim()) lines.push("Student's output on that test (last 30 lines):", lastLines(output, 30));
+    if (last.counterexample?.trim()) {
+      lines.push(
+        "", "[Where the design differs]",
+        "Shortest input sequence from reset after which the student's outputs differ from a correct design.",
+        "'(yours)' is the student's design, '(expected)' a correct one; the last row is the first difference.",
+        last.counterexample.trim(),
+      );
+    }
   }
   return lines.join("\n");
 }

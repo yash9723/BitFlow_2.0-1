@@ -360,6 +360,21 @@ export function counterexampleWaveform(raw: ParsedVcd): ParsedVcd {
 }
 
 /** Counterexample against q.referenceSolution, or null (none stored, no difference found, or unsupported). */
+/**
+ * The counterexample as a small text table, one row per step from reset:
+ * "step | rst | count (yours) | count (expected)". Multi-bit values in decimal
+ * (x/z kept as-is). Stored with the submission for the AI tutor.
+ */
+export function counterexampleTable(cx: Counterexample, maxRows = 24): string {
+  const sigs = cx.waveform.signals;
+  const times = [...new Set(sigs.flatMap((s) => s.changes.map((c) => c.time)))].sort((a, b) => a - b).slice(0, maxRows);
+  const show = (v: string | undefined) =>
+    v === undefined ? "?" : /^[01]+$/.test(v) && v.length > 1 ? String(parseInt(v, 2)) : v;
+  const rows = times.map((t, i) => [String(i + 1), ...sigs.map((s) => show(valueAt(s.changes, t)))]);
+  const header = ["step", ...sigs.map((s) => s.name)];
+  return [header, ...rows].map((r) => r.join(" | ")).join("\n");
+}
+
 export async function findCounterexample(
   q: GradableQuestion & { referenceSolution?: string | null }, designCode: string,
 ): Promise<Counterexample | null> {

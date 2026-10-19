@@ -162,6 +162,10 @@ model Submission {
   logicDepth      Int?
   ffBits          Int?
 
+  // Wrong SUBMITs: shortest differing input sequence vs. the reference, as a text
+  // table (lib/grading.ts counterexampleTable). Shown to the AI tutor.
+  counterexample  String?
+
   // Timestamps
   createdAt       DateTime @default(now())
 

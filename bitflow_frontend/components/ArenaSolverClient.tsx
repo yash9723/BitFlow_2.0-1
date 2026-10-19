@@ -5,6 +5,7 @@ import { parseDiagnostics } from "@/lib/diagnostics";
 import type { ArenaProblem } from "@/lib/arena/types";
 import { useArenaProblem } from "@/hooks/useArenaProblem";
 import { ArenaProblemStatement } from "@/components/ArenaProblemStatement";
+import { ExplainFailureButton } from "@/components/ProblemStatement";
 import SubmissionHistory from "@/components/SubmissionHistory";
 import OptimizationBoard from "@/components/OptimizationBoard";
 import { ArenaToolbar } from "@/components/ArenaToolbar";
@@ -116,6 +117,7 @@ interface Props {
 export function ArenaSolverClient({ problem }: Props) {
   const hook = useArenaProblem(problem);
   const diagnostics = useMemo(() => parseDiagnostics(hook.runResult?.stdout), [hook.runResult]);
+  const [aiAsk, setAiAsk] = useState<{ id: number; prompt: string } | null>(null);
   const horiz = useHorizSplitter(380);
   const termSpl = useArenaSplitter(200);
   const waveSpl = useWaveformSplitter(200);
@@ -146,6 +148,9 @@ export function ArenaSolverClient({ problem }: Props) {
           style={{ width: horiz.width }}
         >
           <ArenaProblemStatement problem={problem}>
+            {hook.submission && !hook.submission.accepted && (
+              <ExplainFailureButton onClick={() => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt: "My last submission failed. Help me understand why, without giving me the answer." }); }} />
+            )}
             {hook.submission?.counterexample && <CounterexampleView data={hook.submission.counterexample} />}
             {hook.submission?.failingWaveform && <FailingWaveformView data={hook.submission.failingWaveform} />}
             <details className="group">
@@ -258,6 +263,7 @@ export function ArenaSolverClient({ problem }: Props) {
         setDesignCode={hook.setDesignCode}
         setTestbenchCode={hook.setTestbenchCode}
         problemSlug={problem.slug}
+        ask={aiAsk}
       />
     </div>
   );
