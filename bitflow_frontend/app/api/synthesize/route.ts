@@ -8,7 +8,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { synthesizeOnBackend } from "@/lib/backend";
+import { metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth-utils";
 import { fsmSvg, schematicSvg, type FsmInfo } from "@/lib/hardware-diagrams";
@@ -37,6 +37,10 @@ export async function POST(request: Request) {
   }
 
   let status: number, data: any;
+  // Gate-level scores come from a second, independent Yosys run
+  const metrics = metricsOnBackend(designCode)
+    .then(({ status, data }) => (status === 200 && data?.ok ? { gates: data.gates, depth: data.depth } : null))
+    .catch(() => null);
   try {
     ({ status, data } = await synthesizeOnBackend(designCode));
   } catch (err) {
@@ -63,6 +67,8 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ...rest,
+    gates:          (await metrics)?.gates ?? null,
+    depth:          (await metrics)?.depth ?? null,
     schematicSvg:   schematic,
     schematicLimit: netlist ? null : "This design is too large to draw as a schematic.",
     fsms:           fsms.map((f, i) => ({ ...f, svg: fsmDrawings[i] })),

@@ -25,6 +25,8 @@ interface SynthResult {
   top?:            string | null;
   numCells?:       number;
   ffBits?:         number;
+  gates?:          number | null;
+  depth?:          number | null;
   cells?:          Record<string, number>;
   latches?:        string[];
   warnings?:       string[];
@@ -141,8 +143,9 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
 
           {result?.ok && tab === "summary" && (
             <div className="space-y-4 font-mono text-[11px] text-pale">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {([["Cells", result.numCells ?? 0], ["Flip-flop bits", result.ffBits ?? 0], ["Latches", result.latches?.length ?? 0], ["FSMs", fsms.length]] as [string, number][]).map(([k, v]) => (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {([["Gates (2-input)", result.gates ?? "–"], ["Logic depth", result.depth ?? "–"], ["Flip-flop bits", result.ffBits ?? 0],
+                   ["RTL cells", result.numCells ?? 0], ["Latches", result.latches?.length ?? 0], ["FSMs", fsms.length]] as [string, number | string][]).map(([k, v]) => (
                   <div key={k} className="border border-rim/50 rounded p-2">
                     <div className="text-[9px] text-dim uppercase tracking-wider">{k}</div>
                     <div className={`text-[18px] font-bold ${k === "Latches" && v ? "text-warn" : "text-bright"}`}>{v}</div>

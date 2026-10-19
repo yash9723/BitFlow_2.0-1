@@ -5,6 +5,7 @@ import type { ArenaProblem } from "@/lib/arena/types";
 import { useArenaProblem } from "@/hooks/useArenaProblem";
 import { ArenaProblemStatement } from "@/components/ArenaProblemStatement";
 import SubmissionHistory from "@/components/SubmissionHistory";
+import OptimizationBoard from "@/components/OptimizationBoard";
 import { ArenaToolbar } from "@/components/ArenaToolbar";
 import ScrollUnlock from "@/components/ScrollUnlock";
 import Editor from "@/components/Editor";
@@ -154,6 +155,12 @@ export function ArenaSolverClient({ problem }: Props) {
                   onLoad={hook.setDesignCode}
                   refreshOn={[hook.runResult, hook.submission]}
                 />
+              </div>
+            </details>
+            <details className="group">
+              <summary className="font-mono text-[11px] font-semibold text-pale cursor-pointer select-none">Smallest-design leaderboard</summary>
+              <div className="mt-2">
+                <OptimizationBoard slug={problem.slug} refreshKey={hook.submission} />
               </div>
             </details>
           </ArenaProblemStatement>

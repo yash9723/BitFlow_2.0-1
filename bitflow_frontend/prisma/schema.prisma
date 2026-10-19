@@ -155,6 +155,11 @@ model Submission {
   xpEarned        Int      @default(0)
   accepted        Boolean  @default(false) // True if ALL hidden testcases pass
 
+  // Optimization scores of accepted SUBMITs (Yosys, 2-input gates + muxes)
+  gateCount       Int?
+  logicDepth      Int?
+  ffBits          Int?
+
   // Timestamps
   createdAt       DateTime @default(now())
 
@@ -166,6 +171,7 @@ model Submission {
   @@index([problemId])
   @@index([createdAt])
   @@index([accepted])
+  @@index([problemId, accepted, gateCount])
 }
 
 // ============================================================================

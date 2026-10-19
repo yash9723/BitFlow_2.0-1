@@ -16,6 +16,7 @@ import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
 import { designPolicyViolation, failingTestWaveform, findCounterexample, gradeDesign, gradingTestbenches } from "@/lib/grading";
 import { recordSubmission } from "@/lib/record-submission";
+import { metricsOnBackend } from "@/lib/backend";
 import { claimDailyBonus, getDailyQuestion } from "@/lib/daily";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,12 @@ export async function POST(
   // Started now, awaited below: runs alongside the DB writes.
   const failingWaveform = failingTestWaveform(question, designCode, grade);
   const counterexample  = grade.accepted ? Promise.resolve(null) : findCounterexample(question, designCode);
+  // Optimization scores for the leaderboard (accepted designs only; never affects the verdict)
+  const metrics = grade.accepted
+    ? metricsOnBackend(designCode)
+        .then(({ status, data }) => (status === 200 && data?.ok ? { gates: data.gates as number, depth: data.depth as number, ffBits: data.ffBits as number } : null))
+        .catch(() => null)
+    : Promise.resolve(null);
 
   const xpReward = grade.accepted ? question.xpReward : 0;   // worth this much on a first solve
 
@@ -102,6 +109,14 @@ export async function POST(
     return null;
   });
 
+  const scores = await metrics;
+  if (saved && scores) {
+    await prisma.submission.update({
+      where: { id: saved.id },
+      data:  { gateCount: scores.gates, logicDepth: scores.depth, ffBits: scores.ffBits },
+    }).catch((err) => console.error("[submit] failed to store metrics:", err));
+  }
+
   // Daily challenge: one-time bonus for solving today's problem today.
   let dailyBonusXp = 0;
   if (user && grade.accepted && saved) {
@@ -125,6 +140,7 @@ export async function POST(
       errorMessage:    grade.errorMessage,
       failingWaveform: await failingWaveform,
       counterexample:  await counterexample,
+      metrics:         scores,
     },
   });
 }

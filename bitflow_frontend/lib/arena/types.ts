@@ -106,4 +106,6 @@ export interface ArenaSubmissionResult {
   failingWaveform?: import("@/lib/grading").FailingWaveform | null;
   /** Shortest input sequence where the design and the reference solution differ. */
   counterexample?: import("@/lib/grading").Counterexample | null;
+  /** Optimization scores of an accepted design. */
+  metrics?: { gates: number; depth: number; ffBits: number } | null;
 }

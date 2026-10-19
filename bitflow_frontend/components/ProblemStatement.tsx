@@ -19,6 +19,7 @@ import React, { useState, memo } from "react";
 import type { Problem, SubmissionResult, Hint } from "@/lib/problem-types";
 import type { ProgressRecord } from "@/lib/problem-types";
 import SubmissionHistory from "./SubmissionHistory";
+import OptimizationBoard from "./OptimizationBoard";
 import { CounterexampleView, FailingWaveformView } from "./WaveformPanel";
 
 interface ProblemStatementProps {
@@ -247,6 +248,12 @@ export default function ProblemStatement({
         {history && (
           <Section title="Your Attempts">
             <SubmissionHistory {...history} />
+          </Section>
+        )}
+
+        {history && (
+          <Section title="Smallest Design">
+            <OptimizationBoard slug={history.slug} refreshKey={submission} />
           </Section>
         )}
 

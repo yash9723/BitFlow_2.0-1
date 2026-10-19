@@ -757,3 +757,41 @@ class TestEquivalence:
         gold = "module g(input a, input s, output y); assign y = s ? a : 1'bx; endmodule"
         gate = "module g(input a, input s, output y); assign y = s ? a : 1'b0; endmodule"
         assert self._eq(client, gold, gate)["status"] == "no_difference"
+
+
+# ===========================================================================
+# TestMetrics — POST /metrics (optimization leaderboard scores)
+# ===========================================================================
+
+from api.routes.synthesize import gate_metrics  # noqa: E402
+
+
+def test_gate_metrics_parsing():
+    stat = {"design": {"num_cells_by_type": {"$_AND_": 2, "$_XOR_": 3, "$_SDFF_PP0_": 4, "$_DFF_P_": 1}}}
+    assert gate_metrics(stat, "Longest topological path in c (length=7):") == {"gates": 5, "ffBits": 5, "depth": 7}
+
+
+@needs_yosys
+class TestMetrics:
+
+    def _m(self, client, design):
+        r = client.post("/metrics", json={"design_v": design})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_and_gate(self, client):
+        d = self._m(client, "module g(input a, input b, output y); assign y = a & b; endmodule")
+        assert d == {"ok": True, "gates": 1, "ffBits": 0, "depth": 1}, d
+
+    def test_counter_flip_flops(self, client):
+        d = self._m(client, "module c(input clk, input rst, output reg [3:0] q);\n"
+                            "  always @(posedge clk) if (rst) q <= 0; else q <= q + 1;\nendmodule")
+        assert d["ok"] and d["ffBits"] == 4 and d["gates"] > 0, d
+
+    def test_wider_adder_is_bigger_and_deeper(self, client):
+        add = lambda n: f"module a(input [{n-1}:0] x, input [{n-1}:0] y, output [{n}:0] s); assign s = x + y; endmodule"
+        small, big = self._m(client, add(4)), self._m(client, add(8))
+        assert big["gates"] > small["gates"] and big["depth"] > small["depth"], (small, big)
+
+    def test_syntax_error(self, client):
+        assert self._m(client, "module broken(input a; endmodule")["ok"] is False

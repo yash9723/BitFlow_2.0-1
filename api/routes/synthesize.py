@@ -273,6 +273,62 @@ async def synthesize(body: SynthesizeRequest) -> dict:
 
 
 # =============================================================================
+# POST /metrics — gate count, flip-flops and logic depth (optimization scores)
+# =============================================================================
+
+metrics_router = APIRouter(prefix="/metrics", tags=["Synthesis"])
+
+# Gate-level synthesis to a fixed library of 2-input gates and muxes, so counts
+# are comparable between designs; ltp -noff = longest path between registers/ports.
+METRICS_SCRIPT = """\
+read_verilog -sv design.v
+synth -auto-top -flatten -noabc
+abc -g AND,NAND,OR,NOR,XOR,XNOR,MUX
+opt_clean
+tee -q -o stat.json stat -json
+tee -q -o ltp.txt ltp -noff
+"""
+
+_REGISTER_CELL = re.compile(r"DFF|DLATCH|_SR_|_FF_", re.I)
+
+
+def gate_metrics(stat: dict, ltp_text: str) -> dict:
+    """{gates, ffBits, depth} from `stat -json` and `ltp -noff` output."""
+    cells = stat.get("design", {}).get("num_cells_by_type", {})
+    ff_bits = sum(n for t, n in cells.items() if _REGISTER_CELL.search(t))
+    gates = sum(n for t, n in cells.items() if not _REGISTER_CELL.search(t))
+    depths = [int(d) for d in re.findall(r"length=(\d+)", ltp_text)]
+    return {"gates": gates, "ffBits": ff_bits, "depth": max(depths, default=0)}
+
+
+def _metrics_sync(design_v: str) -> dict:
+    tmpdir, _ = create_workspace()
+    try:
+        _write(tmpdir, "design.v", design_v)
+        _write(tmpdir, "metrics.ys", METRICS_SCRIPT)
+        try:
+            rc, out = _run_limited(["yosys", "-q", "-s", "metrics.ys"], cwd=tmpdir, timeout=SYNTH_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": f"Synthesis timed out after {SYNTH_TIMEOUT_SECONDS}s."}
+        except FileNotFoundError:
+            return {"ok": False, "error": "Synthesis is unavailable (yosys is not installed on the server)."}
+        if rc != 0:
+            lines = [l for l in out.strip().splitlines() if l.strip()]
+            return {"ok": False, "error": "\n".join(lines[-15:]) or f"yosys exited with code {rc}"}
+        stat = json.loads(_read(os.path.join(tmpdir, "stat.json")) or "{}")
+        return {"ok": True, **gate_metrics(stat, _read(os.path.join(tmpdir, "ltp.txt")))}
+    finally:
+        cleanup_workspace(tmpdir)
+
+
+@metrics_router.post("", dependencies=[Depends(verify_jwt)], summary="Gate count, flip-flop bits and logic depth")
+async def metrics(body: SynthesizeRequest) -> dict:
+    check_source_size(body.design_v, settings.max_source_bytes, "design_v")
+    async with _sim_slots:
+        return await asyncio.to_thread(_metrics_sync, body.design_v)
+
+
+# =============================================================================
 # POST /equivalence — shortest input sequence where two designs differ
 # =============================================================================
 
