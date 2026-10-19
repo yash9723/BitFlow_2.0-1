@@ -25,7 +25,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 // Default editor content — shown on first load
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_DESIGN = `\`timescale 1ns / 1ps
+export const DEFAULT_DESIGN = `\`timescale 1ns / 1ps
 
 // 4-bit synchronous up-counter with enable and reset
 module counter #(
@@ -45,7 +45,7 @@ module counter #(
 endmodule
 `;
 
-const DEFAULT_TESTBENCH = `\`timescale 1ns / 1ps
+export const DEFAULT_TESTBENCH = `\`timescale 1ns / 1ps
 
 module tb_counter;
     reg        clk;

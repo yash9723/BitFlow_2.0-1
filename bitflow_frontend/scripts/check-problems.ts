@@ -7,6 +7,7 @@
  *   1. starter code compiles with the public testbench and every hidden test
  *      (iverilog -g2012, same as the simulation API);
  *   2. starter code does NOT pass the hidden tests (that would be free XP).
+ * And every Sandbox template (lib/templates.ts) compiles, finishes and prints no FAIL.
  * Reference solutions live in the database and are verified against the
  * hidden tests when imported (scripts/import-reference-solutions.ts) or saved
  * from the admin page. Exits 1 if anything fails. Run by the `content` CI job.
@@ -19,6 +20,7 @@ import { join } from "node:path";
 import { LEARNING_PATH } from "../lib/problems/index";
 import { ALL_ARENA_PROBLEMS } from "../lib/arena/index";
 import { sentinelPassed, testcasePassed, usesStdoutCompare } from "../lib/grading";
+import { TEMPLATES } from "../lib/templates";
 
 interface HiddenTest { name: string; testbench: string; expected: string | null }
 interface CheckProblem {
@@ -103,7 +105,14 @@ for (const p of problems) {
   if (accepted(p, p.starterCode).ok) fail(p.slug, "starter code already passes the hidden tests");
 }
 
-console.log(`Checked ${problems.length} problems.`);
+// Sandbox templates: each design + testbench pair must compile, finish and report no failures.
+for (const [key, t] of Object.entries(TEMPLATES)) {
+  const r = simulate(t.design, t.testbench);
+  if (!r.compiled) fail(`template ${key}`, `does not compile: ${r.log.trim().split("\n")[0]}`);
+  else if (!r.success || /\bFAIL/.test(r.stdout)) fail(`template ${key}`, r.log.trim().split("\n").slice(-3).join(" | "));
+}
+
+console.log(`Checked ${problems.length} problems and ${Object.keys(TEMPLATES).length} Sandbox templates.`);
 if (errors.length) {
   console.error(`\n${errors.length} problem(s) found:\n` + errors.map((e) => `  ✗ ${e}`).join("\n"));
   process.exit(1);

@@ -87,7 +87,8 @@ module tb_half_adder;
         a=0; b=1; check(1, 0);
         a=1; b=0; check(1, 0);
         a=1; b=1; check(0, 1);
-        $display(errors == 0 ? "ALL TESTS PASSED" : "TESTS FAILED");
+        if (errors == 0) $display("ALL TESTS PASSED");
+        else             $display("TESTS FAILED");
         $finish;
     end
 endmodule
@@ -140,7 +141,8 @@ module tb_full_adder;
             end else
                 $display("PASS a=%b b=%b cin=%b => cout=%b sum=%b", a, b, cin, cout, sum);
         end
-        $display(errors == 0 ? "ALL TESTS PASSED" : "TESTS FAILED");
+        if (errors == 0) $display("ALL TESTS PASSED");
+        else             $display("TESTS FAILED");
         $finish;
     end
 endmodule
@@ -202,7 +204,8 @@ module tb_dff;
         if (q !== 0) begin $display("FAIL d=0 capture"); errors = errors + 1; end
         else              $display("PASS d=0 q=%b", q);
 
-        $display(errors == 0 ? "ALL TESTS PASSED" : "TESTS FAILED");
+        if (errors == 0) $display("ALL TESTS PASSED");
+        else             $display("TESTS FAILED");
         $finish;
     end
 endmodule
@@ -273,8 +276,8 @@ endmodule
     category : "fsm",
     design   : `\`timescale 1ns / 1ps
 
-// Moore FSM skeleton — 3-state sequence detector
-// Detects input sequence: 1 → 0 → 1
+// Moore FSM skeleton — 4-state sequence detector
+// Detects input sequence: 1 → 0 → 1 (overlapping), output depends on state only
 // Extend by adding states and transitions.
 module fsm (
     input  wire clk,
@@ -283,9 +286,10 @@ module fsm (
     output reg  detected
 );
     // ── State encoding ────────────────────────────────────────────────────
-    localparam S_IDLE = 2'b00;   // waiting for first '1'
-    localparam S_GOT1 = 2'b01;   // saw '1', waiting for '0'
-    localparam S_GOT10= 2'b10;   // saw '10', waiting for '1'
+    localparam S_IDLE  = 2'b00;   // waiting for first '1'
+    localparam S_GOT1  = 2'b01;   // saw '1', waiting for '0'
+    localparam S_GOT10 = 2'b10;   // saw '10', waiting for '1'
+    localparam S_FOUND = 2'b11;   // saw '101': detected
 
     reg [1:0] state, next_state;
 
@@ -300,14 +304,15 @@ module fsm (
         case (state)
             S_IDLE : next_state = in ? S_GOT1  : S_IDLE;
             S_GOT1 : next_state = in ? S_GOT1  : S_GOT10;
-            S_GOT10: next_state = in ? S_IDLE  : S_GOT10;
+            S_GOT10: next_state = in ? S_FOUND : S_IDLE;
+            S_FOUND: next_state = in ? S_GOT1  : S_GOT10;   // the last '1' can start the next match
             default: next_state = S_IDLE;
         endcase
     end
 
-    // ── Output logic (Moore) ──────────────────────────────────────────────
+    // ── Output logic (Moore: from the state alone) ────────────────────────
     always @(*) begin
-        detected = (state == S_GOT10) && in;
+        detected = (state == S_FOUND);
     end
 endmodule
 `,

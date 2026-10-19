@@ -4,7 +4,9 @@
  * ─── Purpose ─────────────────────────────────────────────────────────────────
  * Lets the user load a pre-written Verilog design + testbench pair into both
  * Monaco editors with a single click.  Sandbox-only feature — NOT connected to
- * any future problem-solving mode.
+ * any future problem-solving mode.  Loading replaces both editors (appending left
+ * two top modules and a stale testbench that no longer compiled); it asks first
+ * if either editor holds the user's own code.
  *
  * ─── Architecture ────────────────────────────────────────────────────────────
  * Purely presentational after the initial render.  All state mutations go
@@ -20,15 +22,22 @@
 
 import { useState, useCallback } from "react";
 import { TEMPLATES, TEMPLATE_ORDER } from "@/lib/templates";
+import { DEFAULT_DESIGN, DEFAULT_TESTBENCH } from "@/hooks/useSimulation";
+
+/** Code the user hasn't written: empty, the starter, or an unmodified template. */
+const PRISTINE = new Set(
+  [DEFAULT_DESIGN, DEFAULT_TESTBENCH, "", ...Object.values(TEMPLATES).flatMap((t) => [t.design, t.testbench])]
+    .map((c) => c.trim()),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface TemplateMenuProps {
-  /** Current content of design.v editor — used to append template below it. */
+  /** Current content of design.v editor — checked before it is replaced. */
   currentDesign:     string;
-  /** Current content of tb.v editor — used to append template below it. */
+  /** Current content of tb.v editor — checked before it is replaced. */
   currentTestbench:  string;
   /** setDesignCode from useSimulation — populates the left editor. */
   onDesignChange:    (code: string) => void;
@@ -65,17 +74,20 @@ export default function TemplateMenu({
       const template = TEMPLATES[key];
       if (!template) return;
 
-      // Append to existing content with a blank line separator so the user's
-      // current code is preserved and the template is added below it.
-      onDesignChange(currentDesign + "\n\n" + template.design.trimStart());
-      onTestbenchChange(currentTestbench + "\n\n" + template.testbench.trimStart());
+      const edited = !PRISTINE.has(currentDesign.trim()) || !PRISTINE.has(currentTestbench.trim());
+      if (edited && !window.confirm(`Replace the code in both editors with "${template.label}"? Your current design and testbench will be lost.`)) {
+        e.target.value = "";
+        return;
+      }
+      onDesignChange(template.design);
+      onTestbenchChange(template.testbench);
 
       // Reset to placeholder after a brief tick so the user sees the
       // selection flash before it returns — confirms the load happened.
       setSelectedKey(key);
       setTimeout(() => setSelectedKey(""), 800);
     },
-    [onDesignChange, onTestbenchChange],
+    [currentDesign, currentTestbench, onDesignChange, onTestbenchChange],
   );
 
   return (
