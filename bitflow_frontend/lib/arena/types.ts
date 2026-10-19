@@ -104,4 +104,6 @@ export interface ArenaSubmissionResult {
   errorMessage?:   string;
   /** Your design's own signals on the first failing hidden test (wrong answers only). */
   failingWaveform?: import("@/lib/grading").FailingWaveform | null;
+  /** Shortest input sequence where the design and the reference solution differ. */
+  counterexample?: import("@/lib/grading").Counterexample | null;
 }

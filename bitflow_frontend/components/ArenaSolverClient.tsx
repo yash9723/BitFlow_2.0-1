@@ -11,7 +11,7 @@ import Editor from "@/components/Editor";
 import AIAssistantPanel from "@/components/AIAssistantPanel";
 import SynthesisPanel from "@/components/SynthesisPanel";
 import Terminal from "@/components/Terminal";
-import WaveformPanel, { FailingWaveformView } from "@/components/WaveformPanel";
+import WaveformPanel, { CounterexampleView, FailingWaveformView } from "@/components/WaveformPanel";
 import { WaveformPanelWrapper } from "./WaveformPanelWrapper";
 
 function useWaveformSplitter(initial: number) {
@@ -143,6 +143,7 @@ export function ArenaSolverClient({ problem }: Props) {
           style={{ width: horiz.width }}
         >
           <ArenaProblemStatement problem={problem}>
+            {hook.submission?.counterexample && <CounterexampleView data={hook.submission.counterexample} />}
             {hook.submission?.failingWaveform && <FailingWaveformView data={hook.submission.failingWaveform} />}
             <details className="group">
               <summary className="font-mono text-[11px] font-semibold text-pale cursor-pointer select-none">Your attempts</summary>

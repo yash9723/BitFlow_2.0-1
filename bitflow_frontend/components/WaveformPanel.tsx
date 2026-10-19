@@ -1083,3 +1083,19 @@ export function FailingWaveformView({ data }: { data: { testcaseId: string | nul
     </div>
   );
 }
+
+/** Shortest input sequence (from reset) where the learner's outputs differ from a correct design. */
+export function CounterexampleView({ data }: { data: { cycles: number; waveform: ParsedVcd } }) {
+  return (
+    <div className="space-y-1">
+      <p className="font-mono text-[9px] text-dim">
+        Where your design goes wrong: starting from reset, these inputs make your outputs (&ldquo;yours&rdquo;) differ
+        from a correct design (&ldquo;expected&rdquo;) after {data.cycles} clock step{data.cycles === 1 ? "" : "s"}.
+        It is the shortest such sequence.
+      </p>
+      <div className="h-64 border border-warn/40 rounded overflow-hidden">
+        <WaveformPanel parsedVcd={data.waveform} />
+      </div>
+    </div>
+  );
+}

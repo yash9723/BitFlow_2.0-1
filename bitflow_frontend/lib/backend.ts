@@ -28,6 +28,11 @@ export function simulateOnBackend(body: SimulateBody): Promise<{ status: number;
   return postToBackend("/simulate", body);
 }
 
+/** POST /equivalence: shortest input sequence (from reset) where two designs differ. */
+export function equivalenceOnBackend(gold_v: string, gate_v: string, max_cycles = 16): Promise<{ status: number; data: any }> {
+  return postToBackend("/equivalence", { gold_v, gate_v, max_cycles });
+}
+
 /** POST /synthesize (Yosys) on the backend. */
 export function synthesizeOnBackend(design_v: string): Promise<{ status: number; data: any }> {
   return postToBackend("/synthesize", { design_v });

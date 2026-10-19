@@ -27,7 +27,7 @@ from api.config import settings
 from api.jwt_auth import verify_jwt
 from api.routes.simulate import _sim_slots
 from api.sandbox import _run_limited
-from api.utils import check_source_size, cleanup_workspace, create_workspace
+from api.utils import check_source_size, cleanup_workspace, create_workspace, read_vcd
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/synthesize", tags=["Synthesis"])
@@ -270,3 +270,117 @@ async def synthesize(body: SynthesizeRequest) -> dict:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
     async with _sim_slots:
         return await asyncio.to_thread(_synthesize_sync, body.design_v)
+
+
+# =============================================================================
+# POST /equivalence — shortest input sequence where two designs differ
+# =============================================================================
+
+equivalence_router = APIRouter(prefix="/equivalence", tags=["Synthesis"])
+
+EQUIV_TIMEOUT_SECONDS = 20
+RESET_NAMES = {"rst", "reset", "rst_n", "reset_n", "rstn", "resetn", "areset", "arst", "arst_n", "aresetn", "clr", "clear"}
+
+# Build a miter of the two designs. Each is flattened and renamed first, so both
+# can define the same module names (they implement the same problem).
+MITER_SCRIPT = """\
+read_verilog -sv gold.v
+hierarchy -auto-top
+proc; flatten; opt_clean
+rename -top gold
+design -stash gold_design
+read_verilog -sv gate.v
+hierarchy -auto-top
+proc; flatten; opt_clean
+rename -top gate
+design -stash gate_design
+design -copy-from gold_design -as gold gold
+design -copy-from gate_design -as gate gate
+miter -equiv -flatten -make_outputs -ignore_gold_x gold gate miter
+hierarchy -top miter
+write_rtlil miter.il
+"""
+
+
+class EquivalenceRequest(BaseModel):
+    gold_v: str = Field(..., min_length=1, description="Reference design.")
+    gate_v: str = Field(..., min_length=1, description="Design under test (same ports).")
+    max_cycles: int = Field(default=16, ge=1, le=24, description="Longest sequence to search, from reset.")
+
+
+def miter_inputs(rtlil: str) -> list[str]:
+    """Input port names of the miter (without the in_ prefix)."""
+    names = re.findall(r"^\s*wire (?:width \d+ )?input \d+ \\(\S+)", rtlil, re.M)
+    return [n[3:] for n in names if n.startswith("in_")]
+
+
+def reset_port(inputs: list[str]) -> tuple[str, int] | None:
+    """(name, active level) of the reset input, by naming convention (…n = active low)."""
+    for name in inputs:
+        if name.lower() in RESET_NAMES:
+            return name, 0 if name.lower().endswith("n") else 1
+    return None
+
+
+def sat_script(inputs: list[str], max_cycles: int) -> tuple[str, int]:
+    """Bounded checks of length first..max_cycles; the first one to fail is the shortest."""
+    rst = reset_port(inputs)
+    # With a reset: step 1 applies it and isn't compared (outputs during reset may legitimately differ).
+    extra = f"-set-at 1 in_{rst[0]} {rst[1]} -prove-skip 1 " if rst else ""
+    first = 2 if rst else 1
+    lines = ["read_rtlil miter.il", "hierarchy -top miter", "async2sync", "opt_clean"]
+    for n in range(first, max_cycles + 1):
+        # -show-inputs/-show-outputs put the ports into the dumped trace
+        lines.append(f"sat -seq {n} -prove trigger 0 -set-init-zero -enable_undef {extra}-show-inputs -show-outputs -dump_vcd cex{n}.vcd miter")
+    return "\n".join(lines) + "\n", first
+
+
+def _write(tmpdir: str, name: str, content: str) -> None:
+    path = os.path.join(tmpdir, name)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.chmod(path, 0o644)
+
+
+def _equivalence_sync(gold_v: str, gate_v: str, max_cycles: int) -> dict:
+    tmpdir, workspace_id = create_workspace()
+    t0 = time.monotonic()
+    try:
+        _write(tmpdir, "gold.v", gold_v)
+        _write(tmpdir, "gate.v", gate_v)
+        _write(tmpdir, "miter.ys", MITER_SCRIPT)
+        try:
+            rc, out = _run_limited(["yosys", "-q", "-s", "miter.ys"], cwd=tmpdir, timeout=EQUIV_TIMEOUT_SECONDS)
+            if rc != 0:
+                reason = "the designs' ports differ" if "miter" in out.lower() else "a design does not synthesize"
+                return {"status": "unknown", "reason": reason}
+            script, first = sat_script(miter_inputs(_read(os.path.join(tmpdir, "miter.il"))), max_cycles)
+            _write(tmpdir, "sat.ys", script)
+            left = max(1, EQUIV_TIMEOUT_SECONDS - int(time.monotonic() - t0))
+            rc, out = _run_limited(["yosys", "-q", "-s", "sat.ys"], cwd=tmpdir, timeout=left)
+        except subprocess.TimeoutExpired:
+            return {"status": "unknown", "reason": "the check took too long"}
+        except FileNotFoundError:
+            return {"status": "unknown", "reason": "yosys is not installed on the server"}
+
+        # Only failing (counterexample) runs write a VCD; the first is the shortest.
+        for n in range(first, max_cycles + 1):
+            if os.path.exists(os.path.join(tmpdir, f"cex{n}.vcd")):
+                vcd_b64, _ = read_vcd(tmpdir, f"cex{n}.vcd")
+                logger.info(json.dumps({"event": "equivalence", "workspace_id": workspace_id, "differs_at": n,
+                                        "duration_ms": round((time.monotonic() - t0) * 1000, 1)}))
+                return {"status": "differs", "cycles": n, "vcd_base64": vcd_b64}
+        if rc != 0:
+            return {"status": "unknown", "reason": "the check failed"}
+        return {"status": "no_difference", "cycles": max_cycles}
+    finally:
+        cleanup_workspace(tmpdir)
+
+
+@equivalence_router.post("", dependencies=[Depends(verify_jwt)],
+                         summary="Shortest input sequence (from reset) where two designs' outputs differ")
+async def equivalence(body: EquivalenceRequest) -> dict:
+    check_source_size(body.gold_v, settings.max_source_bytes, "gold_v")
+    check_source_size(body.gate_v, settings.max_source_bytes, "gate_v")
+    async with _sim_slots:
+        return await asyncio.to_thread(_equivalence_sync, body.gold_v, body.gate_v, body.max_cycles)

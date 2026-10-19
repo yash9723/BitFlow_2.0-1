@@ -712,3 +712,48 @@ class TestDataFiles:
         files = {f"f{i}.hex": "00" for i in range(5)}
         r = client.post("/simulate", json={"design_v": "module m; endmodule", "testbench_v": "module t; endmodule", "files": files})
         assert r.status_code == 422
+
+
+# ===========================================================================
+# TestEquivalence — POST /equivalence (shortest differing input sequence)
+# ===========================================================================
+
+COUNTER_GOLD = """module c(input clk, input rst, output reg [3:0] q);
+  always @(posedge clk) if (rst || q == 5) q <= 0; else q <= q + 1;
+endmodule"""
+
+
+@needs_yosys
+class TestEquivalence:
+
+    def _eq(self, client, gold, gate, n=16):
+        r = client.post("/equivalence", json={"gold_v": gold, "gate_v": gate, "max_cycles": n})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_requires_jwt(self, anon_client):
+        assert anon_client.post("/equivalence", json={"gold_v": "module m; endmodule", "gate_v": "module m; endmodule"}).status_code == 401
+
+    def test_identical_designs(self, client):
+        assert self._eq(client, COUNTER_GOLD, COUNTER_GOLD)["status"] == "no_difference"
+
+    def test_combinational_difference_found_at_cycle_1(self, client):
+        gold = "module g(input a, input b, output y); assign y = a & b; endmodule"
+        gate = "module g(input a, input b, output y); assign y = a | b; endmodule"
+        d = self._eq(client, gold, gate)
+        assert d["status"] == "differs" and d["cycles"] == 1, d
+        vcd = base64.b64decode(d["vcd_base64"])
+        assert b"gold_y" in vcd and b"gate_y" in vcd and b"in_a" in vcd   # ports are in the trace
+
+    def test_off_by_one_counter_found_at_the_wrap(self, client):
+        d = self._eq(client, COUNTER_GOLD, COUNTER_GOLD.replace("q == 5", "q == 6"))
+        assert d["status"] == "differs" and d["cycles"] == 8, d   # reset, counts 0..5, then gold wraps to 0 while gate shows 6
+
+    def test_port_mismatch_is_unknown(self, client):
+        d = self._eq(client, COUNTER_GOLD, COUNTER_GOLD.replace("output reg [3:0] q", "output reg [3:0] count").replace(" q", " count"))
+        assert d["status"] == "unknown", d
+
+    def test_gold_x_is_dont_care(self, client):
+        gold = "module g(input a, input s, output y); assign y = s ? a : 1'bx; endmodule"
+        gate = "module g(input a, input s, output y); assign y = s ? a : 1'b0; endmodule"
+        assert self._eq(client, gold, gate)["status"] == "no_difference"

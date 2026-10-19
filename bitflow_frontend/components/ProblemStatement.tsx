@@ -19,7 +19,7 @@ import React, { useState, memo } from "react";
 import type { Problem, SubmissionResult, Hint } from "@/lib/problem-types";
 import type { ProgressRecord } from "@/lib/problem-types";
 import SubmissionHistory from "./SubmissionHistory";
-import { FailingWaveformView } from "./WaveformPanel";
+import { CounterexampleView, FailingWaveformView } from "./WaveformPanel";
 
 interface ProblemStatementProps {
   problem:    Problem;
@@ -239,6 +239,7 @@ export default function ProblemStatement({
         {submission && (
           <Section title="Last Submission">
             <VerdictPanel result={submission} />
+            {submission.counterexample && <CounterexampleView data={submission.counterexample} />}
             {submission.failingWaveform && <FailingWaveformView data={submission.failingWaveform} />}
           </Section>
         )}

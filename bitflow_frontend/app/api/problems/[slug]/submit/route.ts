@@ -5,7 +5,8 @@
  * Runs the design against the hidden tests (lib/grading.ts), records the
  * submission and, if accepted, awards XP once (lib/record-submission.ts).
  * Returns { submission: SubmissionResult }; on a wrong answer it also carries
- * failingWaveform — the design's own signals on the first failing test.
+ * failingWaveform — the design's own signals on the first failing test — and
+ * counterexample — the shortest input sequence where it differs from the reference.
  */
 
 import crypto from "crypto";
@@ -13,7 +14,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
-import { designPolicyViolation, failingTestWaveform, gradeDesign, gradingTestbenches } from "@/lib/grading";
+import { designPolicyViolation, failingTestWaveform, findCounterexample, gradeDesign, gradingTestbenches } from "@/lib/grading";
 import { recordSubmission } from "@/lib/record-submission";
 import { claimDailyBonus, getDailyQuestion } from "@/lib/daily";
 
@@ -70,6 +71,7 @@ export async function POST(
 
   // Started now, awaited below: runs alongside the DB writes.
   const failingWaveform = failingTestWaveform(question, designCode, grade);
+  const counterexample  = grade.accepted ? Promise.resolve(null) : findCounterexample(question, designCode);
 
   const xpReward = grade.accepted ? question.xpReward : 0;   // worth this much on a first solve
 
@@ -122,6 +124,7 @@ export async function POST(
       dailyBonusXp,
       errorMessage:    grade.errorMessage,
       failingWaveform: await failingWaveform,
+      counterexample:  await counterexample,
     },
   });
 }

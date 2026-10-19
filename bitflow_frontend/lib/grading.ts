@@ -8,7 +8,7 @@
 
 import type { Testcase, TestcaseVerdict } from "@/lib/problem-types";
 import type { SimulateResponse } from "@/lib/types";
-import { simulateOnBackend } from "@/lib/backend";
+import { equivalenceOnBackend, simulateOnBackend } from "@/lib/backend";
 import { parseVcd, type ParsedVcd } from "@/lib/vcd-parser";
 
 export interface GradableQuestion {
@@ -298,6 +298,79 @@ export async function failingTestWaveform(
     return { testcaseId: cases.length ? grade.verdicts[failed].testcaseId : null, waveform };
   } catch (err) {
     console.warn("[grading] failing-test waveform unavailable:", err);
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Counterexample: shortest input sequence where the design and the reference
+// solution disagree (formal check on the backend). The reference source never
+// leaves the server; only its outputs on this one short sequence are shown.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface Counterexample {
+  /** Steps from reset (the reset step included) to the first difference. */
+  cycles:   number;
+  waveform: ParsedVcd;
+}
+
+const CLOCK_NAME = /^(clk|clock|.*_clk)$/i;
+const RESET_NAME = /^(rst|reset|rst_n|reset_n|rstn|resetn|areset|arst|arst_n|aresetn|clr|clear)$/i;
+
+/** Value of a signal at time t (last change at or before t). */
+function valueAt(changes: { time: number; value: string }[], t: number): string | undefined {
+  let v: string | undefined;
+  for (const c of changes) {
+    if (c.time > t) break;
+    v = c.value;
+  }
+  return v;
+}
+
+/** Miter VCD (in_*, gold_*, gate_*) -> inputs + "out (yours)" / "out (expected)", cut at the first difference. */
+export function counterexampleWaveform(raw: ParsedVcd): ParsedVcd {
+  const plain = (n: string) => n.replace(/^\\/, "");
+  const inputs = raw.signals
+    .filter((s) => plain(s.name).startsWith("in_") && !CLOCK_NAME.test(plain(s.name).slice(3)))
+    .sort((a, b) => Number(RESET_NAME.test(plain(b.name).slice(3))) - Number(RESET_NAME.test(plain(a.name).slice(3))));   // reset first
+  const outs = raw.signals
+    .filter((s) => plain(s.name).startsWith("gate_"))
+    .map((gate) => ({ name: plain(gate.name).slice(5), gate, gold: raw.signals.find((s) => plain(s.name) === `gold_${plain(gate.name).slice(5)}`) }))
+    .filter((o) => o.gold);
+
+  // First time any output differs (an x in the expected value is a don't-care)
+  const times = [...new Set(raw.signals.flatMap((s) => s.changes.map((c) => c.time)))].sort((a, b) => a - b);
+  const differs = (t: number) => outs.some(({ gate, gold }) => {
+    const want = valueAt(gold!.changes, t), got = valueAt(gate.changes, t);
+    if (want === undefined || got === undefined || want.length !== got.length) return want !== got;
+    return [...want].some((w, i) => w !== "x" && w !== got[i]);
+  });
+  const cut = times.find(differs) ?? raw.maxTime;
+
+  const trim = <T extends { changes: { time: number }[] }>(s: T, name: string) =>
+    ({ ...s, name, changes: s.changes.filter((c) => c.time <= cut) });
+  return {
+    timescale: "1 step",
+    maxTime:   cut + 1,
+    signals: [
+      ...inputs.map((s) => trim(s, plain(s.name).slice(3))),
+      ...outs.flatMap(({ name, gate, gold }) => [trim(gate, `${name} (yours)`), trim(gold!, `${name} (expected)`)]),
+    ],
+  };
+}
+
+/** Counterexample against q.referenceSolution, or null (none stored, no difference found, or unsupported). */
+export async function findCounterexample(
+  q: GradableQuestion & { referenceSolution?: string | null }, designCode: string,
+): Promise<Counterexample | null> {
+  if (!q.referenceSolution) return null;
+  try {
+    const { status, data } = await equivalenceOnBackend(q.referenceSolution, designCode);
+    if (status !== 200 || data?.status !== "differs" || !data.vcd_base64) return null;
+    const raw = parseVcd(Buffer.from(data.vcd_base64, "base64").toString("utf8"));
+    return { cycles: data.cycles, waveform: counterexampleWaveform(raw) };
+  } catch (err) {
+    console.warn("[grading] counterexample unavailable:", err);
     return null;
   }
 }
