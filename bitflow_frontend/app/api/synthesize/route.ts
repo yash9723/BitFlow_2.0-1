@@ -1,15 +1,16 @@
 /**
  * POST /api/synthesize — Yosys synthesis of a design, with diagrams.
  *
- * Body: { designCode: string, board?: true }
+ * Body: { designCode: string, board?: true, fpga?: "ice40" | "xc7" }
  * Proxies to the backend's POST /synthesize, then draws the schematic and
  * FSM diagrams here (lib/hardware-diagrams.ts) so the browser gets ready SVG.
- * With board: true it returns the gate-level netlist for the virtual board instead.
+ * With board: true it returns the gate-level netlist for the virtual board instead;
+ * with fpga: "ice40" | "xc7" a resource estimate for that FPGA family.
  * Open to guests like /api/simulate, and rate-limited the same way.
  */
 
 import { NextResponse } from "next/server";
-import { boardOnBackend, metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
+import { boardOnBackend, fpgaOnBackend, metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth-utils";
 import { fsmSvg, schematicSvg, type FsmInfo } from "@/lib/hardware-diagrams";
@@ -38,9 +39,9 @@ export async function POST(request: Request) {
   }
 
   let status: number, data: any;
-  if (body.board === true) {
+  if (body.board === true || body.fpga === "ice40" || body.fpga === "xc7") {
     try {
-      ({ status, data } = await boardOnBackend(designCode));
+      ({ status, data } = await (body.board === true ? boardOnBackend(designCode) : fpgaOnBackend(designCode, body.fpga)));
     } catch (err) {
       console.error("[synthesize] backend unreachable:", err);
       return NextResponse.json({ error: "Synthesis backend unavailable." }, { status: 502 });

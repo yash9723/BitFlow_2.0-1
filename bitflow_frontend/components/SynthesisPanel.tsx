@@ -41,7 +41,15 @@ interface Props {
   designCode: string;
 }
 
-type Tab = "summary" | "schematic" | "fsm";
+type Tab = "summary" | "schematic" | "fsm" | "fpga";
+
+type Family = "ice40" | "xc7";
+interface FpgaResult {
+  ok: boolean; error?: string; device?: string;
+  resources?: { luts: number; lutram: number; ffs: number; carry: number; bram: number; dsp: number; io: number };
+  capacity?:  { luts: number; ffs: number; bram: number; dsp: number };
+}
+const FAMILIES: [Family, string][] = [["ice40", "Lattice iCE40"], ["xc7", "Xilinx 7-series"]];
 
 const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 const svgWidth = (svg: string) => Number(svg.match(/width="(\d+)"/)?.[1] ?? 600);
@@ -70,9 +78,12 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
   const [result,  setResult]  = useState<SynthResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab,     setTab]     = useState<Tab>("summary");
+  const [family,  setFamily]  = useState<Family>("ice40");
+  const [fpga,    setFpga]    = useState<Partial<Record<Family, FpgaResult | "loading">>>({});
 
   const run = useCallback(async () => {
     setLoading(true);
+    setFpga({});
     try {
       const res  = await fetch("/api/synthesize", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -93,6 +104,22 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  // FPGA estimates are a separate, slower synthesis: fetched when the tab is opened, per family.
+  useEffect(() => {
+    if (!isOpen || tab !== "fpga" || fpga[family]) return;
+    setFpga((f) => ({ ...f, [family]: "loading" }));
+    fetch("/api/synthesize", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ designCode, fpga: family }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        return res.ok ? data : { ok: false, error: data.error ?? `Request failed (${res.status})` };
+      })
+      .catch(() => ({ ok: false, error: "Network error." }))
+      .then((r: FpgaResult) => setFpga((f) => ({ ...f, [family]: r })));
+  }, [isOpen, tab, family, fpga, designCode]);
+
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -103,7 +130,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
   if (!isOpen) return null;
 
   const fsms = result?.fsms ?? [];
-  const tabs: [Tab, string][] = [["summary", "Summary"], ["schematic", "Schematic"], ["fsm", `FSM${fsms.length ? ` (${fsms.length})` : ""}`]];
+  const tabs: [Tab, string][] = [["summary", "Summary"], ["schematic", "Schematic"], ["fsm", `FSM${fsms.length ? ` (${fsms.length})` : ""}`], ["fpga", "FPGA"]];
 
   return (
     <div className="fixed inset-0 z-50 bg-void/80 flex items-center justify-center p-2 sm:p-4" onClick={onClose}
@@ -184,6 +211,52 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
               </div>
             </div>
           )}
+
+          {result?.ok && tab === "fpga" && (() => {
+            const f = fpga[family];
+            const r = f && f !== "loading" ? f : null;
+            return (
+              <div className="space-y-4 font-mono text-[11px] text-pale">
+                <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="FPGA family">
+                  {FAMILIES.map(([id, label]) => (
+                    <button key={id} role="radio" aria-checked={family === id} onClick={() => setFamily(id)}
+                      className={`px-3 py-1 rounded border text-[10px] ${family === id ? "border-phosphor/60 text-phosphor bg-phosphor/10" : "border-rim text-dim hover:text-ghost"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {f === "loading" && <p className="text-dim">Synthesizing for {FAMILIES.find(([id]) => id === family)![1]}… (a few seconds)</p>}
+                {r && !r.ok && <pre className="text-[10px] whitespace-pre-wrap text-danger">{r.error}</pre>}
+                {r?.ok && r.resources && r.capacity && (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {([
+                        ["LUTs", r.resources.luts, r.capacity.luts],
+                        ["Flip-flops", r.resources.ffs, r.capacity.ffs],
+                        ["Block RAM", r.resources.bram, r.capacity.bram],
+                        ["DSP blocks", r.resources.dsp, r.capacity.dsp],
+                        ["Carry cells", r.resources.carry, null],
+                        ...(family === "xc7" ? [["LUT-RAM cells", r.resources.lutram, null], ["I/O pins", r.resources.io, null]] : []),
+                      ] as [string, number, number | null][]).map(([k, v, cap]) => (
+                        <div key={k} className="border border-rim/50 rounded p-2">
+                          <div className="text-[9px] text-dim uppercase tracking-wider">{k}</div>
+                          <div className={`text-[18px] font-bold ${cap !== null && v > cap ? "text-danger" : "text-bright"}`}>{v}</div>
+                          {cap !== null && (
+                            <div className="text-[9px] text-dim">{cap > 0 ? `${((v / cap) * 100).toFixed(v / cap < 0.01 && v > 0 ? 2 : 0)}% of ${cap}` : v > 0 ? "none on this part" : "–"}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-dim max-w-xl">
+                      Percentages are of an <span className="text-ghost">{r.device}</span>. These are Yosys estimates before
+                      place &amp; route; a vendor tool may pack logic differently.
+                      {family === "ice40" && " iCE40 HX parts have no DSP blocks, so multipliers are built from LUTs."}
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {result?.ok && tab === "schematic" && (
             result.schematicSvg

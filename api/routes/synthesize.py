@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import time
+from typing import Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -395,6 +396,63 @@ async def board(body: SynthesizeRequest) -> dict:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
     async with _sim_slots:
         return await asyncio.to_thread(_board_sync, body.design_v)
+
+
+# =============================================================================
+# POST /fpga — resource estimate for a real FPGA family (before place & route)
+# =============================================================================
+
+fpga_router = APIRouter(prefix="/fpga", tags=["Synthesis"])
+
+# Capacities of one common board per family, to show how much of a real part a design fills.
+FPGA_TARGETS = {
+    "ice40": {"script": "synth_ice40", "device": "iCE40 HX1K (iCEstick)",
+              "capacity": {"luts": 1280, "ffs": 1280, "bram": 16, "dsp": 0}},
+    "xc7":   {"script": "synth_xilinx -family xc7 -flatten", "device": "Artix-7 XC7A35T (Arty A7)",
+              "capacity": {"luts": 20800, "ffs": 41600, "bram": 50, "dsp": 90}},
+}
+
+
+class FpgaRequest(SynthesizeRequest):
+    family: Literal["ice40", "xc7"] = "ice40"
+
+
+def fpga_resources(cells: dict[str, int], family: str) -> dict:
+    """Group vendor cells into LUTs / LUT-RAM / flip-flops / carry / block RAM / DSP / I/O."""
+    def total(pattern: str) -> int:
+        return sum(n for t, n in cells.items() if re.fullmatch(pattern, t))
+    if family == "ice40":
+        return {
+            "luts": total(r"SB_LUT4"), "lutram": 0, "ffs": total(r"SB_DFF\w*"), "carry": total(r"SB_CARRY"),
+            "bram": total(r"SB_RAM40_4K\w*"), "dsp": total(r"SB_MAC16"), "io": total(r"SB_IO\w*"),
+        }
+    return {
+        "luts":   total(r"LUT[1-6]|INV"),
+        "lutram": total(r"RAM\d+X\d+[SD]|RAM\d+M|SRLC?\d+E"),
+        "ffs":    total(r"FD[RSCP]E|LD[CP]E"),
+        "carry":  total(r"CARRY4"),
+        "bram":   total(r"RAMB36E1") + total(r"RAMB18E1") / 2,      # in 36 Kb blocks
+        "dsp":    total(r"DSP48E1"),
+        "io":     total(r"[IO]BUF\w*|IOBUF\w*|OBUFT\w*"),
+    }
+
+
+def _fpga_sync(design_v: str, family: str) -> dict:
+    target = FPGA_TARGETS[family]
+    script = f"read_verilog -sv design.v\nhierarchy -auto-top\n{target['script']}\ntee -q -o stat.json stat -json\n"
+
+    def finish(tmpdir: str) -> dict:
+        cells = json.loads(_read(os.path.join(tmpdir, "stat.json")) or "{}").get("design", {}).get("num_cells_by_type", {})
+        return {"ok": True, "family": family, "device": target["device"], "capacity": target["capacity"],
+                "resources": fpga_resources(cells, family), "cells": cells}
+    return _run_script(design_v, script, finish)
+
+
+@fpga_router.post("", dependencies=[Depends(verify_jwt)], summary="FPGA resource estimate (iCE40 or Xilinx 7-series)")
+async def fpga(body: FpgaRequest) -> dict:
+    check_source_size(body.design_v, settings.max_source_bytes, "design_v")
+    async with _sim_slots:
+        return await asyncio.to_thread(_fpga_sync, body.design_v, body.family)
 
 
 # =============================================================================

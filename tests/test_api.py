@@ -856,3 +856,52 @@ def test_compile_hint():
     assert "two copies" in compile_hint("design.v:81: error: 'counter' has already been declared in this scope.")
     assert "no module named 'adder'" in compile_hint("tb.v:1: error: Unknown module type: adder")
     assert compile_hint("design.v:13: syntax error") is None
+
+
+# =============================================================================
+# /fpga — resource estimates for iCE40 and Xilinx 7-series
+# =============================================================================
+
+from api.routes.synthesize import fpga_resources  # noqa: E402
+
+FPGA_DESIGN = """module mem(input clk, input we, input [7:0] addr, input [15:0] din, output reg [15:0] dout,
+                    input [15:0] a, input [15:0] b, output [31:0] p);
+  reg [15:0] ram [0:255];
+  always @(posedge clk) begin if (we) ram[addr] <= din; dout <= ram[addr]; end
+  assign p = a * b;
+endmodule"""
+
+
+class TestFpga:
+
+    def _f(self, client, design, family):
+        r = client.post("/fpga", json={"design_v": design, "family": family})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_ice40_maps_memory_to_block_ram(self, client):
+        d = self._f(client, FPGA_DESIGN, "ice40")
+        assert d["ok"] and d["device"].startswith("iCE40"), d
+        assert d["resources"]["bram"] == 1 and d["resources"]["luts"] > 100 and d["resources"]["dsp"] == 0, d["resources"]
+
+    def test_xc7_uses_a_dsp_for_the_multiplier(self, client):
+        d = self._f(client, FPGA_DESIGN, "xc7")
+        assert d["ok"] and d["resources"]["dsp"] == 1 and d["resources"]["io"] > 0, d["resources"]
+
+    def test_counter_flip_flops(self, client):
+        d = self._f(client, "module c(input clk, output reg [3:0] q); always @(posedge clk) q <= q + 1; endmodule", "ice40")
+        assert d["resources"]["ffs"] == 4, d["resources"]
+
+    def test_unknown_family_rejected(self, client):
+        assert client.post("/fpga", json={"design_v": "module m; endmodule", "family": "stratix"}).status_code == 422
+
+    def test_syntax_error(self, client):
+        assert self._f(client, "module broken(input a; endmodule", "xc7")["ok"] is False
+
+
+def test_fpga_resources_grouping():
+    xc7 = fpga_resources({"LUT3": 9, "LUT5": 7, "INV": 4, "FDRE": 11, "CARRY4": 3, "RAMB18E1": 3, "RAMB36E1": 1,
+                          "RAM256X1S": 16, "DSP48E1": 2, "IBUF": 5, "OBUF": 19, "BUFG": 1}, "xc7")
+    assert xc7 == {"luts": 20, "lutram": 16, "ffs": 11, "carry": 3, "bram": 2.5, "dsp": 2, "io": 24}, xc7
+    ice = fpga_resources({"SB_LUT4": 44, "SB_DFF": 7, "SB_DFFSR": 4, "SB_CARRY": 7, "SB_RAM40_4K": 1}, "ice40")
+    assert ice == {"luts": 44, "lutram": 0, "ffs": 11, "carry": 7, "bram": 1, "dsp": 0, "io": 0}, ice

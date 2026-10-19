@@ -33,6 +33,11 @@ export function metricsOnBackend(design_v: string): Promise<{ status: number; da
   return postToBackend("/metrics", { design_v });
 }
 
+/** POST /fpga: LUT / flip-flop / block RAM / DSP estimate for an iCE40 or Xilinx 7-series part. */
+export function fpgaOnBackend(design_v: string, family: "ice40" | "xc7"): Promise<{ status: number; data: any }> {
+  return postToBackend("/fpga", { design_v, family });
+}
+
 /** POST /board: gate-level netlist for the virtual board (lib/gate-sim.ts). */
 export function boardOnBackend(design_v: string): Promise<{ status: number; data: any }> {
   return postToBackend("/board", { design_v });
