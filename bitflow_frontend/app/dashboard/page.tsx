@@ -566,6 +566,7 @@ function DashboardContent() {
   const [stats, setStats] = useState<ProfileStats | null>(null);
   // undefined = loading, null = none available
   const [daily, setDaily] = useState<Daily | null | undefined>(undefined);
+  const [needsRecoveryCode, setNeedsRecoveryCode] = useState(false);
   const [academy, setAcademy] = useState<{ done: number; total: number; lastTitle: string | null; lastSlug: string | null }>({
     done: 0,
     total: ACADEMY_TOPIC_META.length,
@@ -597,6 +598,10 @@ function DashboardContent() {
       lastSlug: lastTopic?.slug ?? null,
     });
 
+    fetch("/api/auth/recovery-code")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setNeedsRecoveryCode(d?.hasCode === false))
+      .catch(() => {});
     fetch("/api/daily")
       .then((r) => r.json())
       .then((json) => {
@@ -706,6 +711,11 @@ function DashboardContent() {
 
         {/* ── Middle 60% ─────────────────────────────────────────── */}
         <main>
+          {needsRecoveryCode && (
+            <Link href="/profile#security" className="block mb-6 rounded-xl border border-warn/40 bg-warn/5 px-4 py-3 text-[12px] text-warn hover:bg-warn/10 transition-colors">
+              Save a recovery code so you can reset your password if you forget it. Profile → Account security →
+            </Link>
+          )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
             {MODULES.map((m) => {
               const s = CARD_STYLES[m.color];

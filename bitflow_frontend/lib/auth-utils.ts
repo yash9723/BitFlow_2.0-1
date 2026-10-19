@@ -36,6 +36,36 @@ export function verifyPassword(
   return { ok, needsRehash: ok };
 }
 
+// ── Passwords and recovery codes ───────────────────────────────────────────
+
+export const MIN_PASSWORD_LENGTH = 8;
+
+/** Why a new password isn't acceptable, or null. (Existing shorter passwords still log in.) */
+export function passwordProblem(password: unknown): string | null {
+  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    return `Passwords need at least ${MIN_PASSWORD_LENGTH} characters.`;
+  }
+  return password.length > 200 ? "Passwords can be at most 200 characters." : null;
+}
+
+/** 32 symbols without 0/O/1/I, so codes are easy to copy by hand; 256 % 32 == 0 keeps it unbiased. */
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/** A one-time recovery code, e.g. "K7QM-2XRD-9PLA-WE4T" (80 random bits). */
+export function newRecoveryCode(): string {
+  const chars = Array.from(crypto.randomBytes(16), (b) => CODE_ALPHABET[b % 32]).join("");
+  return chars.match(/.{4}/g)!.join("-");
+}
+
+/** Codes are compared case-insensitively and without dashes or spaces. */
+export const normalizeRecoveryCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/** End a user's sessions — all of them, or all but the one making this request. */
+export async function endSessions(userId: string, keepCurrent: boolean): Promise<void> {
+  const token = keepCurrent ? cookies().get(SESSION_COOKIE)?.value : undefined;
+  await prisma.session.deleteMany({ where: { userId, ...(token ? { token: { not: token } } : {}) } });
+}
+
 /** Create a DB-backed session with a random token and set it as the cookie. */
 export async function createSession(userId: string): Promise<void> {
   const token = crypto.randomBytes(32).toString("hex");

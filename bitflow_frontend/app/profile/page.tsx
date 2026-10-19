@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
+import AccountSecurity from "@/components/AccountSecurity";
 import { useAuth } from "../../hooks/useAuth";
 
 type ProfileData = {
@@ -213,6 +214,8 @@ function ProfileContent() {
               ))}
             </ul>
           </div>
+
+          <AccountSecurity />
 
           <div className="border border-rim rounded-xl p-5 bg-pit">
             <div className="text-[11px] font-bold uppercase tracking-wider text-bright mb-4">Focus</div>

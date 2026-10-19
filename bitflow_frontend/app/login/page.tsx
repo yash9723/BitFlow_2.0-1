@@ -690,9 +690,9 @@ export default function LoginPage() {
                 <input type="checkbox" defaultChecked className="accent-phosphor" />
                 Remember me
               </label>
-              <a href="#" onClick={(e) => e.preventDefault()} className="text-phosphor hover:text-phosphor-glow transition-colors">
+              <Link href="/reset-password" className="text-phosphor hover:text-phosphor-glow transition-colors">
                 Forgot password?
-              </a>
+              </Link>
             </div>
 
             <button

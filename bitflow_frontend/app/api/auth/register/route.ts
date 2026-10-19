@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { createSession, hashPassword } from "@/lib/auth-utils";
+import { createSession, hashPassword, passwordProblem } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +32,11 @@ export async function POST(request: Request) {
         { error: "Invalid role specified." },
         { status: 400 }
       );
+    }
+
+    const weak = passwordProblem(password);
+    if (weak) {
+      return NextResponse.json({ error: weak }, { status: 400 });
     }
 
     // Check if user already exists

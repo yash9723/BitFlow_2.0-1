@@ -17,6 +17,7 @@ model User {
   username    String         @unique
   password    String
   role        String         @default("STUDENT") // "STUDENT" | "ADMIN"
+  recoveryCodeHash String?   // one-time password-reset code (scrypt, like passwords); null = none
   createdAt   DateTime       @default(now())
 
   // Relations
