@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -117,6 +118,17 @@ def _run_limited(
 
 
 LINT_TIMEOUT_SECONDS = 15
+
+
+_COMPILE_ERROR = re.compile(r"^\S+\.v:\d+: (?:error: )?.*(?:error|Unknown module|I give up)", re.I)
+
+
+def first_compile_error(compile_out: str) -> str | None:
+    """The first located iverilog error, e.g. 'tb.v:10: error: Unknown module type: counter'."""
+    for line in compile_out.splitlines():
+        if _COMPILE_ERROR.match(line.strip()):
+            return line.strip()
+    return None
 
 
 def _lint_design(design_file: str, cwd: str) -> str:
@@ -235,12 +247,16 @@ def _run_simulation_sync(
             cwd=tmpdir,
             timeout=30,
         )
+        # Paths relative to the workspace: "tb.v:10", not "/tmp/verilog_…/tb.v:10".
+        compile_out = (compile_out or "").replace(tmpdir + os.sep, "")
         if compile_out:
             combined_stdout.append(compile_out)
 
         if compile_rc != 0:
-            combined_stdout.append("[ERROR] Compilation failed (iverilog exited with error).")
-            logger.warning("ws=%s | Compilation failed", workspace_id)
+            cause = first_compile_error(compile_out)
+            combined_stdout.append(f"[ERROR] Compilation failed: {cause}" if cause
+                                   else "[ERROR] Compilation failed (iverilog exited with error).")
+            logger.warning("ws=%s | Compilation failed: %s", workspace_id, cause)
             exit_code = SandboxExitCode.COMPILE_ERROR
             duration_ms = (time.monotonic() - t_start) * 1000
             return SandboxResult(

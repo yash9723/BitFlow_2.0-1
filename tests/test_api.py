@@ -250,6 +250,14 @@ class TestSandboxLimits:
         result = _run_real(GOOD_DESIGN, GOOD_TESTBENCH)
         assert result.status == "success", result.stdout + result.stderr
 
+    def test_compile_error_names_the_cause(self):
+        # a testbench left over from another design: its module is missing
+        tb = "module tb; adder dut(); initial $finish; endmodule"
+        result = _run_real(GOOD_DESIGN, tb)
+        assert result.status == "compile_error"
+        assert "[ERROR] Compilation failed: tb.v:1: error: Unknown module type: adder" in result.stdout, result.stdout
+        assert "/tmp" not in result.stdout and "verilog_" not in result.stdout
+
     def test_output_flood_is_truncated(self):
         flood = """
 module tb;
@@ -831,3 +839,12 @@ class TestBoard:
         assert "Too large" in board_netlist({"modules": {"t": top}})["error"]
         top["cells"] = {"s": {"type": "$scopeinfo", "connections": {}}, "n": cell}
         assert board_netlist({"modules": {"t": top}})["cells"] == [{"type": "$_NOT_", "conn": {"A": [2], "Y": [3]}}]
+
+
+def test_first_compile_error():
+    from api.sandbox import first_compile_error
+    out = "design.v:4: warning: implicit definition\ndesign.v:13: syntax error\nI give up."
+    assert first_compile_error(out) == "design.v:13: syntax error"
+    assert first_compile_error("tb.v:10: error: Unknown module type: counter\n2 error(s) during elaboration.") \
+        == "tb.v:10: error: Unknown module type: counter"
+    assert first_compile_error("something unexpected") is None
