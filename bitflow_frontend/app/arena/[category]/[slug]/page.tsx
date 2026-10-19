@@ -40,6 +40,7 @@ export default async function ArenaPage({ params }: PageProps) {
     publicTestbench:  problem.publicTestbench,
     hiddenTestcases:  [],   // graded server-side; never sent to the browser
     xpReward:         problem.xpReward,
+    problemType:      (problem as { problemType?: string }).problemType === "testbench" ? "testbench" as const : "design" as const,
     estimatedMin:     30,
   };
 

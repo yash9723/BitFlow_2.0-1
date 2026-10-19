@@ -14,7 +14,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
-import { counterexampleTable, designPolicyViolation, failingTestWaveform, findCounterexample, gradeDesign, gradingTestbenches } from "@/lib/grading";
+import {
+  counterexampleTable, designPolicyViolation, failingTestWaveform, findCounterexample, gradeDesign, gradeTestbench,
+  gradingTestbenches, testbenchPolicyViolation,
+} from "@/lib/grading";
 import { recordSubmission } from "@/lib/record-submission";
 import { metricsOnBackend } from "@/lib/backend";
 import { claimDailyBonus, getDailyQuestion } from "@/lib/daily";
@@ -54,14 +57,21 @@ export async function POST(
     return NextResponse.json({ error: `Problem not found: ${params.slug}` }, { status: 404 });
   }
 
-  const violation = designPolicyViolation(designCode, gradingTestbenches(question));
+  // Testbench problems grade the student's tb.v against the given DUT and its bugs.
+  const isTestbench = question.problemType === "testbench";
+  if (isTestbench && !testbenchCode.trim()) {
+    return NextResponse.json({ error: "testbenchCode is required." }, { status: 400 });
+  }
+  const violation = isTestbench
+    ? testbenchPolicyViolation(testbenchCode)
+    : designPolicyViolation(designCode, gradingTestbenches(question));
   if (violation) {
     return NextResponse.json({ error: violation }, { status: 422 });
   }
 
   let grade;
   try {
-    grade = await gradeDesign(question, designCode);
+    grade = isTestbench ? await gradeTestbench(question, testbenchCode) : await gradeDesign(question, designCode);
   } catch (err) {
     console.error("[submit] grading failed:", err);
     return NextResponse.json(
@@ -71,10 +81,10 @@ export async function POST(
   }
 
   // Started now, awaited below: runs alongside the DB writes.
-  const failingWaveform = failingTestWaveform(question, designCode, grade);
-  const counterexample  = grade.accepted ? Promise.resolve(null) : findCounterexample(question, designCode);
+  const failingWaveform = isTestbench ? Promise.resolve(null) : failingTestWaveform(question, designCode, grade);
+  const counterexample  = grade.accepted || isTestbench ? Promise.resolve(null) : findCounterexample(question, designCode);
   // Optimization scores for the leaderboard (accepted designs only; never affects the verdict)
-  const metrics = grade.accepted
+  const metrics = grade.accepted && !isTestbench
     ? metricsOnBackend(designCode)
         .then(({ status, data }) => (status === 200 && data?.ok ? { gates: data.gates as number, depth: data.depth as number, ffBits: data.ffBits as number } : null))
         .catch(() => null)
@@ -85,7 +95,7 @@ export async function POST(
   const saved = await recordSubmission({
     userId:          user?.id ?? null,
     question,
-    designCode,
+    designCode:      isTestbench ? question.starterCode : designCode,
     testbenchCode,
     submissionType:  "SUBMIT",
     simStatus:       grade.accepted ? "SUCCESS" : "RUNTIME_ERROR",
@@ -139,7 +149,7 @@ export async function POST(
       total:           grade.total,
       accepted:        grade.accepted,
       totalDurationMs: grade.totalDurationMs,
-      submittedCode:   designCode,
+      submittedCode:   isTestbench ? testbenchCode : designCode,
       xpEarned:        (saved?.xpEarned ?? 0) + dailyBonusXp,   // what was actually awarded
       dailyBonusXp,
       errorMessage:    grade.errorMessage,

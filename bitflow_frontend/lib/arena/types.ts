@@ -51,6 +51,9 @@ export interface ArenaProblem {
   testbenchSkeleton:  string;
   hiddenTestcases:  ArenaTestcase[];
 
+  /** "testbench": starterCode is a correct DUT and the student writes tb.v that catches its bugs. */
+  problemType?: "design" | "testbench";
+
   // Rewards
   xpReward:     number;
   /** Estimated solve time in minutes — shown in the problem card */
@@ -74,7 +77,8 @@ export type ArenaCategory =
   | "Arithmetic"
   | "Memory"
   | "Protocol"
-  | "Pipeline";
+  | "Pipeline"
+  | "Verification";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Submission result — parallel shape to Learning Path SubmissionResult

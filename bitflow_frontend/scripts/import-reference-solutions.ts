@@ -3,7 +3,9 @@
  *
  *   npx tsx scripts/import-reference-solutions.ts private/reference-solutions.json
  *
- * The JSON file maps problem slug -> Verilog source. Each solution is graded
+ * The JSON file maps problem slug -> Verilog source. For testbench problems the
+ * source is a model testbench: it must pass the DUT, and the mutants it catches are
+ * stored as the bugs students must catch (Question.mutants). Each solution is graded
  * against that problem's hidden tests by the simulation backend, under the same
  * rules as a learner's Submit, and stored in Question.referenceSolution only if
  * it passes. Needs DATABASE_URL, BACKEND_URL and JWT_SECRET, so run it inside the
@@ -36,7 +38,11 @@ async function main() {
       rejected++;
       continue;
     }
-    await prisma.question.update({ where: { slug }, data: { referenceSolution: code } });
+    await prisma.question.update({
+      where: { slug },
+      data:  { referenceSolution: code, ...(result.mutants ? { mutants: JSON.stringify(result.mutants) } : {}) },
+    });
+    if (result.mutants) console.log(`ok   ${slug}: ${result.mutants.length} bugs to catch`);
     stored++;
   }
 

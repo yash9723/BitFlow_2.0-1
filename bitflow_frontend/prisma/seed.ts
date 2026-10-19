@@ -30,6 +30,7 @@ async function upsertProblem(problem: any, learningLevel: string) {
     waveformRequired: problem.waveformRequired ?? false,
     xpReward: problem.xpReward ?? 300,
     xpBonusNoHints: problem.xpBonusNoHints ?? null,
+    problemType: problem.problemType ?? "design",
   };
 
   await prisma.question.upsert({

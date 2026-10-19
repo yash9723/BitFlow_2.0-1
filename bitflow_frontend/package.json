@@ -14,7 +14,8 @@
     "import-solutions": "tsx scripts/import-reference-solutions.ts",
     "check-gate-sim": "tsx scripts/gate-sim.check.ts",
     "check-contests": "tsx scripts/contest.check.ts",
-    "check-diagnostics": "tsx scripts/diagnostics.check.ts"
+    "check-diagnostics": "tsx scripts/diagnostics.check.ts",
+    "check-mutants": "tsx scripts/mutants.check.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",

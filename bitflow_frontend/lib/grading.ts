@@ -10,6 +10,7 @@ import type { Testcase, TestcaseVerdict } from "@/lib/problem-types";
 import type { SimulateResponse } from "@/lib/types";
 import { equivalenceOnBackend, simulateOnBackend } from "@/lib/backend";
 import { parseVcd, type ParsedVcd } from "@/lib/vcd-parser";
+import { generateMutants, parseMutants, pickMutants, type Mutant } from "@/lib/mutants";
 
 export interface GradableQuestion {
   learningLevel:      string;
@@ -173,9 +174,82 @@ function parseTestcases(json: string): Testcase[] {
  * A reference solution is accepted only under the rules a learner's Submit
  * uses: the design policy, then every hidden test. Throws only on backend failure.
  */
+// ── Testbench problems ("find the bugs") ────────────────────────────────────
+// The student writes tb.v for a given, correct DUT (Question.starterCode). It must
+// pass that DUT and fail ("catch") each stored mutant of it (Question.mutants).
+
+export interface TestbenchQuestion { starterCode: string; mutants?: string | null; dataFiles?: string | null }
+
+/** Max mutants kept per problem: enough variety, bounded grading cost. */
+export const MAX_MUTANTS = 8;
+
+/** A testbench must test behaviour: no reading files (e.g. the DUT's source) or running commands. */
+export function testbenchPolicyViolation(tb: string): string | null {
+  const task = tb.match(/\$(fopen|fread|fgets|fgetc|fscanf|sscanf|readmem[bh]|system)\b/);
+  return task ? `Testbenches here can't use $${task[1]}: check the design's outputs instead.` : null;
+}
+
+/** Grade a student testbench. Throws only on backend/infrastructure failure. */
+export async function gradeTestbench(q: TestbenchQuestion, tb: string): Promise<GradeResult> {
+  const mutants = parseMutants(q.mutants);
+  const files = parseDataFiles(q.dataFiles);
+  if (mutants.length === 0) {
+    return { verdicts: [], passed: 0, total: 0, accepted: false, totalDurationMs: 0, stdout: null, stderr: null, exitCode: null,
+             errorMessage: "This problem isn't ready yet: its bugs haven't been generated (an admin needs to import the model testbench)." };
+  }
+  const base = await simulate(q.starterCode, tb, files);
+  if (!sentinelPassed(base.success, base.stdout ?? "")) {
+    return {
+      verdicts: [], passed: 0, total: mutants.length, accepted: false, totalDurationMs: base.duration_ms ?? 0,
+      stdout: base.stdout ?? null, stderr: base.stderr ?? null, exitCode: base.exit_code ?? null,
+      errorMessage: base.status === "compile_error"
+        ? "Your testbench doesn't compile with the design."
+        : "Your testbench reports a failure (or doesn't finish) on the correct design. It must pass the given DUT and only flag broken ones.",
+    };
+  }
+  const verdicts: TestcaseVerdict[] = await Promise.all(mutants.map(async (m) => {
+    const r = await simulate(m.code, tb, files);
+    const caught = !sentinelPassed(r.success, r.stdout ?? "");
+    return {
+      testcaseId: m.id, description: `${caught ? "Caught" : "Missed"}: ${m.description}`, passed: caught,
+      actualOutput: "", expectedOutput: "", durationMs: r.duration_ms ?? 0,
+    };
+  }));
+  const passed = verdicts.filter((v) => v.passed).length;
+  return {
+    verdicts, passed, total: mutants.length, accepted: passed === mutants.length,
+    totalDurationMs: (base.duration_ms ?? 0) + verdicts.reduce((s, v) => s + v.durationMs, 0),
+    stdout: base.stdout ?? null, stderr: base.stderr ?? null, exitCode: base.exit_code ?? null,
+    errorMessage: passed === mutants.length ? undefined : `Your testbench caught ${passed} of ${mutants.length} bugs.`,
+  };
+}
+
+/** Model testbench of a testbench problem: must pass the DUT; returns the mutants it catches (they're real bugs). */
+async function verifyModelTestbench(q: TestbenchQuestion, tb: string): Promise<{ ok: true; mutants: Mutant[] } | { ok: false; error: string }> {
+  const violation = testbenchPolicyViolation(tb);
+  if (violation) return { ok: false, error: violation };
+  const files = parseDataFiles(q.dataFiles);
+  const base = await simulate(q.starterCode, tb, files);
+  if (!sentinelPassed(base.success, base.stdout ?? "")) {
+    return { ok: false, error: `model testbench fails the correct design: ${(base.stdout || base.stderr || "").trim().split("\n").slice(-3).join(" | ")}`.slice(0, 500) };
+  }
+  const candidates = generateMutants(q.starterCode);
+  const killed: Mutant[] = [];
+  for (let i = 0; i < candidates.length; i += 4) {          // bounded parallelism
+    const batch = candidates.slice(i, i + 4);
+    const runs = await Promise.all(batch.map((m) => simulate(m.code, tb, files)));
+    // Keep mutants that compile and that the model testbench flags.
+    batch.forEach((m, j) => { if (runs[j].status !== "compile_error" && !sentinelPassed(runs[j].success, runs[j].stdout ?? "")) killed.push(m); });
+  }
+  const mutants = pickMutants(killed, MAX_MUTANTS);
+  if (mutants.length < 3) return { ok: false, error: `only ${killed.length} of ${candidates.length} mutants are caught by the model testbench; need at least 3` };
+  return { ok: true, mutants };
+}
+
 export async function verifyReferenceSolution(
-  q: GradableQuestion, code: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+  q: GradableQuestion & { problemType?: string; starterCode?: string; mutants?: string | null }, code: string,
+): Promise<{ ok: true; mutants?: Mutant[] } | { ok: false; error: string }> {
+  if (q.problemType === "testbench") return verifyModelTestbench({ starterCode: q.starterCode ?? "", dataFiles: q.dataFiles }, code);
   const violation = designPolicyViolation(code, gradingTestbenches(q));
   if (violation) return { ok: false, error: violation };
   const grade = await gradeDesign(q, code);

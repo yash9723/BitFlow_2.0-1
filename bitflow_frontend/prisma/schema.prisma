@@ -58,7 +58,9 @@ model Question {
   hiddenTestcases     String   // JSON stringified Testcase[]
   hiddenTestbench     String?
   dataFiles           String?  // JSON {filename: content}: extra input files, e.g. a $readmemh hex file
-  referenceSolution   String?  // Verified correct design; never sent to clients
+  referenceSolution   String?  // Verified correct design (testbench problems: model testbench); never sent to clients
+  problemType         String   @default("design") // "design" | "testbench" (student writes tb.v for a given DUT)
+  mutants             String?  // testbench problems: JSON Mutant[] (lib/mutants.ts) the model testbench catches; never sent to clients
   publicTestcases     String   // JSON stringified Testcase[]
 
   // Evaluation

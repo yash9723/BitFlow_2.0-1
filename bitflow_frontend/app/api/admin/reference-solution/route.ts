@@ -72,7 +72,10 @@ export async function POST(request: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: `Not saved: ${result.error}` }, { status: 422 });
   }
-  await prisma.question.update({ where: { slug }, data: { referenceSolution: code } });
+  await prisma.question.update({
+    where: { slug },
+    data:  { referenceSolution: code, ...("mutants" in result && result.mutants ? { mutants: JSON.stringify(result.mutants) } : {}) },
+  });
   return NextResponse.json({ ok: true });
 }
 

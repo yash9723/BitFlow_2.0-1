@@ -30,7 +30,7 @@ export async function GET(
 
     // Hidden tests and the reference solution never leave the server.
     const {
-      hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, ...publicQuestion
+      hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, mutants: _mut, ...publicQuestion
     } = question;
     // Parse all JSON-stringified fields back to arrays/objects
     const parsed = {

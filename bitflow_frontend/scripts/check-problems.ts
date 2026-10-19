@@ -7,6 +7,7 @@
  *   1. starter code compiles with the public testbench and every hidden test
  *      (iverilog -g2012, same as the simulation API);
  *   2. starter code does NOT pass the hidden tests (that would be free XP).
+ * Testbench problems instead need at least 5 compiling mutants of their DUT.
  * And every Sandbox template (lib/templates.ts) compiles, finishes and prints no FAIL.
  * Reference solutions live in the database and are verified against the
  * hidden tests when imported (scripts/import-reference-solutions.ts) or saved
@@ -21,10 +22,11 @@ import { LEARNING_PATH } from "../lib/problems/index";
 import { ALL_ARENA_PROBLEMS } from "../lib/arena/index";
 import { sentinelPassed, testcasePassed, usesStdoutCompare } from "../lib/grading";
 import { TEMPLATES } from "../lib/templates";
+import { generateMutants } from "../lib/mutants";
 
 interface HiddenTest { name: string; testbench: string; expected: string | null }
 interface CheckProblem {
-  slug: string; learningLevel: string; expectedOutputMode: string;
+  slug: string; learningLevel: string; expectedOutputMode: string; problemType: string;
   starterCode: string; publicTestbench: string; hidden: HiddenTest[];
   files: Record<string, string>;   // extra input files, e.g. a $readmemh hex file
 }
@@ -72,7 +74,7 @@ function hiddenTests(p: any): HiddenTest[] {
     return cases.map((tc: any) => ({ name: `testcase ${tc.id}`, testbench: tc.testbench, expected: tc.expected }));
   }
   // Same fallback as the grader: hidden testbench, else the public one.
-  return [{ name: "hidden testbench", testbench: p.hiddenTestbench || p.publicTestbench, expected: null }];
+  return [{ name: "hidden testbench", testbench: p.hiddenTestbench || p.publicTestbench || p.testbenchSkeleton || "", expected: null }];
 }
 
 const problems: CheckProblem[] = [
@@ -81,6 +83,7 @@ const problems: CheckProblem[] = [
   ...ALL_ARENA_PROBLEMS.map((p: any) => ({ ...p, learningLevel: "Arena" })),
 ].map((p: any) => ({
   slug: p.slug,
+  problemType: p.problemType ?? "design",
   learningLevel: p.learningLevel,
   expectedOutputMode: p.expectedOutputMode ?? "stdout_compare",
   starterCode: p.starterCode,
@@ -102,6 +105,12 @@ for (const p of problems) {
     if (!r.compiled) fail(p.slug, `starter + ${t.name} does not compile: ${r.log.trim().split("\n")[0]}`);
   }
 
+  if (p.problemType === "testbench") {
+    // The DUT is correct by design; what matters is that it has bugs to find.
+    const compiling = generateMutants(p.starterCode).filter((m) => simulate(m.code, p.publicTestbench, p.files).compiled);
+    if (compiling.length < 5) fail(p.slug, `only ${compiling.length} compiling mutants of the DUT (need 5)`);
+    continue;
+  }
   if (accepted(p, p.starterCode).ok) fail(p.slug, "starter code already passes the hidden tests");
 }
 
