@@ -112,8 +112,7 @@ SQLite file is left untouched by the move.
 | Variable | Used by | Purpose |
 |----------|---------|---------|
 | `JWT_SECRET` | API + frontend | **Required** (or the key pair below). Shared secret the frontend uses to sign requests to the API. No default. |
-| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | frontend / API | Alternative to `JWT_SECRET` for split hosting: ES256 key pair (PEM, literal `
-` allowed); only the frontend holds a secret. |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | frontend / API | Alternative to `JWT_SECRET` for split hosting: ES256 key pair (PEM, literal `\n` allowed); only the frontend holds a secret. |
 | `ADMIN_SECRET` | frontend | Secret needed to self-register as ADMIN. Empty disables admin sign-up. |
 | `BACKEND_URL` | frontend | API base URL (compose sets `http://api:8080`). Required in production. |
 | `DATABASE_URL` | frontend | Prisma connection string (default `file:/app/data/dev.db`). |
