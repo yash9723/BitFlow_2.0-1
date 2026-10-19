@@ -257,6 +257,7 @@ class TestSandboxLimits:
         assert result.status == "compile_error"
         assert "[ERROR] Compilation failed: tb.v:1: error: Unknown module type: adder" in result.stdout, result.stdout
         assert "/tmp" not in result.stdout and "verilog_" not in result.stdout
+        assert "Hint: there is no module named 'adder'" in result.stdout
 
     def test_output_flood_is_truncated(self):
         flood = """
@@ -848,3 +849,10 @@ def test_first_compile_error():
     assert first_compile_error("tb.v:10: error: Unknown module type: counter\n2 error(s) during elaboration.") \
         == "tb.v:10: error: Unknown module type: counter"
     assert first_compile_error("something unexpected") is None
+
+
+def test_compile_hint():
+    from api.sandbox import compile_hint
+    assert "two copies" in compile_hint("design.v:81: error: 'counter' has already been declared in this scope.")
+    assert "no module named 'adder'" in compile_hint("tb.v:1: error: Unknown module type: adder")
+    assert compile_hint("design.v:13: syntax error") is None

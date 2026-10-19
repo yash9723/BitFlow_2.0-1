@@ -131,6 +131,19 @@ def first_compile_error(compile_out: str) -> str | None:
     return None
 
 
+def compile_hint(cause: str) -> str | None:
+    """Plain-language next step for the compile errors students hit most."""
+    m = re.search(r"'(\w+)' has already been declared", cause)
+    if m:
+        return (f"'{m.group(1)}' is declared twice. If it is a module, your files contain two copies of it: "
+                f"delete one (or load a template, which replaces both editors).")
+    m = re.search(r"Unknown module type: (\w+)", cause)
+    if m:
+        return (f"there is no module named '{m.group(1)}'. Check the name, or the testbench "
+                f"may belong to a different design.")
+    return None
+
+
 def _lint_design(design_file: str, cwd: str) -> str:
     """
     Verilator lint of design.v. Never affects the simulation verdict: issues
@@ -256,6 +269,9 @@ def _run_simulation_sync(
             cause = first_compile_error(compile_out)
             combined_stdout.append(f"[ERROR] Compilation failed: {cause}" if cause
                                    else "[ERROR] Compilation failed (iverilog exited with error).")
+            hint = compile_hint(cause or "")
+            if hint:
+                combined_stdout.append(f"Hint: {hint}")
             logger.warning("ws=%s | Compilation failed: %s", workspace_id, cause)
             exit_code = SandboxExitCode.COMPILE_ERROR
             duration_ms = (time.monotonic() - t_start) * 1000
