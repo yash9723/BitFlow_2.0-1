@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth-utils";
 import { problemHref } from "@/lib/problem-href";
 import { prisma } from "@/lib/prisma";
+import { currentStreak } from "@/lib/daily";
+import { parseSlugs } from "@/lib/contests";
+import type { LearningLevel } from "@/lib/problem-types";
 
 export const dynamic = "force-dynamic";
+
+const BEGINNER: LearningLevel = "Verilog Beginner";
+
+// Curriculum tiers (lib/problems) and arena labels (lib/arena) share one scale on the profile
+const DIFF_BAND: Record<string, string> = { beginner: "Easy", intermediate: "Medium", advanced: "Hard" };
+const band = (d: string) => DIFF_BAND[d] ?? d;
 
 function toDateKey(d: Date) {
   return d.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -30,12 +39,12 @@ export async function GET() {
     const oneYearAgo = new Date();
     oneYearAgo.setDate(oneYearAgo.getDate() - 365);
 
-    const [xpRecord, solvedProgress, questionCounts, activitySubs, recentAcceptedRaw, totalSubmissions] =
+    const [xpRecord, solvedProgress, questionCounts, activitySubs, recentAcceptedRaw, totalSubmissions, beginnerTotal, contests] =
       await Promise.all([
         prisma.userXp.findUnique({ where: { userId } }),
         prisma.userProgress.findMany({
           where: { userId, solved: true },
-          select: { question: { select: { difficulty: true } } },
+          select: { question: { select: { difficulty: true, learningLevel: true } } },
         }),
         prisma.question.groupBy({ by: ["difficulty"], _count: { _all: true } }),
         prisma.submission.findMany({
@@ -53,18 +62,33 @@ export async function GET() {
           },
         }),
         prisma.submission.count({ where: { userId } }),
+        prisma.question.count({ where: { learningLevel: BEGINNER } }),
+        prisma.contest.findMany({ where: { startsAt: { lte: new Date() } }, select: { startsAt: true, endsAt: true, problemSlugs: true }, take: 200 }),
       ]);
+
+    // Took part in a contest: any SUBMIT to one of its problems inside its window
+    const contested = contests.length > 0 && !!(await prisma.submission.findFirst({
+      where: {
+        userId, submissionType: "SUBMIT",
+        OR: contests.map((c) => ({
+          createdAt: { gte: c.startsAt, lt: c.endsAt },
+          question:  { slug: { in: parseSlugs(c.problemSlugs) } },
+        })),
+      },
+      select: { id: true },
+    }));
 
     // Solved / total counts per difficulty
     const solvedByDifficulty: Record<string, number> = {};
     for (const p of solvedProgress) {
-      const diff = p.question.difficulty;
+      const diff = band(p.question.difficulty);
       solvedByDifficulty[diff] = (solvedByDifficulty[diff] || 0) + 1;
     }
     const totalByDifficulty: Record<string, number> = {};
     let totalProblems = 0;
     for (const q of questionCounts) {
-      totalByDifficulty[q.difficulty] = q._count._all;
+      const diff = band(q.difficulty);
+      totalByDifficulty[diff] = (totalByDifficulty[diff] || 0) + q._count._all;
       totalProblems += q._count._all;
     }
 
@@ -95,14 +119,28 @@ export async function GET() {
         title: s.question.title,
         slug: s.question.slug,
         href: problemHref(s.question),
-        difficulty: s.question.difficulty,
+        difficulty: band(s.question.difficulty),
         submittedAt: s.createdAt.toISOString(),
       });
       if (recentAC.length >= 10) break;
     }
 
+    const solved = solvedProgress.length;
+    const beginnerSolved = solvedProgress.filter((p) => p.question.learningLevel === BEGINNER).length;
+    const badges = [
+      { id: "first-solve", label: "First Solve",  description: "Solve your first problem",           earned: solved >= 1 },
+      { id: "solved-10",   label: "Ten Down",     description: "Solve 10 problems",                  earned: solved >= 10 },
+      { id: "solved-25",   label: "Quarter Century", description: "Solve 25 problems",               earned: solved >= 25 },
+      { id: "solved-50",   label: "Half Century", description: "Solve 50 problems",                  earned: solved >= 50 },
+      { id: "streak-7",    label: "Week Streak",  description: "Be active 7 days in a row",          earned: maxStreak >= 7 },
+      { id: "beginner",    label: "Foundations",  description: "Solve every Beginner problem",       earned: beginnerTotal > 0 && beginnerSolved >= beginnerTotal },
+      { id: "contest",     label: "Contender",    description: "Submit a solution during a contest", earned: contested },
+    ];
+
     return NextResponse.json({
       user,
+      badges,
+      dailyStreak: currentStreak(xpRecord),
       totalXp: xpRecord?.totalXp || 0,
       totalSolved: solvedProgress.length,
       totalProblems,

@@ -559,7 +559,7 @@ type ProfileStats = {
   totalActiveDays: number;
   maxStreak: number;
 };
-type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean };
+type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean; streak: number };
 
 function DashboardContent() {
   const { user, logout } = useAuth();
@@ -607,6 +607,7 @@ function DashboardContent() {
           level:        p.learningLevel,
           bonusXp:      json.bonusXp,
           claimedToday: json.claimedToday,
+          streak:       json.streak ?? 0,
         } : null);
       })
       .catch(() => setDaily(null));
@@ -628,6 +629,9 @@ function DashboardContent() {
         <div className="flex items-center gap-4">
           <Link href="/classes" className="text-[12px] text-ghost hover:text-bright transition-colors">
             Classes
+          </Link>
+          <Link href="/contests" className="text-[12px] text-ghost hover:text-bright transition-colors">
+            Contests
           </Link>
           <Link href="/leaderboard" className="text-[12px] text-ghost hover:text-bright transition-colors">
             Leaderboard
@@ -772,8 +776,15 @@ function DashboardContent() {
           </GlassCard>
 
           <GlassCard>
-            <div className="text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)] mb-3">
-              Daily Challenge
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)]">
+                Daily Challenge
+              </div>
+              {daily && daily.streak > 0 && (
+                <span className="text-[11px] text-warn font-semibold" title="Consecutive days you solved the daily challenge">
+                  🔥 {daily.streak}-day streak
+                </span>
+              )}
             </div>
             {daily ? (
               <Link href={daily.href} className="block group">

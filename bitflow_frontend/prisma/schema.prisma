@@ -26,6 +26,7 @@ model User {
   sessions    Session[]
   ownedClasses     Classroom[]   @relation("OwnedClasses")
   classMemberships ClassMember[]
+  sharedDesigns    SharedDesign[]
 }
 
 // ============================================================================
@@ -114,6 +115,7 @@ model UserXp {
   totalXp         Int      @default(0)
   unlockedModules String   @default("[\"mod_logic_gates\", \"mod_arithmetic\"]")
   lastDailyBonus  String?  // UTC date (YYYY-MM-DD) the daily-challenge bonus was last awarded
+  dailyStreak     Int      @default(0) // consecutive days the daily bonus was claimed, as of lastDailyBonus
   updatedAt       DateTime @updatedAt
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -232,4 +234,37 @@ model Assignment {
   classroom    Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)
 
   @@index([classId])
+}
+
+// ============================================================================
+// SHARED SANDBOX DESIGNS — read-only links (/s/[id]) anyone can open and fork
+// ============================================================================
+
+model SharedDesign {
+  id            String   @id                 // short random slug, e.g. "k3Fq9xZp"
+  ownerId       String
+  title         String
+  designCode    String
+  testbenchCode String
+  createdAt     DateTime @default(now())
+
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+}
+
+// ============================================================================
+// CONTESTS — timed sets of existing problems; standings are computed from
+// SUBMIT rows inside [startsAt, endsAt)
+// ============================================================================
+
+model Contest {
+  id           String   @id @default(uuid())
+  title        String
+  startsAt     DateTime
+  endsAt       DateTime
+  problemSlugs String   // JSON stringified string[] (Question.slug)
+  createdAt    DateTime @default(now())
+
+  @@index([startsAt])
 }

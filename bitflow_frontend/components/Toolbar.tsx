@@ -33,6 +33,8 @@ interface ToolbarProps {
   onSynthesize?:  () => void;
   /** Opens the virtual board (gate-level simulation in the browser). */
   onBoard?:       () => void;
+  /** Saves the design as a read-only share link (/s/[id]). */
+  onShare?:       () => void;
   /** Download project ZIP — only shown when result exists */
   onExportZip?:   () => void;
   /** Export snapshot PNG — only shown when result exists */
@@ -82,6 +84,7 @@ export default function Toolbar({
   onAIToggle,
   onSynthesize,
   onBoard,
+  onShare,
   onExportZip,
   onExportImage,
   isExporting = false,
@@ -120,6 +123,7 @@ export default function Toolbar({
             { href: "/arena", label: "Arena" },
             { href: "/academy", label: "Academy" },
             { href: "/classes", label: "Classes" },
+            { href: "/contests", label: "Contests" },
             ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
           ].map(({ href, label }) => {
             const active = pathname.startsWith(href);
@@ -224,6 +228,16 @@ export default function Toolbar({
             className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
           >
             Board
+          </button>
+        )}
+
+        {onShare && (
+          <button
+            onClick={onShare}
+            title="Copy a read-only link to this design that anyone can open and fork"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            Share
           </button>
         )}
 

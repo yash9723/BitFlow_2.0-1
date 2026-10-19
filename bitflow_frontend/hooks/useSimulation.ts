@@ -25,6 +25,10 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 // Default editor content — shown on first load
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** localStorage keys of the Sandbox editors (JSON strings); "Fork" on /s/[id] writes them too. */
+export const DESIGN_STORAGE_KEY    = "bitflow_design_v";
+export const TESTBENCH_STORAGE_KEY = "bitflow_testbench_v";
+
 export const DEFAULT_DESIGN = `\`timescale 1ns / 1ps
 
 // 4-bit synchronous up-counter with enable and reset
@@ -125,8 +129,8 @@ export interface UseSimulationReturn {
 export function useSimulation(): UseSimulationReturn {
   // Persisted to localStorage — restored automatically on refresh.
   // Key names are stable strings; changing them clears stored values.
-  const [storedDesignCode,    setDesignCode]    = useLocalStorage<string>("bitflow_design_v",    DEFAULT_DESIGN);
-  const [storedTestbenchCode, setTestbenchCode] = useLocalStorage<string>("bitflow_testbench_v", DEFAULT_TESTBENCH);
+  const [storedDesignCode,    setDesignCode]    = useLocalStorage<string>(DESIGN_STORAGE_KEY,    DEFAULT_DESIGN);
+  const [storedTestbenchCode, setTestbenchCode] = useLocalStorage<string>(TESTBENCH_STORAGE_KEY, DEFAULT_TESTBENCH);
 
   const designCode = storedDesignCode.trim() === "" ? DEFAULT_DESIGN : storedDesignCode;
   const testbenchCode = storedTestbenchCode.trim() === "" ? DEFAULT_TESTBENCH : storedTestbenchCode;

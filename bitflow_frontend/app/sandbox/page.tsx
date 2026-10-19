@@ -309,6 +309,23 @@ function SandboxContent() {
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+
+  /** Save the editors as a read-only link, copy it, and show it (clipboard access can be blocked). */
+  const handleShare = useCallback(async () => {
+    try {
+      const res = await fetch("/api/share", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ designCode, testbenchCode }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Sharing failed (${res.status}).`);
+      const url = `${window.location.origin}${data.url}`;
+      const copied = await navigator.clipboard?.writeText(url).then(() => true, () => false);
+      window.prompt(copied ? "Link copied. Anyone with it can view and fork this design:" : "Copy this link. Anyone with it can view and fork this design:", url);
+    } catch (err) {
+      window.alert((err as Error).message || "Sharing failed.");
+    }
+  }, [designCode, testbenchCode]);
   const toggleAI = useCallback(() => setIsAIOpen((v) => !v), []);
 
   // ── Export state ──────────────────────────────────────────────────────────
@@ -584,6 +601,7 @@ function SandboxContent() {
         onAIToggle={toggleAI}
         onSynthesize={() => setSynthOpen(true)}
         onBoard={() => setBoardOpen(true)}
+        onShare={handleShare}
         onExportZip={result ? handleExportZip : undefined}
         onExportImage={result ? handleExportImage : undefined}
         isExporting={isExporting}

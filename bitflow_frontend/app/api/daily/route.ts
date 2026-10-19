@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
-import { DAILY_BONUS_XP, getDailyQuestion, todayKey } from "@/lib/daily";
+import { DAILY_BONUS_XP, currentStreak, getDailyQuestion, todayKey } from "@/lib/daily";
 import { problemHref } from "@/lib/problem-href";
 
 export const dynamic = "force-dynamic";
@@ -19,18 +19,21 @@ export async function GET() {
 
     const user = await getSessionUser();
     let claimedToday = false;
+    let streak = 0;
     if (user) {
       const xp = await prisma.userXp.findUnique({
         where:  { userId: user.id },
-        select: { lastDailyBonus: true },
+        select: { lastDailyBonus: true, dailyStreak: true },
       });
       claimedToday = xp?.lastDailyBonus === day;
+      streak = currentStreak(xp, day);
     }
 
     return NextResponse.json({
       date:    day,
       bonusXp: DAILY_BONUS_XP,
       claimedToday,
+      streak,      // consecutive days the daily challenge was solved (0 if lapsed)
       problem: {
         slug:          q.slug,
         title:         q.title,

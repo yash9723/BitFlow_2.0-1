@@ -17,14 +17,20 @@ type ProfileData = {
   maxStreak: number;
   activity: Record<string, number>;
   recentAC: Array<{ title: string; slug: string; href: string; difficulty: string; submittedAt: string }>;
+  badges: Array<{ id: string; label: string; description: string; earned: boolean }>;
+  dailyStreak: number;
 };
 
-const DIFF_ORDER = ["Easy", "Medium", "Hard"];
+// The API folds beginner/intermediate/advanced into Easy/Medium/Hard
+const DIFF_ORDER = ["Easy", "Medium", "Hard", "Expert"];
 const DIFF_COLOR: Record<string, { ring: string; text: string; bg: string }> = {
   Easy:   { ring: "#00e87a", text: "text-phosphor", bg: "bg-phosphor/10" },
   Medium: { ring: "#4db8ff", text: "text-info",     bg: "bg-info/10" },
   Hard:   { ring: "#ffb84d", text: "text-warn",     bg: "bg-warn/10" },
+  Expert: { ring: "#ff4f4f", text: "text-danger",   bg: "bg-danger/10" },
 };
+const OTHER_COLOR = { ring: "#7a7d96", text: "text-ghost", bg: "bg-void/40" };
+const diffColor = (d: string) => DIFF_COLOR[d] ?? OTHER_COLOR;
 
 function tierFromXp(xp: number) {
   if (xp >= 7000) return { label: "Architect", color: "text-phosphor-glow" };
@@ -95,6 +101,8 @@ function ProfileContent() {
     );
   }
 
+  // Known bands first, then any tier the mapping doesn't know, so the ring always sums to totalSolved
+  const diffs = [...DIFF_ORDER, ...Object.keys(data.totalByDifficulty).filter((d) => !DIFF_ORDER.includes(d))];
   const weeks = buildHeatmapWeeks(data.activity);
   const tier = tierFromXp(data.totalXp);
   const memberSince = new Date(data.user.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -180,7 +188,30 @@ function ProfileContent() {
                 <span className="text-ghost">Max Streak</span>
                 <span className="text-bright font-semibold">{data.maxStreak} {data.maxStreak === 1 ? "day" : "days"}</span>
               </div>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-ghost">Daily Challenge Streak</span>
+                <span className="text-warn font-semibold">{data.dailyStreak} {data.dailyStreak === 1 ? "day" : "days"}</span>
+              </div>
             </div>
+          </div>
+
+          <div className="border border-rim rounded-xl p-5 bg-pit">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-bright">Badges</span>
+              <span className="text-[10px] text-dim">{data.badges.filter((b) => b.earned).length}/{data.badges.length}</span>
+            </div>
+            <ul className="grid grid-cols-2 gap-2">
+              {data.badges.map((b) => (
+                <li key={b.id} title={b.description}
+                    className={`rounded-lg border px-2.5 py-2 ${b.earned ? "border-phosphor/40 bg-phosphor/10" : "border-rim opacity-50"}`}>
+                  <div className={`text-[11px] font-semibold ${b.earned ? "text-phosphor" : "text-ghost"}`}>
+                    {b.earned ? "★ " : ""}{b.label}
+                  </div>
+                  <div className="text-[9px] text-dim leading-snug mt-0.5">{b.description}</div>
+                  <span className="sr-only">{b.earned ? "Earned" : "Not earned yet"}</span>
+                </li>
+              ))}
+            </ul>
           </div>
 
           <div className="border border-rim rounded-xl p-5 bg-pit">
@@ -200,7 +231,7 @@ function ProfileContent() {
                 {(() => {
                   const circumference = 2 * Math.PI * 52;
                   let offsetAcc = 0;
-                  return DIFF_ORDER.map((d) => {
+                  return diffs.map((d) => {
                     const solved = data.solvedByDifficulty[d] || 0;
                     const frac = data.totalProblems > 0 ? solved / data.totalProblems : 0;
                     const dash = frac * circumference;
@@ -211,7 +242,7 @@ function ProfileContent() {
                         cy="60"
                         r="52"
                         fill="none"
-                        stroke={DIFF_COLOR[d].ring}
+                        stroke={diffColor(d).ring}
                         strokeWidth="10"
                         strokeDasharray={`${dash} ${circumference - dash}`}
                         strokeDashoffset={-offsetAcc}
@@ -229,10 +260,10 @@ function ProfileContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              {DIFF_ORDER.map((d) => (
-                <div key={d} className={`rounded-lg border border-rim p-3 text-center ${DIFF_COLOR[d].bg}`}>
-                  <div className={`text-[11px] font-bold uppercase tracking-wider ${DIFF_COLOR[d].text}`}>{d}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {diffs.map((d) => (
+                <div key={d} className={`rounded-lg border border-rim p-3 text-center ${diffColor(d).bg}`}>
+                  <div className={`text-[11px] font-bold uppercase tracking-wider ${diffColor(d).text}`}>{d}</div>
                   <div className="text-[13px] text-bright mt-1">
                     {data.solvedByDifficulty[d] || 0}/{data.totalByDifficulty[d] || 0}
                   </div>
@@ -300,7 +331,7 @@ function ProfileContent() {
                       {s.title}
                     </span>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className={`text-[10px] uppercase tracking-wide ${DIFF_COLOR[s.difficulty]?.text || "text-ghost"}`}>
+                      <span className={`text-[10px] uppercase tracking-wide ${diffColor(s.difficulty).text}`}>
                         {s.difficulty}
                       </span>
                       <span className="text-[10px] text-dim">

@@ -31,15 +31,33 @@ export async function getDailyQuestion(day: string = todayKey()) {
   return questions[n % questions.length];
 }
 
+/** The UTC day before `day` (YYYY-MM-DD). */
+export function previousDay(day: string): string {
+  return todayKey(new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000));
+}
+
+/** Streak to show on `day`: it lapses once a whole day passes without a claim. */
+export function currentStreak(xp: { lastDailyBonus: string | null; dailyStreak: number } | null, day: string = todayKey()): number {
+  if (!xp?.lastDailyBonus) return 0;
+  return xp.lastDailyBonus === day || xp.lastDailyBonus === previousDay(day) ? xp.dailyStreak : 0;
+}
+
 /**
- * Award the daily bonus once per user per day. A single conditional UPDATE,
- * so two concurrent accepted submissions can't both claim it.
+ * Award the daily bonus once per user per day and extend the streak (+1 if the
+ * last claim was yesterday, else back to 1). The UPDATE only matches the
+ * lastDailyBonus we read, so two concurrent accepted submissions can't both claim it.
  * Returns the XP awarded (0 if already claimed today).
  */
 export async function claimDailyBonus(userId: string, day: string = todayKey()): Promise<number> {
+  const xp = await prisma.userXp.findUnique({ where: { userId }, select: { lastDailyBonus: true, dailyStreak: true } });
+  if (!xp || xp.lastDailyBonus === day) return 0;
   const { count } = await prisma.userXp.updateMany({
-    where: { userId, OR: [{ lastDailyBonus: null }, { lastDailyBonus: { not: day } }] },
-    data:  { lastDailyBonus: day, totalXp: { increment: DAILY_BONUS_XP } },
+    where: { userId, lastDailyBonus: xp.lastDailyBonus },
+    data:  {
+      lastDailyBonus: day,
+      dailyStreak:    xp.lastDailyBonus === previousDay(day) ? xp.dailyStreak + 1 : 1,
+      totalXp:        { increment: DAILY_BONUS_XP },
+    },
   });
   return count === 1 ? DAILY_BONUS_XP : 0;
 }

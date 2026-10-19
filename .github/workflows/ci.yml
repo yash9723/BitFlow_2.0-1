@@ -20,7 +20,7 @@ jobs:
       - run: python -m pytest tests -q
 
   content:
-    name: Content checks (problem starters, board simulator)
+    name: Content checks (problems, templates, board simulator, contest standings)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,6 +36,7 @@ jobs:
       - run: npm ci
       - run: npm run check-problems
       - run: npm run check-gate-sim
+      - run: npm run check-contests
 
   web:
     name: Frontend type-check + build
