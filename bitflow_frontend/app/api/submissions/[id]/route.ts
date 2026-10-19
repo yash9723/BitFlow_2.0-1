@@ -1,7 +1,8 @@
 /**
  * GET /api/submissions/[id] — the design code of one of your own submissions
  * (admins may read any). Only the design is returned: a SUBMIT row's
- * testbench and testcase results come from the hidden tests.
+ * testbench and testcase results come from the hidden tests. Exception:
+ * testbench problems, where tb.v is the student's own work (testbenchCode).
  */
 
 import { NextResponse } from "next/server";
@@ -18,13 +19,14 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
   const submission = await prisma.submission.findUnique({
     where:  { id: params.id },
-    select: { id: true, userId: true, designCode: true, submissionType: true, createdAt: true },
+    select: { id: true, userId: true, designCode: true, testbenchCode: true, submissionType: true, createdAt: true,
+              question: { select: { problemType: true } } },
   });
   // 404 (not 403) for other users' rows so ids can't be probed.
   if (!submission || (submission.userId !== me.id && me.role !== "ADMIN")) {
     return NextResponse.json({ error: "Submission not found." }, { status: 404 });
   }
 
-  const { userId: _owner, ...rest } = submission;
-  return NextResponse.json({ submission: rest });
+  const { userId: _owner, testbenchCode, question, ...rest } = submission;
+  return NextResponse.json({ submission: question.problemType === "testbench" ? { ...rest, testbenchCode } : rest });
 }

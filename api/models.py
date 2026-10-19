@@ -12,7 +12,7 @@ Keeping schemas in one file means:
 from __future__ import annotations
 
 import re
-from enum import IntEnum, auto
+from enum import IntEnum
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator

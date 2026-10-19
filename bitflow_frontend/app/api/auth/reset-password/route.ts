@@ -23,7 +23,9 @@ export async function POST(request: Request) {
   const { username, code, newPassword } = await request.json().catch(() => ({}));
   const name = typeof username === "string" ? username.trim() : "";
 
-  const perClient  = rateLimit(request, { limit: 20, windowMs: WINDOW_MS, prefix: "reset-ip" });
+  // Without TRUST_PROXY every client shares one bucket, so keep that one roomy: the
+  // per-username limit is what stops code guessing (80-bit codes, 5 tries / 15 min).
+  const perClient  = rateLimit(request, { limit: 20, anonymousLimit: 300, windowMs: WINDOW_MS, prefix: "reset-ip" });
   const perAccount = rateLimit(request, { limit: 5, windowMs: WINDOW_MS, prefix: "reset-acct", key: `account:${name.toLowerCase()}` });
   if (!perClient.success || !perAccount.success) {
     return NextResponse.json({ error: "Too many attempts. Please wait 15 minutes and try again." }, { status: 429 });

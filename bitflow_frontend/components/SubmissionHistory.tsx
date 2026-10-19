@@ -24,6 +24,8 @@ interface Props {
   slug:        string;
   currentCode: string;
   onLoad:      (code: string) => void;
+  /** Which file the history shows: testbench problems keep the student's work in tb.v. */
+  file?:       "design" | "testbench";
   /** Results that change when a run/submit finishes (fixed length) — refetches the list. */
   refreshOn?: readonly unknown[];
 }
@@ -43,7 +45,7 @@ function verdict(r: Row): { label: string; cls: string } {
 const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export default function SubmissionHistory({ slug, currentCode, onLoad, refreshOn = [] }: Props) {
+export default function SubmissionHistory({ slug, currentCode, onLoad, refreshOn = [], file = "design" }: Props) {
   const [rows,  setRows]  = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [diff,  setDiff]  = useState<{ row: Row; code: string } | null>(null);
@@ -73,7 +75,8 @@ export default function SubmissionHistory({ slug, currentCode, onLoad, refreshOn
     try {
       const res = await fetch(`/api/submissions/${row.id}`);
       if (!res.ok) throw new Error();
-      return (await res.json()).submission.designCode as string;
+      const sub = (await res.json()).submission;
+      return (file === "testbench" ? sub.testbenchCode : sub.designCode) as string;
     } catch {
       setError("Couldn't load that attempt.");
       return null;

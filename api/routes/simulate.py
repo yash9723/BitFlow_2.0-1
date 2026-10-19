@@ -28,10 +28,9 @@ import logging
 import time
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
-from fastapi.responses import JSONResponse
 
 from api.config import settings
-from api.exceptions import InvalidSourceError, SourceTooLargeError, TimeoutValueError
+from api.exceptions import InvalidSourceError
 from api.models import SimulateJsonRequest, SimulateResponse, WaveformInfo
 from api.sandbox import run_simulation
 from api.utils import (

@@ -160,8 +160,9 @@ export function ArenaSolverClient({ problem }: Props) {
               <div className="mt-2">
                 <SubmissionHistory
                   slug={problem.slug}
-                  currentCode={hook.designCode}
-                  onLoad={hook.setDesignCode}
+                  file={isTestbench ? "testbench" : "design"}
+                  currentCode={isTestbench ? hook.testbenchCode : hook.designCode}
+                  onLoad={isTestbench ? hook.setTestbenchCode : hook.setDesignCode}
                   refreshOn={[hook.runResult, hook.submission]}
                 />
               </div>

@@ -239,7 +239,10 @@ async function verifyModelTestbench(q: TestbenchQuestion, tb: string): Promise<{
     const batch = candidates.slice(i, i + 4);
     const runs = await Promise.all(batch.map((m) => simulate(m.code, tb, files)));
     // Keep mutants that compile and that the model testbench flags.
-    batch.forEach((m, j) => { if (runs[j].status !== "compile_error" && !sentinelPassed(runs[j].success, runs[j].stdout ?? "")) killed.push(m); });
+    // Caught by a finished run (FAIL printed or a crash). Not timeouts: grading would wait them out on every submit.
+    batch.forEach((m, j) => {
+      if ((runs[j].status === "success" || runs[j].status === "runtime_error") && !sentinelPassed(runs[j].success, runs[j].stdout ?? "")) killed.push(m);
+    });
   }
   const mutants = pickMutants(killed, MAX_MUTANTS);
   if (mutants.length < 3) return { ok: false, error: `only ${killed.length} of ${candidates.length} mutants are caught by the model testbench; need at least 3` };

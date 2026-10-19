@@ -207,7 +207,7 @@ export default function Editor({
         severity:        d.severity === "error" ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
         message:         d.message,
         startLineNumber: line,
-        startColumn:     d.column ?? model.getLineFirstNonWhitespaceColumn(line) ?? 1,
+        startColumn:     d.column ?? (model.getLineFirstNonWhitespaceColumn(line) || 1),   // 0 on an empty line
         endLineNumber:   line,
         endColumn:       model.getLineMaxColumn(line),
       };
