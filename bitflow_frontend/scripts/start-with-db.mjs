@@ -11,6 +11,10 @@ const databaseUrl = process.env.DATABASE_URL || "file:/app/data/dev.db";
 // --setup-only: prepare the database and exit (Vercel's build step, see
 // vercel.json); a failed schema push then fails the deploy.
 const setupOnly = process.argv.includes("--setup-only");
+if (setupOnly && process.env.VERCEL && !/^postgres(ql)?:/.test(databaseUrl)) {
+  console.error("[DB Setup] No Postgres DATABASE_URL. In Vercel: Storage → Neon → connect it to this project, then redeploy.");
+  process.exit(1);
+}
 
 // Postgres needs a directUrl for schema pushes. Vercel's Neon integration
 // provides DATABASE_URL_UNPOOLED; otherwise default to the (pooled) URL.
