@@ -15,7 +15,9 @@
     "check-gate-sim": "tsx scripts/gate-sim.check.ts",
     "check-contests": "tsx scripts/contest.check.ts",
     "check-diagnostics": "tsx scripts/diagnostics.check.ts",
-    "check-mutants": "tsx scripts/mutants.check.ts"
+    "check-mutants": "tsx scripts/mutants.check.ts",
+    "db:export": "tsx scripts/db-transfer.ts export",
+    "db:import": "tsx scripts/db-transfer.ts import"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",

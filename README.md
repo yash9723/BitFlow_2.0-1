@@ -68,6 +68,33 @@ docker compose start frontend
 (The volume is `<project>_bitflow-data`; check with `docker volume ls`.)
 Restore Postgres: `gunzip -c backups/bitflow-<time>.sql.gz | docker compose exec -T postgres psql -U bitflow -d bitflow`.
 
+## Moving from SQLite to Postgres
+
+SQLite is fine for a class; move to Postgres when many people use the site at
+once. `db:export` / `db:import` copy every table (users, progress, submissions,
+classes, contests, reference solutions) and check the row counts.
+
+```bash
+# 1. Export (take a backup first)
+docker compose exec frontend npm run db:export -- /app/data/bitflow-export.json
+
+# 2. Start Postgres, then point the app at it: in .env set
+#      POSTGRES_PASSWORD=<a strong password>
+#      DATABASE_URL=postgresql://bitflow:<the same password>@postgres:5432/bitflow
+docker compose --profile postgres up -d postgres
+docker compose --profile postgres up -d frontend    # creates the tables and seeds the problems
+
+# 3. Import; every table should print "ok"
+docker compose exec frontend npm run db:import -- /app/data/bitflow-export.json
+
+# 4. Check the site, then delete the export (it holds password hashes)
+docker compose exec frontend rm /app/data/bitflow-export.json
+```
+
+Import only runs on a database without users, so it can't overwrite live data.
+To go back, remove `DATABASE_URL` from `.env` and restart the frontend: the
+SQLite file is left untouched by the move.
+
 ## Configuration
 
 | Variable | Used by | Purpose |
