@@ -79,6 +79,7 @@ import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import AIAssistantPanel               from "@/components/AIAssistantPanel";
 import SynthesisPanel                 from "@/components/SynthesisPanel";
+import BoardPanel                     from "@/components/BoardPanel";
 import ExportCard                     from "@/components/ExportCard";
 import AuthGate                       from "@/components/AuthGate";
 import { useSimulation }              from "@/hooks/useSimulation";
@@ -307,6 +308,7 @@ function SandboxContent() {
    */
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
   const toggleAI = useCallback(() => setIsAIOpen((v) => !v), []);
 
   // ── Export state ──────────────────────────────────────────────────────────
@@ -581,6 +583,7 @@ function SandboxContent() {
         isAIOpen={isAIOpen}
         onAIToggle={toggleAI}
         onSynthesize={() => setSynthOpen(true)}
+        onBoard={() => setBoardOpen(true)}
         onExportZip={result ? handleExportZip : undefined}
         onExportImage={result ? handleExportImage : undefined}
         isExporting={isExporting}
@@ -794,6 +797,7 @@ function SandboxContent() {
        * survives open/close cycles.
        */}
       <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} />
+      <BoardPanel isOpen={boardOpen} onClose={() => setBoardOpen(false)} designCode={designCode} />
 
       <AIAssistantPanel
         isOpen={isAIOpen}

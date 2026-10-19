@@ -362,6 +362,84 @@ endmodule
 `,
   },
 
+  // ── Board demo ─────────────────────────────────────────────────────────────
+  boardDemo: {
+    label    : "Board demo: counter on 7-segment",
+    category : "sequential",
+    design   : `\`timescale 1ns / 1ps
+
+// Board demo: click "Board" in the toolbar to run this on a virtual board.
+//   clk      -> Step / Run       rst      -> reset button
+//   btn_down -> hold to count down        sw[1:0]  -> step size 1..4
+//   seg      -> 7-segment digit (seg[0]=a ... seg[6]=g, 1 = lit)
+//   count, led -> LED rows
+module board_demo (
+    input  wire       clk,
+    input  wire       rst,
+    input  wire       btn_down,
+    input  wire [1:0] sw,
+    output reg  [3:0] count,
+    output reg  [6:0] seg,
+    output wire [7:0] led
+);
+    wire [3:0] step = {2'b00, sw} + 4'd1;
+
+    always @(posedge clk) begin
+        if (rst)           count <= 4'd0;
+        else if (btn_down) count <= count - step;
+        else               count <= count + step;
+    end
+
+    // Hex digit decoder, segments gfedcba
+    always @* begin
+        case (count)
+            4'h0: seg = 7'b0111111;  4'h1: seg = 7'b0000110;
+            4'h2: seg = 7'b1011011;  4'h3: seg = 7'b1001111;
+            4'h4: seg = 7'b1100110;  4'h5: seg = 7'b1101101;
+            4'h6: seg = 7'b1111101;  4'h7: seg = 7'b0000111;
+            4'h8: seg = 7'b1111111;  4'h9: seg = 7'b1101111;
+            4'hA: seg = 7'b1110111;  4'hB: seg = 7'b1111100;
+            4'hC: seg = 7'b0111001;  4'hD: seg = 7'b1011110;
+            4'hE: seg = 7'b1111001;  default: seg = 7'b1110001;
+        endcase
+    end
+
+    // One light chasing along the row
+    assign led = 8'b1 << count[2:0];
+endmodule
+`,
+    testbench: `\`timescale 1ns / 1ps
+
+module tb_board_demo;
+    reg        clk = 0, rst = 1, btn_down = 0;
+    reg  [1:0] sw = 2'd0;
+    wire [3:0] count;
+    wire [6:0] seg;
+    wire [7:0] led;
+
+    board_demo dut (.clk(clk), .rst(rst), .btn_down(btn_down), .sw(sw), .count(count), .seg(seg), .led(led));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("wave.vcd");
+        $dumpvars(0, tb_board_demo);
+    end
+
+    initial begin
+        @(posedge clk); #1 rst = 0;
+        repeat (3) begin @(posedge clk); #1 $display("count=%0d seg=%b led=%b", count, seg, led); end
+        sw = 2'd1;                       // count by 2
+        repeat (2) begin @(posedge clk); #1 $display("count=%0d (by 2)", count); end
+        btn_down = 1;                    // and back down
+        repeat (2) begin @(posedge clk); #1 $display("count=%0d (down)", count); end
+        if (count == 4'd3) $display("PASS"); else $display("FAIL");
+        $finish;
+    end
+endmodule
+`,
+  },
+
 }; // end TEMPLATES
 
 /**
@@ -374,4 +452,5 @@ export const TEMPLATE_ORDER: string[] = [
   "dFlipFlop",
   "counter4bit",
   "fsmSkeleton",
+  "boardDemo",
 ];

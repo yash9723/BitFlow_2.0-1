@@ -301,13 +301,14 @@ def gate_metrics(stat: dict, ltp_text: str) -> dict:
     return {"gates": gates, "ffBits": ff_bits, "depth": max(depths, default=0)}
 
 
-def _metrics_sync(design_v: str) -> dict:
+def _run_script(design_v: str, script: str, finish) -> dict:
+    """Run a Yosys script on design.v; finish(tmpdir) builds the result from its output files."""
     tmpdir, _ = create_workspace()
     try:
         _write(tmpdir, "design.v", design_v)
-        _write(tmpdir, "metrics.ys", METRICS_SCRIPT)
+        _write(tmpdir, "run.ys", script)
         try:
-            rc, out = _run_limited(["yosys", "-q", "-s", "metrics.ys"], cwd=tmpdir, timeout=SYNTH_TIMEOUT_SECONDS)
+            rc, out = _run_limited(["yosys", "-q", "-s", "run.ys"], cwd=tmpdir, timeout=SYNTH_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             return {"ok": False, "error": f"Synthesis timed out after {SYNTH_TIMEOUT_SECONDS}s."}
         except FileNotFoundError:
@@ -315,10 +316,16 @@ def _metrics_sync(design_v: str) -> dict:
         if rc != 0:
             lines = [l for l in out.strip().splitlines() if l.strip()]
             return {"ok": False, "error": "\n".join(lines[-15:]) or f"yosys exited with code {rc}"}
-        stat = json.loads(_read(os.path.join(tmpdir, "stat.json")) or "{}")
-        return {"ok": True, **gate_metrics(stat, _read(os.path.join(tmpdir, "ltp.txt")))}
+        return finish(tmpdir)
     finally:
         cleanup_workspace(tmpdir)
+
+
+def _metrics_sync(design_v: str) -> dict:
+    def finish(tmpdir: str) -> dict:
+        stat = json.loads(_read(os.path.join(tmpdir, "stat.json")) or "{}")
+        return {"ok": True, **gate_metrics(stat, _read(os.path.join(tmpdir, "ltp.txt")))}
+    return _run_script(design_v, METRICS_SCRIPT, finish)
 
 
 @metrics_router.post("", dependencies=[Depends(verify_jwt)], summary="Gate count, flip-flop bits and logic depth")
@@ -326,6 +333,68 @@ async def metrics(body: SynthesizeRequest) -> dict:
     check_source_size(body.design_v, settings.max_source_bytes, "design_v")
     async with _sim_slots:
         return await asyncio.to_thread(_metrics_sync, body.design_v)
+
+
+# =============================================================================
+# POST /board — gate-level netlist for the virtual board (simulated in the browser)
+# =============================================================================
+
+board_router = APIRouter(prefix="/board", tags=["Synthesis"])
+
+MAX_BOARD_CELLS = 20_000
+
+# dffunmap turns enables and sync resets into gates, leaving edge flip-flops with
+# at most an async set/reset (lib/gate-sim.ts models those; async2sync would not
+# clear the stored value until the next clock edge, which a paused board never gets).
+# -nordff keeps registers where the design has them: otherwise a case-statement
+# decoder becomes a ROM whose output register powers up at 0 until the first clock.
+BOARD_SCRIPT = """\
+read_verilog -sv design.v
+synth -auto-top -flatten -noabc -nordff
+dffunmap
+abc -g AND,NAND,OR,NOR,XOR,XNOR,MUX
+opt_clean
+write_json board.json
+"""
+
+BOARD_CELLS = {
+    "$_BUF_", "$_NOT_", "$_AND_", "$_NAND_", "$_OR_", "$_NOR_", "$_XOR_", "$_XNOR_",
+    "$_ANDNOT_", "$_ORNOT_", "$_MUX_", "$_NMUX_", "$_DFF_P_", "$_DFF_N_",
+    *(f"$_DFF_{c}{r}{v}_" for c in "NP" for r in "NP" for v in "01"),        # async reset to v
+    *(f"$_DFFSR_{c}{s}{r}_" for c in "NP" for s in "NP" for r in "NP"),      # async set + reset
+}
+
+
+def board_netlist(netlist: dict) -> dict:
+    """Top module's ports and cells, or an error if the board can't run it."""
+    modules = list(netlist.get("modules", {}).values())
+    top = next((m for m in modules if m.get("attributes", {}).get("top")), modules[0] if len(modules) == 1 else None)
+    if top is None:
+        return {"ok": False, "error": "No top module found."}
+    cells = [c for c in top.get("cells", {}).values() if c["type"] != "$scopeinfo"]
+    unsupported = sorted({c["type"] for c in cells} - BOARD_CELLS)
+    if unsupported:
+        what = "latches" if any("LATCH" in t for t in unsupported) else ", ".join(unsupported)
+        return {"ok": False, "error": f"The board can't simulate {what}. Use clocked registers and plain logic."}
+    if len(cells) > MAX_BOARD_CELLS:
+        return {"ok": False, "error": f"Too large for the board ({len(cells)} gates; limit {MAX_BOARD_CELLS})."}
+    return {
+        "ok":    True,
+        "ports": {n: {"direction": p["direction"], "bits": p["bits"]} for n, p in top.get("ports", {}).items()},
+        "cells": [{"type": c["type"], "conn": c["connections"]} for c in cells],
+    }
+
+
+def _board_sync(design_v: str) -> dict:
+    return _run_script(design_v, BOARD_SCRIPT,
+                       lambda d: board_netlist(json.loads(_read(os.path.join(d, "board.json")) or "{}")))
+
+
+@board_router.post("", dependencies=[Depends(verify_jwt)], summary="Gate-level netlist for the virtual board")
+async def board(body: SynthesizeRequest) -> dict:
+    check_source_size(body.design_v, settings.max_source_bytes, "design_v")
+    async with _sim_slots:
+        return await asyncio.to_thread(_board_sync, body.design_v)
 
 
 # =============================================================================

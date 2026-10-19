@@ -1,14 +1,15 @@
 /**
  * POST /api/synthesize — Yosys synthesis of a design, with diagrams.
  *
- * Body: { designCode: string }
+ * Body: { designCode: string, board?: true }
  * Proxies to the backend's POST /synthesize, then draws the schematic and
  * FSM diagrams here (lib/hardware-diagrams.ts) so the browser gets ready SVG.
+ * With board: true it returns the gate-level netlist for the virtual board instead.
  * Open to guests like /api/simulate, and rate-limited the same way.
  */
 
 import { NextResponse } from "next/server";
-import { metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
+import { boardOnBackend, metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth-utils";
 import { fsmSvg, schematicSvg, type FsmInfo } from "@/lib/hardware-diagrams";
@@ -37,6 +38,19 @@ export async function POST(request: Request) {
   }
 
   let status: number, data: any;
+  if (body.board === true) {
+    try {
+      ({ status, data } = await boardOnBackend(designCode));
+    } catch (err) {
+      console.error("[synthesize] backend unreachable:", err);
+      return NextResponse.json({ error: "Synthesis backend unavailable." }, { status: 502 });
+    }
+    if (status !== 200) {
+      return NextResponse.json({ error: data?.detail || data?.error || "Synthesis failed." }, { status });
+    }
+    return NextResponse.json(data);
+  }
+
   // Gate-level scores come from a second, independent Yosys run
   const metrics = metricsOnBackend(designCode)
     .then(({ status, data }) => (status === 200 && data?.ok ? { gates: data.gates, depth: data.depth } : null))

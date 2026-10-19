@@ -20,7 +20,7 @@ jobs:
       - run: python -m pytest tests -q
 
   content:
-    name: Problem set check (starters compile and don't already pass)
+    name: Content checks (problem starters, board simulator)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -35,6 +35,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iverilog
       - run: npm ci
       - run: npm run check-problems
+      - run: npm run check-gate-sim
 
   web:
     name: Frontend type-check + build

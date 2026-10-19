@@ -795,3 +795,39 @@ class TestMetrics:
 
     def test_syntax_error(self, client):
         assert self._m(client, "module broken(input a; endmodule")["ok"] is False
+
+
+# =============================================================================
+# /board — gate-level netlist for the virtual board
+# =============================================================================
+
+from api.routes.synthesize import board_netlist  # noqa: E402
+
+
+class TestBoard:
+
+    def _b(self, client, design):
+        r = client.post("/board", json={"design_v": design})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_counter_with_async_reset_and_enable(self, client):
+        d = self._b(client, "module c(input clk, input rst_n, input en, output reg [3:0] q);\n"
+                            "  always @(posedge clk or negedge rst_n) if (!rst_n) q <= 0; else if (en) q <= q + 1;\nendmodule")
+        assert d["ok"], d
+        # the enable becomes gates; the async reset stays on the flip-flops (reset to 0, active low)
+        types = {c["type"] for c in d["cells"]}
+        assert types <= {"$_DFF_PN0_", "$_NOT_", "$_AND_", "$_NAND_", "$_OR_", "$_NOR_", "$_XOR_", "$_XNOR_", "$_MUX_"}, types
+        assert sum(c["type"] == "$_DFF_PN0_" for c in d["cells"]) == 4
+        assert d["ports"]["q"]["direction"] == "output" and len(d["ports"]["q"]["bits"]) == 4
+
+    def test_latch_is_rejected(self, client):
+        d = self._b(client, "module l(input en, input d, output reg q); always @* if (en) q = d; endmodule")
+        assert d["ok"] is False and "latches" in d["error"], d
+
+    def test_limits(self):
+        cell = {"type": "$_NOT_", "connections": {"A": [2], "Y": [3]}}
+        top = {"attributes": {"top": "1"}, "ports": {}, "cells": {str(i): cell for i in range(20_001)}}
+        assert "Too large" in board_netlist({"modules": {"t": top}})["error"]
+        top["cells"] = {"s": {"type": "$scopeinfo", "connections": {}}, "n": cell}
+        assert board_netlist({"modules": {"t": top}})["cells"] == [{"type": "$_NOT_", "conn": {"A": [2], "Y": [3]}}]

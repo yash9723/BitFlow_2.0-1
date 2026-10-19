@@ -11,7 +11,8 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "check-problems": "tsx scripts/check-problems.ts",
-    "import-solutions": "tsx scripts/import-reference-solutions.ts"
+    "import-solutions": "tsx scripts/import-reference-solutions.ts",
+    "check-gate-sim": "tsx scripts/gate-sim.check.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",

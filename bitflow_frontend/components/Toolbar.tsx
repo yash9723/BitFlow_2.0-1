@@ -31,6 +31,8 @@ interface ToolbarProps {
   onAIToggle:     () => void;
   /** Opens the Yosys synthesis panel. */
   onSynthesize?:  () => void;
+  /** Opens the virtual board (gate-level simulation in the browser). */
+  onBoard?:       () => void;
   /** Download project ZIP — only shown when result exists */
   onExportZip?:   () => void;
   /** Export snapshot PNG — only shown when result exists */
@@ -79,6 +81,7 @@ export default function Toolbar({
   isAIOpen,
   onAIToggle,
   onSynthesize,
+  onBoard,
   onExportZip,
   onExportImage,
   isExporting = false,
@@ -211,6 +214,16 @@ export default function Toolbar({
             className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
           >
             Synth
+          </button>
+        )}
+
+        {onBoard && (
+          <button
+            onClick={onBoard}
+            title="Run the design on a virtual board: switches, buttons, LEDs, 7-segment"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            Board
           </button>
         )}
 

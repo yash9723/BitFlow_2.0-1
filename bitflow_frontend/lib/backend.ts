@@ -33,6 +33,11 @@ export function metricsOnBackend(design_v: string): Promise<{ status: number; da
   return postToBackend("/metrics", { design_v });
 }
 
+/** POST /board: gate-level netlist for the virtual board (lib/gate-sim.ts). */
+export function boardOnBackend(design_v: string): Promise<{ status: number; data: any }> {
+  return postToBackend("/board", { design_v });
+}
+
 /** POST /equivalence: shortest input sequence (from reset) where two designs differ. */
 export function equivalenceOnBackend(gold_v: string, gate_v: string, max_cycles = 16): Promise<{ status: number; data: any }> {
   return postToBackend("/equivalence", { gold_v, gate_v, max_cycles });
