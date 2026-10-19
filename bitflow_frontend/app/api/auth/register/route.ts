@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
-import { createSession, hashPassword, passwordProblem } from "@/lib/auth-utils";
+import { createSession, hashPassword, passwordProblem, usernameProblem } from "@/lib/auth-utils";
+import { botProblem, newFormToken } from "@/lib/bot-check";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+/** The sign-up form fetches a fresh form token when it opens (lib/bot-check.ts). */
+export function GET() {
+  return NextResponse.json({ formToken: newFormToken() });
+}
 
 export async function POST(request: Request) {
   // 5/min per client IP; unidentified clients share a roomier bucket (class sign-ups).
@@ -17,7 +23,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { username, password, role, secretPassword } = await request.json();
+    const body = (await request.json()) ?? {};
+    const { username, password, role, secretPassword } = body;
     const normalizedUsername = typeof username === "string" ? username.trim() : "";
 
     if (!normalizedUsername || !password || !role) {
@@ -32,6 +39,16 @@ export async function POST(request: Request) {
         { error: "Invalid role specified." },
         { status: 400 }
       );
+    }
+
+    const bot = botProblem(body);
+    if (bot) {
+      return NextResponse.json({ error: bot }, { status: 400 });
+    }
+
+    const badName = usernameProblem(normalizedUsername);
+    if (badName) {
+      return NextResponse.json({ error: badName }, { status: 400 });
     }
 
     const weak = passwordProblem(password);
@@ -97,9 +114,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ user });
   } catch (err: any) {
     console.error("Registration error:", err);
-    const errorMessage = err?.message || "Internal Server Error";
     return NextResponse.json(
-      { error: errorMessage },
+      { error: "Registration failed. Please try again." },
       { status: 500 }
     );
   }

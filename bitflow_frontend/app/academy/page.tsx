@@ -36,7 +36,7 @@ export default function AcademyHubPage() {
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center gap-2 group">
               <img
-                src="/bitflow_logo_2.png"
+                src="/bitflow_logo_64.png"
                 alt="BitFlow"
                 className="w-6 h-6 object-contain rounded opacity-80 group-hover:opacity-100 transition-opacity"
               />

@@ -14,6 +14,15 @@ interface PageProps {
   params: Promise<{ category: string; slug: string }>;
 }
 
+export async function generateMetadata({ params }: PageProps) {
+  const problem = await getArenaProblemBySlugFromDb((await params).slug);
+  if (!problem) return { title: "Problem not found" };
+  return {
+    title:       problem.title,
+    description: `${problem.title}: a ${String(problem.difficulty).toLowerCase()} ${problem.category} problem in the BitFlow Arena, graded against hidden tests.`,
+  };
+}
+
 export default async function ArenaPage({ params }: PageProps) {
   const { slug } = await params;
 

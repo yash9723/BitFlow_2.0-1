@@ -1,6 +1,8 @@
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
 
+export const metadata = { title: "Classes", robots: { index: false } };
+
 export default function ClassesLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate>

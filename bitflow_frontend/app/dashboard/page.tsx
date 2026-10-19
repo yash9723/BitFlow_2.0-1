@@ -538,9 +538,11 @@ function DashboardFooter() {
           </a>
         </div>
 
-        <Link href="/about" className="text-[11px] tracking-[0.14em] text-bright uppercase hover:text-phosphor transition-colors">
-          About
-        </Link>
+        <nav className="flex gap-6 text-[11px] tracking-[0.14em] text-bright uppercase" aria-label="Site">
+          <Link href="/about" className="hover:text-phosphor transition-colors">About</Link>
+          <Link href="/privacy" className="hover:text-phosphor transition-colors">Privacy</Link>
+          <Link href="/terms" className="hover:text-phosphor transition-colors">Terms</Link>
+        </nav>
 
         <div className="text-[11px] text-bright">© 2026 BitFlow. All rights reserved.</div>
 
@@ -628,7 +630,7 @@ function DashboardContent() {
       {/* Nav */}
       <nav className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-rim/50 bg-void/50 backdrop-blur-md">
         <Link href="/" className="flex items-center gap-2">
-          <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-7 h-7 object-contain" />
+          <img src="/bitflow_logo_64.png" alt="BitFlow" className="w-7 h-7 object-contain" />
           <span className="font-display font-bold text-lg">BitFlow</span>
         </Link>
         <div className="flex items-center gap-4">

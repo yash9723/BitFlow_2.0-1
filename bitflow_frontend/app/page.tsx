@@ -240,7 +240,7 @@ const SOCIAL_LINKS = [
 ];
 
 export default function LandingPage() {
-  const { user, loading } = useAuth();
+  const { user, loading } = useAuth();   // the full page renders while loading so crawlers and link previews see it
   const router = useRouter();
 
   useEffect(() => {
@@ -249,7 +249,7 @@ export default function LandingPage() {
     }
   }, [loading, user, router]);
 
-  if (loading || user) {
+  if (user) {
     return (
       <div className="min-h-screen bg-void text-bright flex items-center justify-center">
         <span className="text-ghost text-sm">
@@ -266,7 +266,7 @@ export default function LandingPage() {
       <nav className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
         <Link href="/" className="justify-self-start flex items-center gap-2 group">
           <img
-            src="/bitflow_logo_2.png"
+            src="/bitflow_logo_64.png"
             alt="BitFlow"
             className="w-8 h-8 object-contain transition-transform group-hover:scale-105"
           />
@@ -282,14 +282,8 @@ export default function LandingPage() {
         </div>
 
         <div className="flex items-center gap-5 justify-self-end">
-          <Link href="/login" className="text-[13px] text-ghost hover:text-bright transition-colors">
-            Sign In
-          </Link>
-          <Link
-            href="/login"
-            className="px-5 py-2 rounded-md bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
-          >
-            Let&apos;s Go →
+          <Link href="/login" className="px-4 py-2 rounded-md border border-rim text-[13px] text-pale hover:text-bright hover:border-muted transition-colors">
+            Sign in
           </Link>
         </div>
       </nav>
@@ -311,16 +305,16 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-wrap gap-3.5 mb-10">
             <Link
-              href="/login"
+              href="/login?mode=register"
               className="px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors hover:-translate-y-0.5"
             >
-              Let&apos;s Get Started →
+              Start learning free →
             </Link>
             <Link
-              href="/arena"
-              className="px-7 py-3.5 rounded-lg border border-rim text-ghost text-[13px] font-semibold hover:border-muted hover:text-bright transition-colors"
+              href="/about"
+              className="px-7 py-3.5 rounded-lg text-pale text-[13px] font-semibold hover:text-bright transition-colors"
             >
-              Explore Problems
+              See how it works
             </Link>
           </div>
           <div className="flex gap-14 border-t border-rim pt-6 max-w-md">
@@ -400,10 +394,10 @@ export default function LandingPage() {
           Join BitFlow and start writing Verilog in your browser — no installs, no waiting.
         </p>
         <Link
-          href="/login"
+          href="/login?mode=register"
           className="inline-block px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
         >
-          Let&apos;s Get Started — It&apos;s Free →
+          Start learning free →
         </Link>
       </section>
 
@@ -426,9 +420,11 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <Link href="/about" className="text-[11px] tracking-[0.14em] text-bright uppercase hover:text-phosphor transition-colors">
-            About
-          </Link>
+          <nav className="flex gap-6 text-[11px] tracking-[0.14em] text-bright uppercase" aria-label="Site">
+            <Link href="/about" className="hover:text-phosphor transition-colors">About</Link>
+            <Link href="/privacy" className="hover:text-phosphor transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-phosphor transition-colors">Terms</Link>
+          </nav>
 
           <div className="text-[11px] text-bright">© 2026 BitFlow. All rights reserved.</div>
 

@@ -38,6 +38,7 @@ import React, { forwardRef } from "react";
 import type { SimulateResponse } from "@/lib/types";
 import type { ParsedVcd, VcdSignal } from "@/lib/vcd-parser";
 import { binToHex } from "@/lib/vcd-parser";
+import { mono } from "@/lib/fonts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -59,8 +60,8 @@ const C = {
   pit:        "#0d0e11",
   surface:    "#1a1b22",
   rim:        "#22232d",
-  dim:        "#4a4d60",
-  ghost:      "#7a7d96",
+  dim:        "#80839d",
+  ghost:      "#9598ac",
   pale:       "#b0b3cc",
   bright:     "#e8eaf6",
   phosphor:   "#00e87a",
@@ -261,7 +262,7 @@ function CodeBlock({ code, filename }: { code: string; filename: string }) {
           margin:      0,
           padding:     "10px 12px",
           background:  C.pit,
-          fontFamily:  "'JetBrains Mono', 'Courier New', monospace",
+          fontFamily:  `${mono.style.fontFamily}, 'Courier New', monospace`,
           fontSize:    9.5,
           lineHeight:  1.55,
           color:       C.pale,
@@ -309,7 +310,7 @@ const ExportCard = forwardRef<HTMLDivElement, ExportCardProps>(
           border:       `1px solid ${C.rim}`,
           borderRadius: 8,
           overflow:     "hidden",
-          fontFamily:   "'JetBrains Mono', monospace",
+          fontFamily:   `${mono.style.fontFamily}, monospace`,
           // Off-screen — visible to browser layout but not to the user.
           // export-image.ts clones this element into its own container for capture,
           // so the precise position here does not affect the output PNG.

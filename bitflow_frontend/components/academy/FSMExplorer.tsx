@@ -106,7 +106,7 @@ export default function FSMExplorer() {
                     y={pos.y + 1}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill={active ? "#00e87a" : "#7a7d96"}
+                    fill={active ? "#00e87a" : "#9598ac"}
                     fontSize="4"
                     fontFamily="monospace"
                   >

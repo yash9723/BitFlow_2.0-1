@@ -275,3 +275,19 @@ model Contest {
 
   @@index([startsAt])
 }
+
+// ============================================================================
+// ANALYTICS — cookieless, aggregated page views. No IPs, users or devices:
+// one counter per (day, page, referring site). See app/api/analytics.
+// ============================================================================
+
+model PageView {
+  id       String @id @default(uuid())
+  day      String // "YYYY-MM-DD" (UTC)
+  path     String // pathname; ids collapsed to ":id"
+  referrer String // referring site's host; "" = direct or from this site
+  count    Int    @default(0)
+
+  @@unique([day, path, referrer])
+  @@index([day])
+}

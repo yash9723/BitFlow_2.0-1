@@ -12,7 +12,7 @@ export default function AboutPage() {
       <nav className="relative z-10 flex items-center justify-between px-6 py-3 border-b border-rim/50 bg-void/80 backdrop-blur-md">
         <div className="flex items-center gap-10">
           <Link href="/" className="flex items-center gap-2">
-            <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-7 h-7 object-contain" />
+            <img src="/bitflow_logo_64.png" alt="BitFlow" className="w-7 h-7 object-contain" />
             <span className="font-display font-bold text-lg">BitFlow</span>
           </Link>
           <div className="hidden md:flex items-center gap-6 text-[11px] font-semibold tracking-wider uppercase">
@@ -74,6 +74,12 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
+
+      <footer className="relative z-10 border-t border-rim/50 py-8 flex justify-center gap-6 text-[11px] tracking-[0.14em] uppercase">
+        <Link href="/" className="text-pale hover:text-phosphor transition-colors">Home</Link>
+        <Link href="/privacy" className="text-pale hover:text-phosphor transition-colors">Privacy</Link>
+        <Link href="/terms" className="text-pale hover:text-phosphor transition-colors">Terms</Link>
+      </footer>
     </main>
   );
 }

@@ -466,6 +466,20 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Sign-up spam protection (lib/bot-check.ts): a timed form token + honeypot.
+  const [formToken, setFormToken] = useState("");
+  const [website, setWebsite] = useState("");
+
+  // /login?mode=register opens straight on the sign-up form (landing page CTA).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("mode") === "register") setIsSignUp(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isSignUp) return;
+    fetch("/api/auth/register").then((r) => r.json()).then((d) => setFormToken(d.formToken ?? "")).catch(() => {});
+  }, [isSignUp]);
+
   const [shy, setShy] = useState(false);
   const [excited, setExcited] = useState(false);
   const [error, setError] = useState(false);
@@ -482,7 +496,7 @@ export default function LoginPage() {
 
     try {
       if (isSignUp) {
-        const res = await register(username, password, role, role === "ADMIN" ? secretPassword : undefined);
+        const res = await register(username, password, role, role === "ADMIN" ? secretPassword : undefined, { formToken, website });
         if (res.error) {
           setErrorMsg(res.error);
           triggerError();
@@ -601,10 +615,18 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-[11px] text-pale mb-1.5">Username</label>
+              <label htmlFor="username" className="block text-[11px] text-pale mb-1.5">Username</label>
               <input
+                id="username"
                 type="text"
                 required
+                autoComplete="username"
+                {...(isSignUp && {
+                  minLength: 3,
+                  maxLength: 24,
+                  pattern: "(?:[A-Za-z0-9_.]|-){3,24}",   // = usernameProblem(); no "-" inside the class (v-flag rules)
+                  title: "3–24 characters: letters, numbers, dots, dashes and underscores",
+                })}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="e.g. system_operator"
@@ -613,11 +635,14 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-[11px] text-pale mb-1.5">Password</label>
+              <label htmlFor="password" className="block text-[11px] text-pale mb-1.5">Password</label>
               <div className="relative">
                 <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
                   required
+                  autoComplete={isSignUp ? "new-password" : "current-password"}
+                  {...(isSignUp && { minLength: 8, maxLength: 200 })}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onFocus={() => setShy(true)}
@@ -648,9 +673,10 @@ export default function LoginPage() {
 
             {role === "ADMIN" && isSignUp && (
               <div>
-                <label className="block text-[11px] text-info mb-1.5">Secret Admin Key</label>
+                <label htmlFor="admin-secret" className="block text-[11px] text-info mb-1.5">Secret Admin Key</label>
                 <div className="relative">
                   <input
+                    id="admin-secret"
                     type={showSecret ? "text" : "password"}
                     required
                     value={secretPassword}
@@ -695,6 +721,15 @@ export default function LoginPage() {
               </Link>
             </div>
 
+            {/* Honeypot: hidden from people and screen readers; bots fill it in. */}
+            {isSignUp && (
+              <div aria-hidden="true" className="absolute -left-[9999px] w-px h-px overflow-hidden">
+                <label htmlFor="website">Website</label>
+                <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off"
+                       value={website} onChange={(e) => setWebsite(e.target.value)} />
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
@@ -706,6 +741,13 @@ export default function LoginPage() {
             >
               {loading ? "Decrypting..." : isSignUp ? "Create Profile" : "Authorize"}
             </button>
+            {isSignUp && (
+              <p className="text-[11px] text-ghost text-center">
+                By creating an account you agree to the{" "}
+                <Link href="/terms" className="text-phosphor hover:underline">Terms</Link> and{" "}
+                <Link href="/privacy" className="text-phosphor hover:underline">Privacy policy</Link>.
+              </p>
+            )}
           </form>
 
           <div className="flex items-center gap-3 my-5 text-[11px] text-dim">

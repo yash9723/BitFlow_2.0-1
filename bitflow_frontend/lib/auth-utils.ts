@@ -48,6 +48,13 @@ export function passwordProblem(password: unknown): string | null {
   return password.length > 200 ? "Passwords can be at most 200 characters." : null;
 }
 
+/** Why a new username isn't acceptable, or null. Mirrored by the sign-up form's pattern attribute. */
+export function usernameProblem(username: string): string | null {
+  return /^[A-Za-z0-9_.-]{3,24}$/.test(username)
+    ? null
+    : "Usernames are 3–24 characters: letters, numbers, dots, dashes and underscores.";
+}
+
 /** 32 symbols without 0/O/1/I, so codes are easy to copy by hand; 256 % 32 == 0 keeps it unbiased. */
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 

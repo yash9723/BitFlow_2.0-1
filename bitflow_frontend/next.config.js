@@ -37,8 +37,8 @@ const nextConfig = {
               "default-src 'self'",
               // Monaco is self-hosted under /monaco (no CDN needed)
               "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "font-src 'self' https://fonts.gstatic.com data:",
+              "style-src 'self' 'unsafe-inline'",
+              "font-src 'self' data:",   // fonts are self-hosted (lib/fonts.ts)
               "img-src 'self' data: blob:",
               // Simulation + AI calls go through our own /api routes (server-side)
               "connect-src 'self'",

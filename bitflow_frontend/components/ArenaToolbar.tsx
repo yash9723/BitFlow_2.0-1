@@ -54,7 +54,7 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, on
       <div className="flex items-center gap-2 min-w-0">
         <Link href="/" className="flex items-center gap-1.5 group shrink-0">
           <img
-            src="/bitflow_logo_2.png"
+            src="/bitflow_logo_64.png"
             alt="BitFlow"
             className="w-5 h-5 object-contain opacity-80 group-hover:opacity-100 transition-opacity"
           />

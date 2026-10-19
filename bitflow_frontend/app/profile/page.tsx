@@ -30,7 +30,7 @@ const DIFF_COLOR: Record<string, { ring: string; text: string; bg: string }> = {
   Hard:   { ring: "#ffb84d", text: "text-warn",     bg: "bg-warn/10" },
   Expert: { ring: "#ff4f4f", text: "text-danger",   bg: "bg-danger/10" },
 };
-const OTHER_COLOR = { ring: "#7a7d96", text: "text-ghost", bg: "bg-void/40" };
+const OTHER_COLOR = { ring: "#9598ac", text: "text-ghost", bg: "bg-void/40" };
 const diffColor = (d: string) => DIFF_COLOR[d] ?? OTHER_COLOR;
 
 function tierFromXp(xp: number) {

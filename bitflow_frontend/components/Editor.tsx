@@ -28,6 +28,7 @@ import { useRef, useCallback, useEffect } from "react";
 import MonacoEditor, { OnMount, BeforeMount, loader } from "@monaco-editor/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
 import type { Diagnostic } from "@/lib/diagnostics";
+import { mono } from "@/lib/fonts";
 
 // Load Monaco from our own origin (copied into public/ by scripts/copy-monaco.mjs)
 // so the editor works without a third-party CDN.
@@ -80,7 +81,7 @@ const defineTheme: BeforeMount = (monaco) => {
       // Numbers (binary, hex, decimal in Verilog: 4'b1010, 8'hFF)
       { token: "number",            foreground: "ff9f4d" },
       // Comments
-      { token: "comment",           foreground: "4a4d60", fontStyle: "italic" },
+      { token: "comment",           foreground: "80839d", fontStyle: "italic" },
       // Preprocessor directives: `timescale, `define
       { token: "keyword.directive", foreground: "b0b3cc", fontStyle: "italic" },
       // Identifiers (module names, signal names)
@@ -125,7 +126,7 @@ const defineTheme: BeforeMount = (monaco) => {
 
 const EDITOR_OPTIONS: MonacoEditorNS.IStandaloneEditorConstructionOptions = {
   fontSize:             13,
-  fontFamily:           "'JetBrains Mono', 'Fira Code', monospace",
+  fontFamily:           `${mono.style.fontFamily}, 'Fira Code', monospace`,
   fontLigatures:        true,
   lineHeight:           22,
   letterSpacing:        0.3,

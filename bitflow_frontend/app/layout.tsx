@@ -13,25 +13,41 @@
 
 import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/hooks/useAuth";
+import PageViewTracker from "@/components/PageViewTracker";
+import { inter, mono } from "@/lib/fonts";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Metadata — affects <head> on every page
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Favicon and Apple touch icon come from app/icon.png and app/apple-icon.png,
+// the social preview from app/opengraph-image.tsx (Next.js file conventions).
 export const metadata: Metadata = {
-  title:       "BitFlow",
-  description: "BitFlow — browser-based Icarus Verilog compiler and simulator.",
-  icons: {
-    icon: "/bitflow_logo_2.png",
+  metadataBase: new URL(SITE_URL),
+  title:        { default: `${SITE_NAME} — ${SITE_TAGLINE}`, template: `%s · ${SITE_NAME}` },
+  description:  SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type:        "website",
+    siteName:    SITE_NAME,
+    title:       `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
+    url:         "/",
+  },
+  twitter: {
+    card:        "summary_large_image",
+    title:       `${SITE_NAME} — ${SITE_TAGLINE}`,
+    description: SITE_DESCRIPTION,
   },
 };
 
 export const viewport: Viewport = {
   width:        "device-width",
   initialScale: 1,
-  // Prevent browser zoom on mobile input focus
-  maximumScale: 1,
+  // No maximumScale: people must be able to pinch-zoom. iOS input-focus zoom is
+  // avoided instead by 16px form text on small screens (globals.css).
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,10 +60,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className={`h-full ${inter.variable} ${mono.variable}`}>
       <body className="h-full overflow-y-auto bg-void text-bright font-mono antialiased">
         <AuthProvider>
           {children}
+          <PageViewTracker />
         </AuthProvider>
       </body>
     </html>

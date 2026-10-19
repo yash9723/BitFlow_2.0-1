@@ -44,6 +44,9 @@ services:
     build:
       context: ./bitflow_frontend
       dockerfile: Dockerfile
+      args:
+        SITE_URL: ${SITE_URL:-http://localhost:3000}
+        CONTACT_EMAIL: ${CONTACT_EMAIL:-}
     container_name: bitflow-frontend
     restart: unless-stopped
     logging: *default-logging
@@ -63,6 +66,8 @@ services:
       - ADMIN_SECRET=${ADMIN_SECRET:-}   # empty = admin self-registration disabled
       - HTTPS=${HTTPS:-false}            # true behind TLS → Secure session cookies
       - TRUST_PROXY=${TRUST_PROXY:-false} # true only behind Caddy (rate limits use X-Forwarded-For)
+      - SITE_URL=${SITE_URL:-http://localhost:3000}  # public origin (sitemap, social previews)
+      - CONTACT_EMAIL=${CONTACT_EMAIL:-}            # shown on /privacy and /terms
     volumes:
       - bitflow-data:/app/data
     depends_on:

@@ -1,6 +1,11 @@
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
 
+export const metadata = {
+  title: "Contests",
+  description: "Timed Verilog contests: solve a set of problems against the clock and climb the contest leaderboard.",
+};
+
 export default function ContestsLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate>

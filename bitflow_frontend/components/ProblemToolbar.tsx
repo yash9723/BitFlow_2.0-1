@@ -96,7 +96,7 @@ export default function ProblemToolbar({
 
         {/* Logo mark */}
         <img
-          src="/bitflow_logo_2.png"
+          src="/bitflow_logo_64.png"
           alt="BitFlow"
           className="w-5 h-5 object-contain rounded opacity-80"
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}

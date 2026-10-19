@@ -100,7 +100,7 @@ export default function Toolbar({
         {/* BitFlow mark */}
         <div className="flex items-center gap-3">
           <img
-            src="/bitflow_logo_2.png"
+            src="/bitflow_logo_64.png"
             alt="BitFlow"
             className="w-7 h-7 object-contain rounded opacity-90"
           />

@@ -59,7 +59,7 @@ export default function ArenaHubClient({ problems }: ArenaHubClientProps) {
 
       <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
         <Link href="/" className="flex items-center gap-3">
-          <img src="/bitflow_logo_2.png" alt="BitFlow" className="w-7 h-7 object-contain" />
+          <img src="/bitflow_logo_64.png" alt="BitFlow" className="w-7 h-7 object-contain" />
           <div className="leading-none">
             <div className="font-display text-[13px] font-bold">BitFlow</div>
             <div className="font-mono text-[9px] text-dim uppercase tracking-widest">HDL Arena</div>

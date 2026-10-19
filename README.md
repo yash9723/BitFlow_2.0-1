@@ -47,6 +47,18 @@ Optional profiles:
 | `postgres` | A Postgres 16 container; set `DATABASE_URL` as shown in `.env.example` |
 | `backup` | Daily database backup into `./backups` (newest 14 kept) — on by default in `setup_server.sh` |
 
+### Going live checklist
+
+- DNS points at the server and `setup_server.sh your.domain` was used, so the
+  `https` profile is on (Caddy redirects HTTP to HTTPS; the app sends HSTS) and
+  `.env` has `HTTPS=true`, `TRUST_PROXY=true`, `FRONTEND_BIND=127.0.0.1` and
+  `SITE_URL=https://your.domain`.
+- Set `CONTACT_EMAIL` in `.env` (shown on the privacy and terms pages), then
+  `docker compose --profile https --profile backup up -d --build`.
+- Check `https://your.domain/sitemap.xml`, `/robots.txt` and a link preview
+  (the image is `/opengraph-image`).
+- Page views (cookieless, no consent banner needed) are on the admin page.
+
 Re-running `setup_server.sh` pulls and rebuilds. Schema changes that would
 drop data are refused at startup (no `--accept-data-loss`); apply those by hand.
 
@@ -105,6 +117,8 @@ SQLite file is left untouched by the move.
 | `DATABASE_URL` | frontend | Prisma connection string (default `file:/app/data/dev.db`). |
 | `API_PORT` | compose | Host port for the API (default 8000, bound to 127.0.0.1). |
 | `DOMAIN`, `HTTPS`, `FRONTEND_BIND` | compose / frontend | HTTPS deployment via the `https` profile (set by `setup_server.sh`). |
+| `SITE_URL` | frontend (build + run) | Public origin, e.g. `https://bitflow.example.com`: sitemap, robots.txt, social previews. Rebuild after changing. |
+| `CONTACT_EMAIL` | frontend (build + run) | Contact address shown on `/privacy` and `/terms`. Rebuild after changing. |
 | `MAX_CONCURRENT_SIMULATIONS` | API | Simulations run in parallel (default 4); the rest queue. |
 | `BITFLOW_AI_PROVIDER`, `OPENAI_API_KEY`, … | frontend | AI assistant (signed-in users only, rate-limited). |
 | `TIMEOUT_SECONDS`, `MAX_TIMEOUT_SECONDS`, `MAX_SOURCE_BYTES`, `CORS_ORIGINS`, `ENABLE_DOCS` | API | See `api/config.py` and `.env.example`. |

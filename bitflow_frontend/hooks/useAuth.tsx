@@ -14,7 +14,8 @@ interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   login: (username: string, password: string, role: "STUDENT" | "ADMIN") => Promise<{ error?: string }>;
-  register: (username: string, password: string, role: "STUDENT" | "ADMIN", secretPassword?: string) => Promise<{ error?: string }>;
+  register: (username: string, password: string, role: "STUDENT" | "ADMIN", secretPassword?: string,
+             botFields?: { formToken: string; website: string }) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
   checkSession: () => Promise<void>;
 }
@@ -77,13 +78,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     username: string,
     password: string,
     role: "STUDENT" | "ADMIN",
-    secretPassword?: string
+    secretPassword?: string,
+    botFields?: { formToken: string; website: string }
   ) => {
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role, secretPassword }),
+        body: JSON.stringify({ username, password, role, secretPassword, ...botFields }),
       });
       const data = await res.json();
       if (res.ok && data.user) {

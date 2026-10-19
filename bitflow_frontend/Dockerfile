@@ -15,6 +15,11 @@ COPY . .
 # Set environment variables for build time
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+# Public origin and contact address are baked into statically rendered pages
+# (metadata, sitemap, legal pages), so they're needed at build time too.
+ARG SITE_URL=http://localhost:3000
+ARG CONTACT_EMAIL=
+ENV SITE_URL=$SITE_URL CONTACT_EMAIL=$CONTACT_EMAIL
 
 # Generate prisma client and build Next.js app
 RUN npx prisma generate
