@@ -14,5 +14,9 @@ export const SITE_DESCRIPTION =
   "synthesis diagrams, a virtual FPGA board, contests and classrooms.";
 export const OPERATOR = "NAVIEL Advanced Engineering & Technology";
 
-export const SITE_URL = (process.env.SITE_URL || "http://localhost:3000").replace(/\/+$/, "");
+export const SITE_URL = (
+  process.env.SITE_URL ||
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`) ||
+  "http://localhost:3000"
+).replace(/\/+$/, "");
 export const CONTACT_EMAIL = process.env.CONTACT_EMAIL || null;

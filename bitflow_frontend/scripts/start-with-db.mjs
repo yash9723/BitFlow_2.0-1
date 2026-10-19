@@ -8,10 +8,14 @@ const __dirname = dirname(__filename);
 
 const databaseUrl = process.env.DATABASE_URL || "file:/app/data/dev.db";
 
-// Postgres needs a directUrl for schema pushes; default it to the pooled URL
-// (Neon and other poolers should set DIRECT_URL explicitly).
+// --setup-only: prepare the database and exit (Vercel's build step, see
+// vercel.json); a failed schema push then fails the deploy.
+const setupOnly = process.argv.includes("--setup-only");
+
+// Postgres needs a directUrl for schema pushes. Vercel's Neon integration
+// provides DATABASE_URL_UNPOOLED; otherwise default to the (pooled) URL.
 if (/^postgres(ql)?:\/\//.test(databaseUrl) && !process.env.DIRECT_URL) {
-  process.env.DIRECT_URL = databaseUrl;
+  process.env.DIRECT_URL = process.env.DATABASE_URL_UNPOOLED || databaseUrl;
 }
 
 // 1. Ensure local SQLite file directory exists
@@ -99,11 +103,13 @@ try {
 //    ponytail: db push has no migration history; switch to `prisma migrate
 //    deploy` once schema changes need to be reviewed and replayed.
 console.log("[DB Setup] Pushing schema to database...");
-runPrisma(["db", "push", "--skip-generate"], true);
+runPrisma(["db", "push", "--skip-generate"], !setupOnly);
 
 // 4. Seed database (non-fatal)
 console.log("[DB Setup] Seeding database...");
 runPrisma(["db", "seed"], true);
+
+if (setupOnly) process.exit(0);
 
 // 5. Start Next.js server bound to 0.0.0.0
 console.log("[DB Setup] Starting application...");
