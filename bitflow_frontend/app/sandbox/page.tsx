@@ -71,12 +71,14 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
 }                                     from "react";
 import dynamic                        from "next/dynamic";
 import Toolbar                        from "@/components/Toolbar";
 import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
+import { parseDiagnostics }           from "@/lib/diagnostics";
 import AIAssistantPanel               from "@/components/AIAssistantPanel";
 import SynthesisPanel                 from "@/components/SynthesisPanel";
 import BoardPanel                     from "@/components/BoardPanel";
@@ -309,6 +311,7 @@ function SandboxContent() {
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const diagnostics = useMemo(() => parseDiagnostics(result?.stdout), [result]);
 
   /** Save the editors as a read-only link, copy it, and show it (clipboard access can be blocked). */
   const handleShare = useCallback(async () => {
@@ -716,6 +719,7 @@ function SandboxContent() {
                 onChange={setDesignCode}
                 language="verilog"
                 readOnly={isRunning}
+                diagnostics={diagnostics.design}
               />
             </div>
           </div>
@@ -740,6 +744,7 @@ function SandboxContent() {
                 onChange={setTestbenchCode}
                 language="verilog"
                 readOnly={isRunning}
+                diagnostics={diagnostics.tb}
               />
             </div>
           </div>

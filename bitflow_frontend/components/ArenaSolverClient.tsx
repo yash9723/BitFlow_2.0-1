@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { parseDiagnostics } from "@/lib/diagnostics";
 import type { ArenaProblem } from "@/lib/arena/types";
 import { useArenaProblem } from "@/hooks/useArenaProblem";
 import { ArenaProblemStatement } from "@/components/ArenaProblemStatement";
@@ -114,6 +115,7 @@ interface Props {
 
 export function ArenaSolverClient({ problem }: Props) {
   const hook = useArenaProblem(problem);
+  const diagnostics = useMemo(() => parseDiagnostics(hook.runResult?.stdout), [hook.runResult]);
   const horiz = useHorizSplitter(380);
   const termSpl = useArenaSplitter(200);
   const waveSpl = useWaveformSplitter(200);
@@ -182,6 +184,7 @@ export function ArenaSolverClient({ problem }: Props) {
                   value={hook.designCode}
                   onChange={hook.setDesignCode}
                   language="verilog"
+                  diagnostics={diagnostics.design}
                 />
               </div>
             </div>
@@ -198,6 +201,7 @@ export function ArenaSolverClient({ problem }: Props) {
                     value={hook.testbenchCode}
                     onChange={hook.setTestbenchCode}
                     language="verilog"
+                    diagnostics={diagnostics.tb}
                     readOnly={false}  // ← Always editable in Arena
                   />
                 </div>

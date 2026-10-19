@@ -24,9 +24,10 @@
 
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import MonacoEditor, { OnMount, BeforeMount, loader } from "@monaco-editor/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
+import type { Diagnostic } from "@/lib/diagnostics";
 
 // Load Monaco from our own origin (copied into public/ by scripts/copy-monaco.mjs)
 // so the editor works without a third-party CDN.
@@ -49,6 +50,8 @@ interface EditorProps {
   language?: string;
   /** When true, the editor becomes non-editable (during simulation runs). */
   readOnly?: boolean;
+  /** Compiler/lint messages to show as squiggles (lib/diagnostics.ts). */
+  diagnostics?: Diagnostic[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -185,15 +188,42 @@ export default function Editor({
   onChange,
   language = "verilog",
   readOnly = false,
+  diagnostics,
 }: EditorProps) {
   const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
+  const diagnosticsRef = useRef(diagnostics);
+  diagnosticsRef.current = diagnostics;
+
+  /** Show diagnostics as markers; a missing line clamps to the last one. */
+  const applyMarkers = useCallback(() => {
+    const editor = editorRef.current, monaco = monacoRef.current;
+    const model = editor?.getModel();
+    if (!monaco || !model) return;
+    const lines = model.getLineCount();
+    monaco.editor.setModelMarkers(model, "bitflow", (diagnosticsRef.current ?? []).map((d) => {
+      const line = Math.min(Math.max(d.line, 1), lines);
+      return {
+        severity:        d.severity === "error" ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
+        message:         d.message,
+        startLineNumber: line,
+        startColumn:     d.column ?? model.getLineFirstNonWhitespaceColumn(line) ?? 1,
+        endLineNumber:   line,
+        endColumn:       model.getLineMaxColumn(line),
+      };
+    }));
+  }, []);
+
+  useEffect(applyMarkers, [diagnostics, applyMarkers]);
 
   /** Store the editor instance so we can call methods on it if needed. */
-  const handleMount: OnMount = useCallback((editor) => {
+  const handleMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
     // Activate our custom theme immediately after mount
     editor.updateOptions({ theme: "phosphor-dark" });
-  }, []);
+    applyMarkers();
+  }, [applyMarkers]);
 
   return (
     <MonacoEditor

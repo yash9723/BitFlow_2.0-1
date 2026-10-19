@@ -34,6 +34,8 @@ import { parseVcd }           from "@/lib/vcd-parser";
 import { recordHintUnlock }   from "@/lib/progress-storage";
 import type { ParsedVcd }     from "@/lib/vcd-parser";
 import type { RunState }      from "@/lib/types";
+import { useMemo }            from "react";
+import { parseDiagnostics }   from "@/lib/diagnostics";
 
 // Monaco — browser only
 const Editor = dynamic(() => import("@/components/Editor"), {
@@ -87,6 +89,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
     run,
     submit,
   } = useProblem(problem);
+  const diagnostics = useMemo(() => parseDiagnostics(runResult?.stdout), [runResult]);
 
   const {
     progress,
@@ -293,6 +296,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
                   onChange={setDesignCode}
                   language="verilog"
                   readOnly={isRunning || isSubmitting}
+                  diagnostics={diagnostics.design}
                 />
               </div>
             </div>
@@ -318,6 +322,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
                   onChange={setTestbenchCode}
                   language="verilog"
                   readOnly={isRunning || isSubmitting}
+                  diagnostics={diagnostics.tb}
                 />
               </div>
             </div>
