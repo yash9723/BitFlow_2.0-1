@@ -24,6 +24,7 @@ async function upsertProblem(problem: any, learningLevel: string) {
     publicTestbench: problem.publicTestbench ?? "",
     hiddenTestcases: JSON.stringify(problem.hiddenTestcases ?? []),
     hiddenTestbench: problem.hiddenTestbench ?? null,
+    dataFiles: problem.dataFiles ? JSON.stringify(problem.dataFiles) : null,
     publicTestcases: JSON.stringify(problem.publicTestcases ?? []),
     expectedOutputMode: problem.expectedOutputMode ?? "stdout_compare",
     waveformRequired: problem.waveformRequired ?? false,

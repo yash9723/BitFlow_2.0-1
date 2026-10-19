@@ -99,7 +99,7 @@ module seq_detect_1011_moore (
     // Block 1: State register (sequential)
     always @(posedge clk or posedge rst) begin
         if (rst)
-            q <= /* TODO: IDLE state */;
+            q <= 3'b000;  // TODO: use your IDLE state
         else
             q <= next_q;
     end
@@ -112,7 +112,7 @@ module seq_detect_1011_moore (
 
     // Block 3: Output logic (combinational, Moore)
     // y is high only when in the detection state
-    assign y = /* TODO: y = 1 when q == DETECT state */;
+    assign y = 1'b0;  // TODO: y = 1 when q == DETECT state
 
 endmodule
 `,
@@ -270,7 +270,7 @@ module seq_detect_1011_mealy (
 
     always @(posedge clk or posedge rst) begin
         if (rst)
-            q <= /* TODO: IDLE */;
+            q <= 3'b000;  // TODO: use your IDLE state
         else
             q <= next_q;
     end
@@ -281,7 +281,7 @@ module seq_detect_1011_mealy (
     end
 
     // Mealy output: combinational from state and input
-    assign y = /* TODO: y = 1 when in state S101 and x=1 */;
+    assign y = 1'b0;  // TODO: y = 1 when in state S101 and x=1
 
 endmodule
 `,
@@ -290,23 +290,21 @@ endmodule
 module tb_seq_detect_1011_mealy;
     reg clk, rst, x;
     wire y;
+    integer i;
+    reg [7:0] stream = 8'b10111011;   // sent MSB first
     seq_detect_1011_mealy dut (.clk(clk),.rst(rst),.x(x),.y(y));
     initial clk = 0;
     always #5 clk = ~clk;
     initial begin $dumpfile("wave.vcd"); $dumpvars(0, tb_seq_detect_1011_mealy); end
     initial begin
         $display("=== Sequence Detector 1011 Mealy Overlapping Test ===");
-        rst=1; @(posedge clk); #1; rst=0;
-        // Send 1 0 1 1 1 0 1 1
-        $display("sending overlapping patterns: 10111011");
-        x=1; @(posedge clk); #1; $display("bit1: y=%b (expect 0)", y);
-        x=0; @(posedge clk); #1; $display("bit2: y=%b (expect 0)", y);
-        x=1; @(posedge clk); #1; $display("bit3: y=%b (expect 0)", y);
-        x=1; @(posedge clk); #1; $display("bit4: y=%b (expect 1 MEALY)", y);
-        x=1; @(posedge clk); #1; $display("bit5: y=%b (expect 0)", y);
-        x=0; @(posedge clk); #1; $display("bit6: y=%b (expect 0)", y);
-        x=1; @(posedge clk); #1; $display("bit7: y=%b (expect 0)", y);
-        x=1; @(posedge clk); #1; $display("bit8: y=%b (expect 1 overlapping match)", y);
+        rst=1; x=0; @(posedge clk); #1; rst=0;
+        $display("sending overlapping patterns: 10111011 (expect y=1 on bits 4 and 8)");
+        for (i = 7; i >= 0; i = i - 1) begin
+            x = stream[i]; #1;            // Mealy output reacts before the clock edge
+            $display("bit%0d: x=%b y=%b", 8 - i, x, y);
+            @(posedge clk); #1;
+        end
         $finish;
     end
 endmodule
@@ -316,39 +314,45 @@ endmodule
 module tb_seq_detect_1011_mealy_hidden;
     reg clk, rst, x;
     wire y;
-    integer errors, i;
+    integer errors;
     seq_detect_1011_mealy dut (.clk(clk),.rst(rst),.x(x),.y(y));
     initial clk = 0;
     always #5 clk = ~clk;
+    task bit_in(input b, input expect_y, input integer n);
+        begin
+            x = b; #1;                       // Mealy: y reacts to x before the edge
+            if (y !== expect_y) begin
+                errors = errors + 1;
+                $display("FAIL: bit %0d y=%b exp %b", n, y, expect_y);
+            end
+            @(posedge clk); #1;
+        end
+    endtask
+
     initial begin
         errors = 0;
+        rst=1; x=0; @(posedge clk); #1; rst=0;
+        // Overlapping: 10111011 matches at bits 4 and 8
+        bit_in(1'b1, 1'b0, 1);
+        bit_in(1'b0, 1'b0, 2);
+        bit_in(1'b1, 1'b0, 3);
+        bit_in(1'b1, 1'b1, 4);
+        bit_in(1'b1, 1'b0, 5);
+        bit_in(1'b0, 1'b0, 6);
+        bit_in(1'b1, 1'b0, 7);
+        bit_in(1'b1, 1'b1, 8);
+
+        // A match followed by zeros: no second match
         rst=1; @(posedge clk); #1; rst=0;
-        // Test overlapping: 10111011 should pulse at cycles 4 and 8
-        $display("Test: overlapping 10111011");
-        x=1; @(posedge clk); #1;
-        x=0; @(posedge clk); #1;
-        x=1; @(posedge clk); #1;
-        x=1; @(posedge clk); #1;
-        if(y!==1) begin errors=errors+1; $display("FAIL: cycle 4 y=%b exp 1",y); end
-        x=1; @(posedge clk); #1;
-        if(y!==0) begin errors=errors+1; $display("FAIL: cycle 5 y=%b exp 0",y); end
-        x=0; @(posedge clk); #1;
-        if(y!==0) begin errors=errors+1; end
-        x=1; @(posedge clk); #1;
-        if(y!==0) begin errors=errors+1; end
-        x=1; @(posedge clk); #1;
-        if(y!==1) begin errors=errors+1; $display("FAIL: cycle 8 y=%b exp 1",y); end
-        // Test non-overlapping input (no second match immediately)
-        $display("Test: 10110000 (no overlap)");
-        rst=1; @(posedge clk); #1; rst=0;
-        x=1; @(posedge clk); #1;
-        x=0; @(posedge clk); #1;
-        x=1; @(posedge clk); #1;
-        x=1; @(posedge clk); #1; if(y!==1) begin errors=errors+1; end
-        x=0; @(posedge clk); #1; if(y!==0) begin errors=errors+1; end
-        x=0; @(posedge clk); #1; if(y!==0) begin errors=errors+1; end
-        x=0; @(posedge clk); #1; if(y!==0) begin errors=errors+1; end
-        x=0; @(posedge clk); #1; if(y!==0) begin errors=errors+1; end
+        bit_in(1'b1, 1'b0, 1);
+        bit_in(1'b0, 1'b0, 2);
+        bit_in(1'b1, 1'b0, 3);
+        bit_in(1'b1, 1'b1, 4);
+        bit_in(1'b0, 1'b0, 5);
+        bit_in(1'b0, 1'b0, 6);
+        bit_in(1'b0, 1'b0, 7);
+        bit_in(1'b0, 1'b0, 8);
+
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
@@ -726,41 +730,73 @@ module tb_ps2_keyboard_parser_hidden;
     reg clk, ps2_clk, ps2_data;
     wire [7:0] byte_out;
     wire byte_valid, error;
-    integer errors;
+    integer errors, valid_count, error_count;
+    reg [7:0] last_byte;
+
     ps2_keyboard_parser dut (.clk(clk),.ps2_clk(ps2_clk),.ps2_data(ps2_data),
                              .byte_out(byte_out),.byte_valid(byte_valid),.error(error));
+
     initial clk = 0;
     always #5 clk = ~clk;
-    initial begin
-        ps2_clk = 0;
-        forever #20 ps2_clk = ~ps2_clk;
+
+    // byte_valid and error are 1-cycle pulses: count them as they happen
+    always @(posedge clk) begin
+        if (byte_valid === 1'b1) begin valid_count = valid_count + 1; last_byte = byte_out; end
+        if (error === 1'b1) error_count = error_count + 1;
     end
-    task send_byte_check(input [7:0] byte_in, input should_pass);
+
+    // One PS/2 bit: data changes while ps2_clk is low, the receiver samples on the rising edge
+    task ps2_bit(input b);
+        begin
+            ps2_clk = 0; ps2_data = b; #20;
+            ps2_clk = 1; #20;
+        end
+    endtask
+
+    task send_frame(input [7:0] data, input parity, input stop);
         integer i;
-        reg parity;
-        parity = ^byte_in;
-        ps2_data = 0; @(posedge ps2_clk); #1;
-        for (i=0; i<8; i=i+1) begin ps2_data = byte_in[i]; @(posedge ps2_clk); #1; end
-        ps2_data = parity; @(posedge ps2_clk); #1;
-        ps2_data = 1; @(posedge ps2_clk); #1;
-        ps2_data = 1;
-        repeat(4) @(posedge clk);
-        #1;
-        if (should_pass) begin
-            if (byte_out !== byte_in || !byte_valid) begin
+        begin
+            valid_count = 0; error_count = 0;
+            ps2_bit(1'b0);                                  // start
+            for (i = 0; i < 8; i = i + 1) ps2_bit(data[i]); // data, LSB first
+            ps2_bit(parity);
+            ps2_bit(stop);
+            ps2_data = 1; #100;                             // idle between frames
+        end
+    endtask
+
+    task expect_ok(input [7:0] data);
+        begin
+            send_frame(data, ~^data, 1'b1);                 // odd parity: data + parity has an odd number of 1s
+            if (valid_count !== 1 || last_byte !== data || error_count !== 0) begin
                 errors = errors + 1;
-                $display("FAIL: byte=%h got %h valid=%b", byte_in, byte_out, byte_valid);
+                $display("FAIL: sent %h -> byte_valid pulses=%0d byte_out=%h error pulses=%0d",
+                         data, valid_count, last_byte, error_count);
             end
         end
     endtask
+
+    task expect_err(input [7:0] data, input parity, input stop, input [8*16-1:0] what);
+        begin
+            send_frame(data, parity, stop);
+            if (error_count !== 1 || valid_count !== 0) begin
+                errors = errors + 1;
+                $display("FAIL: %0s frame -> error pulses=%0d byte_valid pulses=%0d", what, error_count, valid_count);
+            end
+        end
+    endtask
+
     initial begin
-        errors = 0;
-        ps2_data = 1;
+        errors = 0; valid_count = 0; error_count = 0;
+        ps2_clk = 1; ps2_data = 1;
         #100;
-        // Test valid bytes
-        send_byte_check(8'hAB, 1);
-        send_byte_check(8'h00, 1);
-        send_byte_check(8'hFF, 1);
+        expect_ok(8'hAB);
+        expect_ok(8'h00);
+        expect_ok(8'hFF);
+        expect_ok(8'h1C);
+        expect_err(8'h55, ^8'h55, 1'b1, "bad parity");
+        expect_err(8'h3A, ~^8'h3A, 1'b0, "missing stop bit");
+        expect_ok(8'h29);                                   // recovers after errors
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
@@ -784,7 +820,7 @@ endmodule
 
 Implement a UART receiver that decodes asynchronous serial data. This is one of the most common HDL design exercises and appears in every embedded systems interview.
 
-**UART Frame (8N1 = 8 data bits, no parity, 1 stop bit):**
+**UART Frame (8 data bits, odd parity, 1 stop bit — often written 8O1):**
 \`\`\`
 START (0) — always 0
 8 data bits (sampled at baud rate)
@@ -912,33 +948,82 @@ module tb_uart_receiver_8n1_hidden;
     reg [15:0] baud_div;
     wire [7:0] data;
     wire valid, parity_err, frame_err;
-    integer errors;
+    integer errors, valid_count, perr_count, ferr_count;
+    reg [7:0] last_data;
+
     uart_receiver_8n1 dut (.clk(clk),.rst(rst),.rx(rx),.baud_div(baud_div),
                            .data(data),.valid(valid),.parity_err(parity_err),.frame_err(frame_err));
+
     initial clk = 0;
     always #5 clk = ~clk;
-    task send_check(input [7:0] byte_in, input expect_err);
-        integer i;
-        reg parity;
-        parity = ^byte_in;
-        rx = 0; repeat(baud_div) @(posedge clk);
-        for (i=0; i<8; i=i+1) begin rx = byte_in[i]; repeat(baud_div) @(posedge clk); end
-        rx = parity; repeat(baud_div) @(posedge clk);
-        rx = 1; repeat(baud_div) @(posedge clk);
-        rx = 1;
-        repeat(10) @(posedge clk); #1;
-        if (!expect_err) begin
-            if (data !== byte_in || !valid) begin errors=errors+1; $display("FAIL: byte=%h got %h",byte_in,data); end
+
+    // valid / parity_err / frame_err are 1-cycle pulses: count them as they happen
+    always @(posedge clk) begin
+        if (valid === 1'b1)      begin valid_count = valid_count + 1; last_data = data; end
+        if (parity_err === 1'b1) perr_count = perr_count + 1;
+        if (frame_err === 1'b1)  ferr_count = ferr_count + 1;
+    end
+
+    // One bit lasts baud_div clock cycles; rx changes just after a clock edge
+    task uart_bit(input b);
+        begin
+            rx = b; repeat (baud_div) @(posedge clk); #1;
         end
     endtask
+
+    task send_frame(input [7:0] d, input parity, input stop);
+        integer i;
+        begin
+            valid_count = 0; perr_count = 0; ferr_count = 0;
+            uart_bit(1'b0);                                 // start
+            for (i = 0; i < 8; i = i + 1) uart_bit(d[i]);   // data, LSB first
+            uart_bit(parity);
+            uart_bit(stop);
+            rx = 1; repeat (3 * baud_div) @(posedge clk); #1;   // idle
+        end
+    endtask
+
+    task expect_ok(input [7:0] d);
+        begin
+            send_frame(d, ~^d, 1'b1);                       // odd parity
+            if (valid_count !== 1 || last_data !== d || perr_count !== 0 || ferr_count !== 0) begin
+                errors = errors + 1;
+                $display("FAIL: sent %h -> valid pulses=%0d data=%h parity_err=%0d frame_err=%0d",
+                         d, valid_count, last_data, perr_count, ferr_count);
+            end
+        end
+    endtask
+
     initial begin
-        errors = 0;
-        rst = 1; rx = 1; baud_div = 16'd10; @(posedge clk); #1; rst = 0;
-        #100;
-        send_check(8'h55, 0);
-        send_check(8'hAA, 0);
-        send_check(8'h00, 0);
-        send_check(8'hFF, 0);
+        errors = 0; valid_count = 0; perr_count = 0; ferr_count = 0;
+        rst = 1; rx = 1; baud_div = 16'd10;
+        @(posedge clk); #1; rst = 0;
+        repeat (20) @(posedge clk); #1;
+
+        expect_ok(8'h55);
+        expect_ok(8'hAA);
+        expect_ok(8'h00);
+        expect_ok(8'hFF);
+
+        // Wrong parity bit -> one parity_err pulse, no valid
+        send_frame(8'hA5, ^8'hA5, 1'b1);
+        if (perr_count !== 1 || valid_count !== 0 || ferr_count !== 0) begin
+            errors = errors + 1;
+            $display("FAIL: bad parity -> parity_err=%0d valid=%0d frame_err=%0d", perr_count, valid_count, ferr_count);
+        end
+
+        // Stop bit 0 -> one frame_err pulse, no valid
+        send_frame(8'h3C, ~^8'h3C, 1'b0);
+        if (ferr_count !== 1 || valid_count !== 0) begin
+            errors = errors + 1;
+            $display("FAIL: bad stop bit -> frame_err=%0d valid=%0d", ferr_count, valid_count);
+        end
+
+        // Recovers, and follows a different baud divider
+        expect_ok(8'h81);
+        baud_div = 16'd16;
+        expect_ok(8'h7E);
+
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
@@ -1047,7 +1132,7 @@ module tb_one_hot_fsm_1011;
     always #5 clk = ~clk;
     initial begin $dumpfile("wave.vcd"); $dumpvars(0, tb_one_hot_fsm_1011); end
     initial begin
-        $display("=== One-Hot FSM "1011" Detector Test ===");
+        $display("=== One-Hot FSM '1011' Detector Test ===");
         rst=1; @(posedge clk); #1; rst=0;
         $display("Sending 1 1 0 1 1:");
         x=1; @(posedge clk); #1; $display("bit1: y=%b", y);
@@ -1211,6 +1296,7 @@ module tb_spi_master_controller;
                                .dout(dout),.done(done));
     initial clk = 0;
     always #5 clk = ~clk;
+    initial begin #100000; $display("FAIL: timed out waiting for done"); $finish; end
     initial begin $dumpfile("wave.vcd"); $dumpvars(0, tb_spi_master_controller); end
     // Loopback: connect mosi to miso for testing
     assign miso = mosi;
@@ -1239,6 +1325,7 @@ module tb_spi_master_controller_hidden;
                                .dout(dout),.done(done));
     initial clk = 0;
     always #5 clk = ~clk;
+    initial begin #100000; $display("FAIL: timed out waiting for done"); $finish; end
     assign miso = mosi;  // loopback
     initial begin
         errors = 0;
@@ -1416,7 +1503,7 @@ module tb_i2c_start_stop_detector_hidden;
         errors = 0;
         rst=1; scl_in=1; sda_in=1; @(posedge clk); #1; rst=0;
         // Wait for synchronizers to settle
-        repeat(5) @(posedge clk);
+        repeat(5) @(posedge clk); #1;   // change inputs away from the clock edge
         // Test 1: START condition
         $display("Test 1: START (SDA 1->0 with SCL=1)");
         sda_in=0; @(posedge clk); @(posedge clk); #1;
@@ -1778,10 +1865,10 @@ module tb_async_fifo_cdc;
                         .wr_full(wr_full),.rd_empty(rd_empty));
     
     initial wr_clk = 0;
-    forever #10 wr_clk = ~wr_clk;  // 10ns period (100 MHz)
+    always #10 wr_clk = ~wr_clk;  // 10ns period (100 MHz)
     
     initial rd_clk = 0;
-    forever #7 rd_clk = ~rd_clk;   // 14ns period, ~71 MHz (non-integer ratio)
+    always #7 rd_clk = ~rd_clk;   // 14ns period, ~71 MHz (non-integer ratio)
     
     initial begin $dumpfile("wave.vcd"); $dumpvars(0, tb_async_fifo_cdc); end
     
@@ -1823,72 +1910,75 @@ module tb_async_fifo_cdc_hidden;
     reg [7:0] wr_data;
     wire [7:0] rd_data;
     wire wr_full, rd_empty;
-    integer errors, i, wr_count, rd_count;
-    
+    integer errors, wcount, rcount, waited;
+    localparam N = 64;
+
     async_fifo_cdc dut (.wr_clk(wr_clk),.rd_clk(rd_clk),.rst(rst),
                         .wr_en(wr_en),.wr_data(wr_data),
                         .rd_en(rd_en),.rd_data(rd_data),
                         .wr_full(wr_full),.rd_empty(rd_empty));
-    
+
     initial wr_clk = 0;
-    forever #10 wr_clk = ~wr_clk;
-    
+    always #10 wr_clk = ~wr_clk;   // 20 ns period
     initial rd_clk = 0;
-    forever #7 rd_clk = ~rd_clk;
-    
+    always #7 rd_clk = ~rd_clk;    // 14 ns period: unrelated to the write clock
+
+    function [7:0] value(input integer k);
+        value = k * 37 + 5;
+    endfunction
+
     initial begin
-        errors = 0;
-        rst=1; wr_en=0; rd_en=0; wr_data=0;
-        repeat(10) @(posedge wr_clk);
-        #1; rst=0;
-        
-        // Test: Write 256 entries (wrap multiple times), read back
-        $display("Test: 256 transactions across domains");
-        wr_count = 0; rd_count = 0;
-        
-        // Fork parallel write and read
+        errors = 0; wcount = 0; rcount = 0;
+        rst = 1; wr_en = 0; rd_en = 0; wr_data = 0;
+        repeat (5) @(posedge wr_clk);
+        #1; rst = 0;
+        #1;
+        if (rd_empty !== 1'b1) begin errors = errors + 1; $display("FAIL: rd_empty=%b after reset (exp 1)", rd_empty); end
+        if (wr_full  !== 1'b0) begin errors = errors + 1; $display("FAIL: wr_full=%b after reset (exp 0)", wr_full); end
+
         fork
-            // Writer task
-            begin
-                for (i=0; i<256; i=i+1) begin
-                    wr_en = !wr_full;
-                    if (!wr_full) begin
-                        wr_data = (i[7:0]) ^ 8'h55;
-                        @(posedge wr_clk);
-                        wr_count = wr_count + 1;
-                    end else begin
-                        @(posedge wr_clk);
+            // Writer: push N values, stalling while the FIFO is full
+            begin : writer
+                while (wcount < N) begin
+                    @(negedge wr_clk);
+                    if (wr_full === 1'b0) begin
+                        wr_data = value(wcount); wr_en = 1;
+                        @(posedge wr_clk); #1; wr_en = 0;
+                        wcount = wcount + 1;
                     end
                 end
-                wr_en = 0;
             end
-            
-            // Reader task (delayed start)
-            begin
-                repeat(50) @(posedge rd_clk);  // Sync delay
-                rd_en = 1;
-                for (i=0; i<256; i=i+1) begin
-                    if (!rd_empty) begin
-                        @(posedge rd_clk); #1;
-                        if (rd_data !== ((i[7:0]) ^ 8'h55)) begin
-                            errors=errors+1;
-                            $display("FAIL: rd_data=%h exp %h at transaction %0d", 
-                                     rd_data, ((i[7:0]) ^ 8'h55), i);
+            // Reader: start late so the FIFO fills up, then drain it in order
+            begin : reader
+                repeat (60) @(posedge rd_clk);
+                waited = 0;
+                while (rcount < N && waited < 4000) begin
+                    @(negedge rd_clk);
+                    waited = waited + 1;
+                    if (rd_empty === 1'b0) begin
+                        if (rd_data !== value(rcount)) begin
+                            errors = errors + 1;
+                            if (errors < 6) $display("FAIL: read %0d = %h, exp %h", rcount, rd_data, value(rcount));
                         end
-                        rd_count = rd_count + 1;
-                    end else begin
-                        @(posedge rd_clk);
+                        rd_en = 1;
+                        @(posedge rd_clk); #1; rd_en = 0;
+                        rcount = rcount + 1;
                     end
                 end
-                rd_en = 0;
             end
         join
-        
-        $display("Wrote %0d, read %0d entries", wr_count, rd_count);
+
+        if (rcount != N) begin
+            errors = errors + 1;
+            $display("FAIL: read back %0d of %0d values (wrote %0d)", rcount, N, wcount);
+        end
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
     end
+
+    // Writer stuck on wr_full forever = the FIFO never drains
+    initial begin #400000; $display("FAIL: timed out (wrote %0d, read %0d)", wcount, rcount); $finish; end
 endmodule
 `,
 },
@@ -2065,63 +2155,81 @@ module tb_configurable_pwm_hidden;
     reg clk, rst, wr_period, wr_duty;
     reg [7:0] wr_data;
     wire pwm_out;
-    integer errors, i, high_count, low_count;
-    
+    integer errors, h, prev, j;
+
     configurable_pwm dut (.clk(clk),.rst(rst),
                           .wr_period(wr_period),.wr_duty(wr_duty),
                           .wr_data(wr_data),.pwm_out(pwm_out));
-    
+
     initial clk = 0;
     always #5 clk = ~clk;
-    
-    initial begin
-        errors = 0;
-        rst=1; wr_period=0; wr_duty=0; wr_data=0; @(posedge clk); #1; rst=0;
-        
-        // Test 1: 50% duty (period=99, duty=50 out of 100)
-        $display("Test 1: period=99, duty=50 (50%% duty)");
-        wr_period=1; wr_data=8'd99; @(posedge clk); #1; wr_period=0;
-        wr_duty=1;   wr_data=8'd50; @(posedge clk); #1; wr_duty=0;
-        repeat(15) @(posedge clk);  // Wait for shadow to load
-        
-        high_count = 0; low_count = 0;
-        for (i=0; i<100; i=i+1) begin
-            @(posedge clk); #1;
-            if (pwm_out) high_count = high_count + 1;
-            else low_count = low_count + 1;
-        end
-        $display("High:%0d Low:%0d (expect ~50 each)", high_count, low_count);
-        if (high_count < 45 || high_count > 55) begin
-            errors=errors+1;
-            $display("FAIL: duty not ~50%%");
-        end
-        
-        // Test 2: 0% duty
-        $display("Test 2: duty=0 (always low)");
-        wr_duty=1; wr_data=8'd0; @(posedge clk); #1; wr_duty=0;
-        repeat(15) @(posedge clk);
-        for (i=0; i<50; i=i+1) begin
-            @(posedge clk); #1;
-            if (pwm_out !== 1'b0) begin
-                errors=errors+1;
-                $display("FAIL: duty=0 but pwm=%b at %0d", pwm_out, i);
-                break;
+
+    // Number of high samples over the next n clock cycles
+    task count_high(input integer n, output integer high);
+        integer k;
+        begin
+            high = 0;
+            for (k = 0; k < n; k = k + 1) begin
+                @(posedge clk); #1;
+                if (pwm_out === 1'b1) high = high + 1;
             end
         end
-        
-        // Test 3: Glitch-free period change
-        $display("Test 3: Glitch-free updates");
-        wr_period=1; wr_data=8'd9; @(posedge clk); #1; wr_period=0;
-        wr_duty=1;   wr_data=8'd3; @(posedge clk); #1; wr_duty=0;
-        repeat(20) @(posedge clk);  // Wait for load
-        // Duty changes should take effect at period boundary, no glitch
-        for (i=0; i<50; i=i+1) begin
-            wr_period = (i==10) ? 1 : 0;  // Change period mid-operation
-            wr_duty = (i==20) ? 1 : 0;
-            wr_data = (i==10) ? 8'd19 : (i==20) ? 8'd2 : 0;
-            @(posedge clk);
+    endtask
+
+    task write_reg(input is_period, input [7:0] value);
+        begin
+            wr_data = value;
+            if (is_period) wr_period = 1; else wr_duty = 1;
+            @(posedge clk); #1;
+            wr_period = 0; wr_duty = 0;
         end
-        
+    endtask
+
+    task expect_high(input integer n, input integer want, input [8*40-1:0] what);
+        begin
+            count_high(n, h);
+            if (h !== want) begin
+                errors = errors + 1;
+                $display("FAIL: %0s: %0d high cycles out of %0d, exp %0d", what, h, n, want);
+            end
+        end
+    endtask
+
+    initial begin
+        errors = 0; wr_period = 0; wr_duty = 0; wr_data = 0;
+        rst = 1; @(posedge clk); #1; rst = 0;
+
+        // Defaults after reset: period 99 (100 counts), duty 50 -> 50%
+        expect_high(100, 50, "defaults 99/50");
+
+        // duty = 0: always low once the next period starts
+        write_reg(0, 8'd0);
+        repeat (110) @(posedge clk); #1;
+        expect_high(100, 0, "duty 0");
+
+        // period 9 (10 counts), duty 3 -> 3 of every 10 cycles
+        write_reg(1, 8'd9);
+        write_reg(0, 8'd3);
+        repeat (110) @(posedge clk); #1;
+        expect_high(100, 30, "period 9 duty 3");
+
+        // Glitch-free: find the start of a period (pwm rises), write duty = 7
+        // during it, and check the rest of this period still uses duty 3
+        prev = 1;
+        for (j = 0; j < 40; j = j + 1) begin
+            @(posedge clk); #1;
+            if (pwm_out === 1'b1 && prev == 0) j = 40;   // counter is 0 now
+            else prev = (pwm_out === 1'b1);
+        end
+        write_reg(0, 8'd7);                                // counter is 1 now
+        expect_high(8, 1, "rest of period after duty write");   // counts 2..9: only 2 < 3
+        expect_high(10, 7, "next period with duty 7");
+
+        // duty > period saturates high
+        write_reg(0, 8'd20);
+        repeat (25) @(posedge clk); #1;
+        expect_high(50, 50, "duty > period");
+
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
@@ -2264,49 +2372,44 @@ endmodule
   hiddenTestbench: `\`timescale 1ns / 1ps
 module tb_twos_comp_serial_hidden;
     reg clk, rst, bit_in;
-    wire bit_out;
+    wire moore_out, mealy_out;
     integer i, errors, test_idx;
     reg [7:0] test_vals [0:19];
-    reg [7:0] input_val, output_bits, expected;
-    
-    twos_comp_moore dut (.clk(clk),.rst(rst),.bit_in(bit_in),.bit_out(bit_out));
-    
+    reg [7:0] input_val, moore_bits, mealy_bits, expected;
+
+    twos_comp_moore moore (.clk(clk),.rst(rst),.bit_in(bit_in),.bit_out(moore_out));
+    twos_comp_mealy mealy (.clk(clk),.rst(rst),.bit_in(bit_in),.bit_out(mealy_out));
+
     initial clk = 0;
     always #5 clk = ~clk;
-    
+
     initial begin
         errors = 0;
-        // Test values
-        test_vals[0] = 8'h05;
-        test_vals[1] = 8'hFF;
-        test_vals[2] = 8'h00;
-        test_vals[3] = 8'h80;
-        test_vals[4] = 8'h01;
-        test_vals[5] = 8'h55;
-        test_vals[6] = 8'hAA;
-        test_vals[7] = 8'h7F;
-        for (i=8; i<20; i=i+1) test_vals[i] = $random;
-        
-        rst=1; bit_in=0; @(posedge clk); #1; rst=0;
-        
-        for (test_idx=0; test_idx<20; test_idx=test_idx+1) begin
+        test_vals[0] = 8'h05; test_vals[1] = 8'hFF; test_vals[2] = 8'h00; test_vals[3] = 8'h80;
+        test_vals[4] = 8'h01; test_vals[5] = 8'h55; test_vals[6] = 8'hAA; test_vals[7] = 8'h7F;
+        for (i = 8; i < 20; i = i + 1) test_vals[i] = $random;
+        bit_in = 0; rst = 0;
+        @(posedge clk); #1;
+
+        for (test_idx = 0; test_idx < 20; test_idx = test_idx + 1) begin
             input_val = test_vals[test_idx];
-            expected = -input_val;  // Two's complement
-            output_bits = 8'h00;
-            
-            for (i=0; i<8; i=i+1) begin
-                bit_in = input_val[i];
+            expected  = -input_val;
+            rst = 1; #2; rst = 0;            // each number is a new stream (async reset)
+            for (i = 0; i < 8; i = i + 1) begin
+                bit_in = input_val[i];       // LSB first
+                #1 mealy_bits[i] = mealy_out;   // Mealy: output for this bit, before the edge
                 @(posedge clk); #1;
-                output_bits[i] = bit_out;
+                moore_bits[i] = moore_out;   // Moore: output once the bit has been clocked in
             end
-            
-            if (output_bits !== expected) begin
-                errors=errors+1;
-                $display("FAIL test %0d: input=0x%h output=0x%h expected=0x%h", 
-                         test_idx, input_val, output_bits, expected);
+            if (moore_bits !== expected) begin
+                errors = errors + 1;
+                $display("FAIL Moore: input=0x%h output=0x%h expected=0x%h", input_val, moore_bits, expected);
+            end
+            if (mealy_bits !== expected) begin
+                errors = errors + 1;
+                $display("FAIL Mealy: input=0x%h output=0x%h expected=0x%h", input_val, mealy_bits, expected);
             end
         end
-        
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
@@ -2443,48 +2546,43 @@ module tb_gshare_branch_predictor_hidden;
     reg [4:0] pc;
     reg branch_taken;
     wire prediction;
-    integer i, errors, correct_preds;
-    
+    integer i, errors;
+    reg [1:0] m_pht [0:31];     // model of the predictor
+    reg [4:0] m_ghr;
+    reg [4:0] idx;
+
     gshare_branch_predictor dut (.clk(clk),.rst(rst),.pc(pc),.branch_taken(branch_taken),.prediction(prediction));
-    
+
     initial clk = 0;
     always #5 clk = ~clk;
-    
+
+    // Present one branch: check the prediction, then clock in the real outcome
+    task step(input [4:0] p, input t);
+        begin
+            pc = p; branch_taken = t; #1;
+            idx = p ^ m_ghr;
+            if (prediction !== m_pht[idx][1]) begin
+                errors = errors + 1;
+                if (errors < 6) $display("FAIL: pc=%0d ghr=%b prediction=%b exp %b", p, m_ghr, prediction, m_pht[idx][1]);
+            end
+            @(posedge clk); #1;
+            if (t && m_pht[idx] != 2'b11)       m_pht[idx] = m_pht[idx] + 2'b01;
+            else if (!t && m_pht[idx] != 2'b00) m_pht[idx] = m_pht[idx] - 2'b01;
+            m_ghr = {m_ghr[3:0], t};
+        end
+    endtask
+
     initial begin
         errors = 0;
-        rst=1; pc=0; branch_taken=0; @(posedge clk); #1; rst=0;
-        
-        // Test 1: Always taken at PC=0
-        $display("Test 1: Convergence to always-taken");
-        pc=5'h00;
-        for (i=0; i<10; i=i+1) begin
-            branch_taken=1;
-            @(posedge clk); #1;
-        end
-        // After several cycles, prediction should be 1
-        @(posedge clk); #1;
-        if (prediction !== 1'b1) begin errors=errors+1; $display("FAIL: always-taken prediction"); end
-        
-        // Test 2: Always not-taken at PC=10
-        $display("Test 2: Convergence to always-not-taken");
-        pc=5'h0A;
-        for (i=0; i<10; i=i+1) begin
-            branch_taken=0;
-            @(posedge clk); #1;
-        end
-        @(posedge clk); #1;
-        if (prediction !== 1'b0) begin errors=errors+1; $display("FAIL: always-not-taken prediction"); end
-        
-        // Test 3: Different PCs don't interfere (GHR xor PC)
-        $display("Test 3: PC-based indexing");
-        pc=5'h15; branch_taken=1;
-        repeat(5) @(posedge clk);
-        #1;
-        // Switch PC, check independent counters
-        pc=5'h1A; branch_taken=0;
-        repeat(5) @(posedge clk);
-        #1;
-        
+        for (i = 0; i < 32; i = i + 1) m_pht[i] = 2'b10;    // reset value: weakly taken
+        m_ghr = 5'b0;
+        rst = 1; pc = 0; branch_taken = 0; @(posedge clk); #1; rst = 0;
+
+        for (i = 0; i < 12; i = i + 1) step(5'h00, 1'b1);           // always taken
+        for (i = 0; i < 12; i = i + 1) step(5'h0A, 1'b0);           // always not taken
+        for (i = 0; i < 20; i = i + 1) step(5'h15, i[0]);           // alternating
+        for (i = 0; i < 100; i = i + 1) step($random, $random);     // anything goes
+
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
@@ -2697,7 +2795,7 @@ Implement a receiver for **High-Level Data Link Control** frames. HDLC uses the 
 Your receiver must:
 1. **Detect frame start/end:** Recognize \`01111110\` (flag)
 2. **Strip inserted zeros:** Remove the stuffed 0 after every five consecutive 1s
-3. **Output clean bytes:** Assemble and output data bytes with \`byte_valid\` pulse
+3. **Output clean bytes:** Assemble and output data bytes with \`byte_valid\` pulse (bits arrive LSB first)
 4. **Flag abort:** If seven or more consecutive 1s are seen, declare protocol error (\`abort\`)
 
 **Interface**
@@ -2830,65 +2928,103 @@ module tb_hdlc_bit_stuffing_receiver_hidden;
     reg clk, rst, bit_in;
     wire [7:0] byte_out;
     wire byte_valid, frame_start, frame_end, abort;
-    integer i, errors, bit_count;
-    
+    integer errors, nbytes, nstart, nend, nabort, tx_ones;
+    reg [7:0] got [0:15];
+
     hdlc_bit_stuffing_receiver dut (.clk(clk),.rst(rst),.bit_in(bit_in),
                                      .byte_out(byte_out),.byte_valid(byte_valid),
                                      .frame_start(frame_start),.frame_end(frame_end),.abort(abort));
-    
+
     initial clk = 0;
     always #5 clk = ~clk;
-    
-    task send_bits(input [127:0] bits, input [7:0] count);
-        integer j;
-        for (j=0; j<count; j=j+1) begin
-            bit_in = bits[j];
-            @(posedge clk);
+
+    // All outputs are 1-cycle pulses: collect them as they happen
+    always @(posedge clk) begin
+        if (byte_valid === 1'b1)  begin if (nbytes < 16) got[nbytes] = byte_out; nbytes = nbytes + 1; end
+        if (frame_start === 1'b1) nstart = nstart + 1;
+        if (frame_end === 1'b1)   nend = nend + 1;
+        if (abort === 1'b1)       nabort = nabort + 1;
+    end
+
+    task send_bit(input b);
+        begin
+            bit_in = b; @(posedge clk); #1;
         end
     endtask
-    
+
+    task send_flag;                       // 01111110, never stuffed
+        integer k;
+        begin
+            for (k = 0; k < 8; k = k + 1) send_bit(k != 0 && k != 7);
+            tx_ones = 0;
+        end
+    endtask
+
+    task send_data(input [7:0] v);        // LSB first, a 0 stuffed after five 1s
+        integer k;
+        begin
+            for (k = 0; k < 8; k = k + 1) begin
+                send_bit(v[k]);
+                tx_ones = v[k] ? tx_ones + 1 : 0;
+                if (tx_ones == 5) begin send_bit(1'b0); tx_ones = 0; end
+            end
+        end
+    endtask
+
+    task idle;
+        begin
+            repeat (4) send_bit(1'b0);
+            nbytes = 0; nstart = 0; nend = 0; nabort = 0;
+        end
+    endtask
+
+    task expect_counts(input integer s, input integer b, input integer e, input integer a, input [8*24-1:0] what);
+        begin
+            repeat (3) send_bit(1'b0);
+            if (nstart !== s || nbytes !== b || nend !== e || nabort !== a) begin
+                errors = errors + 1;
+                $display("FAIL %0s: frame_start=%0d bytes=%0d frame_end=%0d abort=%0d (exp %0d/%0d/%0d/%0d)",
+                         what, nstart, nbytes, nend, nabort, s, b, e, a);
+            end
+        end
+    endtask
+
+    task expect_byte(input integer n, input [7:0] v);
+        begin
+            if (got[n] !== v) begin
+                errors = errors + 1;
+                $display("FAIL: byte %0d = %h exp %h", n, got[n], v);
+            end
+        end
+    endtask
+
     initial begin
-        errors = 0;
-        rst=1; bit_in=0; @(posedge clk); #1; rst=0;
-        
-        // Test 1: Frame with data (flag-data-flag)
-        $display("Test 1: Flag-data-flag");
-        // Flag: 01111110
-        send_bits(128'b01111110, 8);
-        @(posedge clk); #1;
-        if (frame_start !== 1'b1) begin errors=errors+1; $display("FAIL: frame_start"); end
-        
-        // Data 0xAA (1010_1010) with stuffing: 10101010 (no 5 consecutive ones)
-        send_bits(128'b10101010, 8);
-        repeat(10) @(posedge clk);
-        #1;
-        if (byte_out !== 8'hAA) begin errors=errors+1; $display("FAIL: byte_out=%h exp AA", byte_out); end
-        
-        // Flag end: 01111110
-        send_bits(128'b01111110, 8);
-        @(posedge clk); #1;
-        if (frame_end !== 1'b1) begin errors=errors+1; $display("FAIL: frame_end"); end
-        
-        // Test 2: Stuffed bits (5 ones + stuff 0)
-        $display("Test 2: Bit stuffing (11111xxx)");
-        rst=1; @(posedge clk); #1; rst=0;
-        send_bits(128'b01111110, 8);  // Flag
-        repeat(2) @(posedge clk);
-        // Send 5 ones followed by data: 11111 010
-        // Receiver sees: 11111[0]010, should output 11111010 = 0xFA
-        send_bits(128'b11111010, 8);
-        repeat(20) @(posedge clk);
-        #1;
-        if (byte_out !== 8'hFA) begin errors=errors+1; $display("FAIL: stuffed byte=%h exp FA", byte_out); end
-        
-        // Test 3: Abort (7+ ones)
-        $display("Test 3: Abort on 7 consecutive ones");
-        rst=1; @(posedge clk); #1; rst=0;
-        send_bits(128'b01111111, 8);  // Flag + 1 more = 7 ones
-        repeat(10) @(posedge clk);
-        #1;
-        if (abort !== 1'b1) begin errors=errors+1; $display("FAIL: abort not set on 7 ones"); end
-        
+        errors = 0; nbytes = 0; nstart = 0; nend = 0; nabort = 0; tx_ones = 0;
+        rst = 1; bit_in = 0; @(posedge clk); #1; rst = 0;
+
+        // Test 1: plain frame
+        idle;
+        send_flag; send_data(8'hAA); send_data(8'h55); send_flag;
+        expect_counts(1, 2, 1, 0, "plain frame");
+        expect_byte(0, 8'hAA); expect_byte(1, 8'h55);
+
+        // Test 2: runs of ones that need stuffing (including a flag-like byte)
+        idle;
+        send_flag; send_data(8'hFF); send_data(8'h7E); send_data(8'hF8); send_data(8'h3F); send_flag;
+        expect_counts(1, 4, 1, 0, "stuffed frame");
+        expect_byte(0, 8'hFF); expect_byte(1, 8'h7E); expect_byte(2, 8'hF8); expect_byte(3, 8'h3F);
+
+        // Test 3: seven 1s in a row aborts the frame
+        idle;
+        send_flag; repeat (7) send_bit(1'b1);
+        expect_counts(1, 0, 0, 1, "abort");
+
+        // Test 4: a new frame after the abort works
+        idle;
+        send_flag; send_data(8'h12); send_flag;
+        expect_counts(1, 1, 1, 0, "frame after abort");
+        expect_byte(0, 8'h12);
+
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
@@ -3086,67 +3222,78 @@ module tb_game_of_life_16x16_hidden;
     reg [255:0] load_data;
     wire [255:0] grid_out;
     wire [31:0] generation;
-    integer i, errors;
-    reg [255:0] grid_prev, grid_curr;
-    
+    integer i, y, x, errors;
+    reg [255:0] start, expect_grid;
+
     game_of_life_16x16 dut (.clk(clk),.rst(rst),.load(load),.load_data(load_data),
                              .grid_out(grid_out),.generation(generation));
-    
+
     initial clk = 0;
     always #5 clk = ~clk;
-    
-    initial begin
-        errors = 0;
-        rst=1; load=0; load_data=0; @(posedge clk); #1; rst=0;
-        
-        // Test 1: Blinker period-2 oscillator
-        $display("Test 1: Blinker (period 2)");
-        load_data = 256'h0;
-        load_data[5*16 + 4] = 1;
-        load_data[5*16 + 5] = 1;
-        load_data[5*16 + 6] = 1;
-        load=1; @(posedge clk); #1; load=0;
-        
-        grid_prev = grid_out;
-        @(posedge clk); #1; grid_curr = grid_out;
-        @(posedge clk); #1; // Should return to original
-        if (grid_out !== grid_prev) begin
-            errors=errors+1;
-            $display("FAIL: blinker period not 2");
+
+    task load_grid(input [255:0] g);
+        begin
+            load_data = g; load = 1; @(posedge clk); #1; load = 0;
         end
-        
-        // Test 2: Block is static
-        $display("Test 2: Block (static)");
-        rst=1; @(posedge clk); #1; rst=0;
-        load_data = 256'h0;
-        load_data[0*16 + 0] = 1;
-        load_data[0*16 + 1] = 1;
-        load_data[1*16 + 0] = 1;
-        load_data[1*16 + 1] = 1;
-        load=1; @(posedge clk); #1; load=0;
-        
-        grid_prev = grid_out;
-        repeat(20) @(posedge clk);
-        #1;
-        if (grid_out !== grid_prev) begin
-            errors=errors+1;
-            $display("FAIL: block changed (not static)");
-        end
-        
-        // Test 3: Random seed stability (no crashes, generation increments)
-        $display("Test 3: Stability test");
-        rst=1; @(posedge clk); #1; rst=0;
-        load_data = $random;
-        load=1; @(posedge clk); #1; load=0;
-        
-        for (i=0; i<100; i=i+1) begin
-            @(posedge clk); #1;
-            if (generation !== i+1) begin
-                errors=errors+1;
-                $display("FAIL: generation=%0d exp %0d", generation, i+1);
+    endtask
+
+    task check(input [255:0] want, input [8*48-1:0] what);
+        begin
+            if (grid_out !== want) begin
+                errors = errors + 1;
+                $display("FAIL: %0s", what);
             end
         end
-        
+    endtask
+
+    initial begin
+        errors = 0;
+        rst = 1; load = 0; load_data = 0; @(posedge clk); #1; rst = 0;
+
+        // Test 1: load, then a horizontal blinker turns vertical and back
+        start = 256'h0;
+        start[5*16+4] = 1; start[5*16+5] = 1; start[5*16+6] = 1;
+        load_grid(start);
+        check(start, "grid_out after load");
+        expect_grid = 256'h0;
+        expect_grid[4*16+5] = 1; expect_grid[5*16+5] = 1; expect_grid[6*16+5] = 1;
+        @(posedge clk); #1; check(expect_grid, "blinker generation 1");
+        @(posedge clk); #1; check(start, "blinker generation 2");
+
+        // Test 2: a block in the corner never changes
+        start = 256'h0;
+        start[0] = 1; start[1] = 1; start[16] = 1; start[17] = 1;
+        load_grid(start);
+        repeat (20) @(posedge clk);
+        #1; check(start, "block changed");
+
+        // Test 3: a glider moves (+1,+1) every 4 generations and, on a 16x16
+        // torus, is back where it started after 64
+        start = 256'h0;
+        start[0*16+1] = 1; start[1*16+2] = 1; start[2*16+0] = 1; start[2*16+1] = 1; start[2*16+2] = 1;
+        load_grid(start);
+        repeat (4) @(posedge clk);
+        #1;
+        expect_grid = 256'h0;
+        for (y = 0; y < 16; y = y + 1)
+            for (x = 0; x < 16; x = x + 1)
+                if (start[y*16+x]) expect_grid[((y+1)%16)*16 + (x+1)%16] = 1;
+        check(expect_grid, "glider after 4 generations");
+        repeat (60) @(posedge clk);
+        #1; check(start, "glider after 64 generations (wrap-around)");
+
+        // Test 4: reset clears the grid; generation counts clocks after a load
+        rst = 1; @(posedge clk); #1; rst = 0;
+        check(256'h0, "grid not cleared by reset");
+        load_grid(start);
+        for (i = 0; i < 10; i = i + 1) begin
+            @(posedge clk); #1;
+            if (generation !== i + 1) begin
+                errors = errors + 1;
+                $display("FAIL: generation=%0d exp %0d", generation, i + 1);
+            end
+        end
+
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
@@ -3365,7 +3512,7 @@ Implement a **vending machine** that accepts coins, dispenses items, and gives c
 - balance saturates at 255
 - change_due only valid during CHANGE state
 
-**Example:** Insert quarter + quarter + dime → balance=60 → dispense → change_due=10`,
+**Example:** Insert quarter + dime + quarter → balance=60 → dispense → change_due=10`,
 
   constraints: [
     "One-hot coin inputs: only one coin per cycle.",
@@ -3472,13 +3619,13 @@ module tb_vending_machine_fsm_hidden;
         if (change_due !== 8'd0) begin errors=errors+1; end
         
         // Test 2: Excess (60 cents)
-        $display("Test 2: Excess amount (60 cents)");
+        $display("Test 2: Excess amount (60 cents: quarter, dime, quarter)");
         rst=1; @(posedge clk); #1; rst=0;
         quarter=1; @(posedge clk); #1; quarter=0;
         @(posedge clk); #1;
-        quarter=1; @(posedge clk); #1; quarter=0;
-        @(posedge clk); #1;
         dime=1; @(posedge clk); #1; dime=0;
+        @(posedge clk); #1;
+        quarter=1; @(posedge clk); #1; quarter=0;
         @(posedge clk); #1;
         if (dispense !== 1'b1) begin errors=errors+1; end
         if (change_due !== 8'd10) begin errors=errors+1; $display("FAIL: change=%0d exp 10", change_due); end

@@ -11,10 +11,16 @@ Keeping schemas in one file means:
 
 from __future__ import annotations
 
+import re
 from enum import IntEnum, auto
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
+
+# Extra input files (POST /simulate "files"): plain names, never the sandbox's own.
+MAX_DATA_FILES      = 4
+DATA_FILE_NAME      = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}")
+RESERVED_FILE_NAMES = {"design.v", "tb.v", "a.out", "wave.vcd", ".proc_output.log"}
 
 
 # =============================================================================
@@ -95,12 +101,36 @@ class SimulateJsonRequest(BaseModel):
         ),
     )
 
+    files: Optional[dict[str, str]] = Field(
+        default=None,
+        description=(
+            "Extra input files written next to design.v, e.g. a hex file for "
+            "$readmemh. At most 4; plain file names only (no paths)."
+        ),
+        examples=[{"sine_lut.hex": "80\n83\n86\n"}],
+    )
+
     @field_validator("design_v", "testbench_v")
     @classmethod
     def _no_null_bytes(cls, v: str) -> str:
         """Reject strings with embedded null bytes — they break shell tools."""
         if "\x00" in v:
             raise ValueError("Source code must not contain null bytes.")
+        return v
+
+    @field_validator("files")
+    @classmethod
+    def _safe_files(cls, v: Optional[dict[str, str]]) -> Optional[dict[str, str]]:
+        """Only a few plain names that can't escape or clobber the workspace."""
+        if not v:
+            return v
+        if len(v) > MAX_DATA_FILES:
+            raise ValueError(f"At most {MAX_DATA_FILES} extra files.")
+        for name, content in v.items():
+            if not DATA_FILE_NAME.fullmatch(name) or name in RESERVED_FILE_NAMES:
+                raise ValueError(f"Invalid file name: {name!r}")
+            if "\x00" in content:
+                raise ValueError(f"{name} must not contain null bytes.")
         return v
 
 

@@ -92,6 +92,7 @@ def write_source_files(
     tmpdir: str,
     design_v: str,
     testbench_v: str,
+    files: dict | None = None,
 ) -> None:
     """
     Write design.v and tb.v into the workspace directory.
@@ -113,6 +114,12 @@ def write_source_files(
     tb_path.write_text(testbench_v, encoding="utf-8")
     os.chmod(design_path, 0o644)
     os.chmod(tb_path, 0o644)
+
+    # Extra input files (names already validated in SimulateJsonRequest).
+    for name, content in (files or {}).items():
+        path = Path(tmpdir, name)
+        path.write_text(content, encoding="utf-8")
+        os.chmod(path, 0o644)
 
 
 def cleanup_workspace(tmpdir: str) -> None:

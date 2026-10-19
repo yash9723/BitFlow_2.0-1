@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import ReferenceSolutionsAdmin from "@/components/ReferenceSolutionsAdmin";
 import Link from "next/link";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -768,6 +769,10 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        </section>
+
+        <section className="lg:col-span-12 bg-surface/30 border border-rim/50 rounded-lg p-6 shadow-lg">
+          <ReferenceSolutionsAdmin />
         </section>
 
       </main>

@@ -60,6 +60,7 @@ async def _execute_simulation(
     testbench_v: str,
     timeout: int,
     lint: bool = False,
+    files: dict | None = None,
 ) -> SimulateResponse:
     """
     Core simulation pipeline shared by both endpoints.
@@ -78,7 +79,7 @@ async def _execute_simulation(
     try:
         # Write source files to the host-side workspace.
         # The directory is bind-mounted into /workspace inside the container.
-        write_source_files(tmpdir, design_v, testbench_v)
+        write_source_files(tmpdir, design_v, testbench_v, files)
         logger.debug("ws=%s | Source files written to %s", workspace_id, tmpdir)
 
         # Run the simulation (waits for a free slot first).
@@ -171,11 +172,13 @@ async def simulate_json(body: SimulateJsonRequest) -> SimulateResponse:
     # Size-check before touching Docker
     check_source_size(body.design_v,    settings.max_source_bytes, "design_v")
     check_source_size(body.testbench_v, settings.max_source_bytes, "testbench_v")
+    for name, content in (body.files or {}).items():
+        check_source_size(content, settings.max_source_bytes, name)
 
     # Clamp timeout to the server ceiling
     timeout = min(body.timeout or settings.timeout_seconds, settings.max_timeout_seconds)
 
-    return await _execute_simulation(body.design_v, body.testbench_v, timeout, body.lint)
+    return await _execute_simulation(body.design_v, body.testbench_v, timeout, body.lint, body.files)
 
 
 # =============================================================================

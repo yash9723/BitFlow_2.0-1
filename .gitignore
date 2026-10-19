@@ -27,5 +27,8 @@ bitflow_frontend/prisma/*.db
 # Database backups (docker compose --profile backup)
 backups/
 
+# Reference solutions (answers) — imported into the DB, never committed
+bitflow_frontend/private/
+
 # Monaco editor copied from node_modules at build time
 bitflow_frontend/public/monaco/

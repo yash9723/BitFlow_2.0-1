@@ -10,6 +10,7 @@ export interface SimulateBody {
   design_v:    string;
   testbench_v: string;
   timeout?:    number;
+  files?:      Record<string, string>;
 }
 
 // BACKEND_URL is read at runtime; NEXT_PUBLIC_* values are inlined at build time.

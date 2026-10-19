@@ -126,30 +126,32 @@ endmodule
 
     testbenchSkeleton: `\`timescale 1ns / 1ps
 module tb_largest_digit_fsm;
-    reg clk, rst, digit_en;
-    reg [3:0] digit_in;
-    wire [3:0] largest_out;
-    
+    reg clk, reset;
+    reg [1:0] din;
+    wire [1:0] dout;
+
     largest_digit_fsm dut (
         .clk(clk),
-        .rst(rst),
-        .digit_en(digit_en),
-        .digit_in(digit_in),
-        .largest_out(largest_out)
+        .reset(reset),
+        .din(din),
+        .dout(dout)
     );
-    
+
     initial clk = 0;
     always #5 clk = ~clk;
-    
+
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_largest_digit_fsm);
-        
-        // TODO: Write your test cases here
-        // Test 1: Input sequence [5, 2, 8, 3] → largest should be 8
-        // Test 2: Input sequence [1, 1, 1, 1] → largest should be 1
-        // Test 3: Reset mid-sequence, then new values
-        
+
+        reset = 1; din = 2'd0;
+        @(posedge clk); #1; reset = 0;
+
+        // TODO: Write your test cases here, for example:
+        // Test 1: drive din = 1, 0, 3, 2 -> dout should become 1, 1, 3, 3
+        // Test 2: assert reset mid-sequence -> dout returns to 0
+        // Print what you see with $display and compare it with what you expect.
+
         $finish;
     end
 endmodule
@@ -446,7 +448,7 @@ module tb_two_zeros_ones_detector;
         integer i;
         for (i = 0; i < len; i = i + 1) begin
             din = seq[i];
-            @(posedge clk);
+            @(posedge clk); #1;
         end
     endtask
     
@@ -455,53 +457,53 @@ module tb_two_zeros_ones_detector;
         $dumpvars(0, tb_two_zeros_ones_detector);
         
         // Test 1: Balanced sequence (0,1,0,1)
-        reset = 1; @(posedge clk);
-        reset = 0; @(posedge clk);
+        reset = 1; @(posedge clk); #1;
+        reset = 0;
         apply_sequence(48'b010101, 4);  // 0,1,0,1
         
         // After sequence: dout should be 1
         if (dout !== 1) $display("FAIL: Test 1 - dout should be 1 after 0,1,0,1");
         
         // Test 2: Ones first (1,1,0,0)
-        reset = 1; @(posedge clk);
-        reset = 0; @(posedge clk);
+        reset = 1; @(posedge clk); #1;
+        reset = 0;
         apply_sequence(48'b001111, 4);  // 1,1,0,0
         
         if (dout !== 1) $display("FAIL: Test 2 - dout should be 1 after 1,1,0,0");
         
         // Test 3: Zeros first (0,0,0,1,1)
-        reset = 1; @(posedge clk);
-        reset = 0; @(posedge clk);
+        reset = 1; @(posedge clk); #1;
+        reset = 0;
         apply_sequence(48'b011000, 5);  // 0,0,0,1,1
         
         if (dout !== 1) $display("FAIL: Test 3 - dout should be 1 after 0,0,0,1,1");
         
         // Test 4: Reset mid-sequence
-        reset = 1; @(posedge clk);
-        reset = 0; @(posedge clk);
-        din = 0; @(posedge clk);  // zero count = 1
-        din = 0; @(posedge clk);  // zero count = 2
+        reset = 1; @(posedge clk); #1;
+        reset = 0;
+        din = 0; @(posedge clk); #1;  // zero count = 1
+        din = 0; @(posedge clk); #1;  // zero count = 2
         
         // NOW RESET
-        reset = 1; @(posedge clk);
+        reset = 1; @(posedge clk); #1;
         if (dout !== 0) $display("FAIL: Test 4 - dout should be 0 after reset");
         
-        reset = 0; @(posedge clk);
-        din = 1; @(posedge clk);  // one count = 1
-        din = 1; @(posedge clk);  // one count = 2
+        reset = 0;
+        din = 1; @(posedge clk); #1;  // one count = 1
+        din = 1; @(posedge clk); #1;  // one count = 2
         
         // Should still be 0 (no zeros after reset)
         if (dout !== 0) $display("FAIL: Test 4b - dout should stay 0 until both seen");
         
-        din = 0; @(posedge clk);  // zero count = 1
-        din = 0; @(posedge clk);  // zero count = 2
+        din = 0; @(posedge clk); #1;  // zero count = 1
+        din = 0; @(posedge clk); #1;  // zero count = 2
         
         if (dout !== 1) $display("FAIL: Test 4c - dout should be 1 after reset recovery");
         
         // Test 5: Sticky output (must stay 1)
-        din = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 0; @(posedge clk);
+        din = 0; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1;
         
         if (dout !== 1) $display("FAIL: Test 5 - dout must stay 1 forever");
         
@@ -524,11 +526,11 @@ module tb_hidden1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_hidden1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -549,11 +551,11 @@ module tb_hidden2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_hidden2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -574,12 +576,12 @@ module tb_hidden3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_hidden3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -600,17 +602,17 @@ module tb_hidden4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_hidden4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        reset = 1; @(posedge clk); if (dout !== 0) $finish;
-        reset = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 1; @(posedge clk);
-        if (dout !== 0) $finish;
-        din = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        if (dout !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1;
+        reset = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        reset = 0;
+        din = 1; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1;
+        if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -631,17 +633,17 @@ module tb_hidden5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_hidden5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         // After this, dout must stay 1 forever
-        din = 0; @(posedge clk); if (dout !== 1) $finish;
-        din = 0; @(posedge clk); if (dout !== 1) $finish;
-        din = 0; @(posedge clk); if (dout !== 1) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
+        din = 0; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -815,10 +817,10 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -839,10 +841,10 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -863,11 +865,11 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 1) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -888,11 +890,11 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -913,17 +915,17 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
+        reset = 1; @(posedge clk); #1; reset = 0;
         // 1 1 0 1 1 0 1 0 1
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 1) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
-        din = 1; @(posedge clk); if (dout !== 0) $finish;
-        din = 0; @(posedge clk); if (dout !== 1) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
-        din = 0; @(posedge clk); if (dout !== 0) $finish;
-        din = 1; @(posedge clk); if (dout !== 1) $finish;
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
+        din = 0; @(posedge clk); #1; if (dout !== 0) begin $display("FAIL: dout=%b, expected 0", dout); $finish; end
+        din = 1; @(posedge clk); #1; if (dout !== 1) begin $display("FAIL: dout=%b, expected 1", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1102,12 +1104,12 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w = 0; @(posedge clk);
-        w = 0; @(posedge clk);
-        w = 1; @(posedge clk); if (p !== 1) $finish;
-        w = 1; @(posedge clk); if (p !== 0) $finish;
-        w = 0; @(posedge clk); if (p !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w = 0; @(posedge clk); #1;
+        w = 0; @(posedge clk); #1;
+        w = 1; @(posedge clk); #1; if (p !== 1) begin $display("FAIL: p=%b, expected 1", p); $finish; end
+        w = 1; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
+        w = 0; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1128,11 +1130,11 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w = 1; @(posedge clk);
-        w = 1; @(posedge clk);
-        w = 1; @(posedge clk); if (p !== 1) $finish;
-        w = 1; @(posedge clk); if (p !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w = 1; @(posedge clk); #1;
+        w = 1; @(posedge clk); #1;
+        w = 1; @(posedge clk); #1; if (p !== 1) begin $display("FAIL: p=%b, expected 1", p); $finish; end
+        w = 1; @(posedge clk); #1; if (p !== 1) begin $display("FAIL: p=%b, expected 1", p); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1153,12 +1155,12 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w = 0; @(posedge clk);
-        w = 0; @(posedge clk);
-        w = 0; @(posedge clk); if (p !== 0) $finish;
-        w = 0; @(posedge clk); if (p !== 0) $finish;
-        w = 0; @(posedge clk); if (p !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w = 0; @(posedge clk); #1;
+        w = 0; @(posedge clk); #1;
+        w = 0; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
+        w = 0; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
+        w = 0; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1169,7 +1171,7 @@ endmodule
     },
     {
       id: "tc-4",
-      description: "Alternating: 1,0,1,0,1,0,1",
+      description: "Alternating: 1,0,1,0,1,0,1 (windows 101 and 010 alternate: p = 0,1,0,1,0)",
       testbench: `\`timescale 1ns / 1ps
 module tb_h4;
     reg clk, reset, w;
@@ -1179,14 +1181,14 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w = 1; @(posedge clk);
-        w = 0; @(posedge clk);
-        w = 1; @(posedge clk); if (p !== 0) $finish;
-        w = 0; @(posedge clk); if (p !== 0) $finish;
-        w = 1; @(posedge clk); if (p !== 0) $finish;
-        w = 0; @(posedge clk); if (p !== 0) $finish;
-        w = 1; @(posedge clk); if (p !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w = 1; @(posedge clk); #1;
+        w = 0; @(posedge clk); #1;
+        w = 1; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
+        w = 0; @(posedge clk); #1; if (p !== 1) begin $display("FAIL: p=%b, expected 1", p); $finish; end
+        w = 1; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
+        w = 0; @(posedge clk); #1; if (p !== 1) begin $display("FAIL: p=%b, expected 1", p); $finish; end
+        w = 1; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1207,15 +1209,15 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w = 1; @(posedge clk);
-        w = 1; @(posedge clk);
-        w = 0; @(posedge clk); if (p !== 0) $finish;
-        reset = 1; @(posedge clk);
-        reset = 0; @(posedge clk);
-        w = 1; @(posedge clk);
-        w = 0; @(posedge clk);
-        w = 0; @(posedge clk); if (p !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w = 1; @(posedge clk); #1;
+        w = 1; @(posedge clk); #1;
+        w = 0; @(posedge clk); #1; if (p !== 0) begin $display("FAIL: p=%b, expected 0", p); $finish; end
+        reset = 1; @(posedge clk); #1;
+        reset = 0;
+        w = 1; @(posedge clk); #1;
+        w = 0; @(posedge clk); #1;
+        w = 0; @(posedge clk); #1; if (p !== 1) begin $display("FAIL: p=%b, expected 1", p); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1297,7 +1299,7 @@ Inputs:
 \`\`\`
 w1: 0110111000110
 w2: 1110101000111
-eq: 0111101111100
+eq: 0111101111110
 \`\`\`
 
 Output:
@@ -1453,12 +1455,12 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 1) $finish;
-        w1 = 1; w2 = 0; @(posedge clk); if (z !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 1) begin $display("FAIL: z=%b, expected 1", z); $finish; end
+        w1 = 1; w2 = 0; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1479,13 +1481,13 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 1) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 1) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 1) begin $display("FAIL: z=%b, expected 1", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 1) begin $display("FAIL: z=%b, expected 1", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 1) begin $display("FAIL: z=%b, expected 1", z); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1506,12 +1508,12 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w1 = 1; w2 = 0; @(posedge clk); if (z !== 0) $finish;
-        w1 = 0; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 0; @(posedge clk); if (z !== 0) $finish;
-        w1 = 0; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 0; @(posedge clk); if (z !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w1 = 1; w2 = 0; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 0; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 0; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 0; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 0; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1532,16 +1534,16 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w1 = 0; w2 = 0; @(posedge clk); if (z !== 0) $finish;
-        w1 = 0; w2 = 0; @(posedge clk); if (z !== 0) $finish;
-        w1 = 0; w2 = 0; @(posedge clk); if (z !== 0) $finish;
-        w1 = 0; w2 = 0; @(posedge clk); if (z !== 1) $finish;
-        w1 = 0; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 0) $finish;
-        w1 = 1; w2 = 1; @(posedge clk); if (z !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w1 = 0; w2 = 0; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 0; w2 = 0; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 0; w2 = 0; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 0; w2 = 0; @(posedge clk); #1; if (z !== 1) begin $display("FAIL: z=%b, expected 1", z); $finish; end
+        w1 = 0; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        w1 = 1; w2 = 1; @(posedge clk); #1; if (z !== 1) begin $display("FAIL: z=%b, expected 1", z); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1562,17 +1564,17 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        w1 = 1; w2 = 1; @(posedge clk);
-        w1 = 1; w2 = 1; @(posedge clk);
-        reset = 1; @(posedge clk);
-        if (z !== 0) $finish;
-        reset = 0; @(posedge clk);
-        w1 = 1; w2 = 1; @(posedge clk);
-        w1 = 1; w2 = 1; @(posedge clk);
-        w1 = 1; w2 = 1; @(posedge clk);
-        w1 = 1; w2 = 1; @(posedge clk);
-        if (z !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        w1 = 1; w2 = 1; @(posedge clk); #1;
+        w1 = 1; w2 = 1; @(posedge clk); #1;
+        reset = 1; @(posedge clk); #1;
+        if (z !== 0) begin $display("FAIL: z=%b, expected 0", z); $finish; end
+        reset = 0;
+        w1 = 1; w2 = 1; @(posedge clk); #1;
+        w1 = 1; w2 = 1; @(posedge clk); #1;
+        w1 = 1; w2 = 1; @(posedge clk); #1;
+        w1 = 1; w2 = 1; @(posedge clk); #1;
+        if (z !== 1) begin $display("FAIL: z=%b, expected 1", z); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1776,13 +1778,13 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1803,13 +1805,13 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 0) $finish;
-        din = 0; @(posedge clk); if (y !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1830,11 +1832,11 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1855,11 +1857,11 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -1880,14 +1882,14 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        reset = 1; @(posedge clk);
-        reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        reset = 1; @(posedge clk); #1;
+        reset = 0;
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2108,15 +2110,15 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 3'b001; @(posedge clk);
-        din = 3'b000; @(posedge clk); if (dout !== 3'b000) $finish;
-        din = 3'b001; @(posedge clk); if (dout !== 3'b001) $finish;
-        din = 3'b000; @(posedge clk); if (dout !== 3'b000) $finish;
-        din = 3'b000; @(posedge clk); if (dout !== 3'b000) $finish;
-        din = 3'b001; @(posedge clk); if (dout !== 3'b001) $finish;
-        din = 3'b001; @(posedge clk); if (dout !== 3'b001) $finish;
-        din = 3'b010; @(posedge clk); if (dout !== 3'b001) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 3'b001; @(posedge clk); #1;
+        din = 3'b000; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
+        din = 3'b001; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
+        din = 3'b000; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
+        din = 3'b000; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
+        din = 3'b001; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
+        din = 3'b001; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
+        din = 3'b010; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2138,11 +2140,11 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 3'b000; @(posedge clk);
-        din = 3'b001; @(posedge clk); if (dout !== 3'b001) $finish;
-        din = 3'b001; @(posedge clk); if (dout !== 3'b001) $finish;
-        din = 3'b010; @(posedge clk); if (dout !== 3'b000) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 3'b000; @(posedge clk); #1;
+        din = 3'b001; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
+        din = 3'b001; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
+        din = 3'b010; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2164,13 +2166,13 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 3'b001; @(posedge clk);
-        din = 3'b000; @(posedge clk); if (dout !== 3'b000) $finish;
-        din = 3'b000; @(posedge clk); if (dout !== 3'b000) $finish;
-        din = 3'b000; @(posedge clk); if (dout !== 3'b000) $finish;
-        din = 3'b000; @(posedge clk); if (dout !== 3'b000) $finish;
-        din = 3'b010; @(posedge clk); if (dout !== 3'b001) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 3'b001; @(posedge clk); #1;
+        din = 3'b000; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
+        din = 3'b000; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
+        din = 3'b000; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
+        din = 3'b000; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
+        din = 3'b010; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2192,9 +2194,9 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 3'b000; @(posedge clk);
-        din = 3'b010; @(posedge clk); if (dout !== 3'b000) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 3'b000; @(posedge clk); #1;
+        din = 3'b010; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2216,15 +2218,15 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 3'b001; @(posedge clk);
-        din = 3'b000; @(posedge clk); if (dout !== 3'b000) $finish;
-        din = 3'b010; @(posedge clk); if (dout !== 3'b001) $finish;
-        reset = 1; @(posedge clk);
-        reset = 0; @(posedge clk);
-        din = 3'b000; @(posedge clk);
-        din = 3'b001; @(posedge clk); if (dout !== 3'b001) $finish;
-        din = 3'b010; @(posedge clk); if (dout !== 3'b000) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 3'b001; @(posedge clk); #1;
+        din = 3'b000; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
+        din = 3'b010; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
+        reset = 1; @(posedge clk); #1;
+        reset = 0;
+        din = 3'b000; @(posedge clk); #1;
+        din = 3'b001; @(posedge clk); #1; if (dout !== 3'b001) begin $display("FAIL: dout=%b, expected 3'b001", dout); $finish; end
+        din = 3'b010; @(posedge clk); #1; if (dout !== 3'b000) begin $display("FAIL: dout=%b, expected 3'b000", dout); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2451,9 +2453,9 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        coin5 = 1; coin10 = 0; @(posedge clk); if (dispense !== 0) $finish;
-        coin5 = 0; coin10 = 1; @(posedge clk); if (dispense !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        coin5 = 1; coin10 = 0; @(posedge clk); #1; if (dispense !== 0) begin $display("FAIL: dispense=%b, expected 0", dispense); $finish; end
+        coin5 = 0; coin10 = 1; @(posedge clk); #1; if (dispense !== 1) begin $display("FAIL: dispense=%b, expected 1", dispense); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2474,9 +2476,9 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        coin5 = 0; coin10 = 1; @(posedge clk); if (dispense !== 0) $finish;
-        coin5 = 1; coin10 = 0; @(posedge clk); if (dispense !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        coin5 = 0; coin10 = 1; @(posedge clk); #1; if (dispense !== 0) begin $display("FAIL: dispense=%b, expected 0", dispense); $finish; end
+        coin5 = 1; coin10 = 0; @(posedge clk); #1; if (dispense !== 1) begin $display("FAIL: dispense=%b, expected 1", dispense); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2497,10 +2499,10 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        coin5 = 0; coin10 = 1; @(posedge clk); if (dispense !== 0) $finish;
-        coin5 = 0; coin10 = 1; @(posedge clk); if (dispense !== 1) $finish;
-        coin5 = 0; coin10 = 1; @(posedge clk); if (dispense !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        coin5 = 0; coin10 = 1; @(posedge clk); #1; if (dispense !== 0) begin $display("FAIL: dispense=%b, expected 0", dispense); $finish; end
+        coin5 = 0; coin10 = 1; @(posedge clk); #1; if (dispense !== 1) begin $display("FAIL: dispense=%b, expected 1", dispense); $finish; end
+        coin5 = 0; coin10 = 1; @(posedge clk); #1; if (dispense !== 1) begin $display("FAIL: dispense=%b, expected 1", dispense); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2521,10 +2523,10 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        coin5 = 1; coin10 = 0; @(posedge clk); if (dispense !== 0) $finish;
-        coin5 = 1; coin10 = 0; @(posedge clk); if (dispense !== 0) $finish;
-        coin5 = 1; coin10 = 0; @(posedge clk); if (dispense !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        coin5 = 1; coin10 = 0; @(posedge clk); #1; if (dispense !== 0) begin $display("FAIL: dispense=%b, expected 0", dispense); $finish; end
+        coin5 = 1; coin10 = 0; @(posedge clk); #1; if (dispense !== 0) begin $display("FAIL: dispense=%b, expected 0", dispense); $finish; end
+        coin5 = 1; coin10 = 0; @(posedge clk); #1; if (dispense !== 1) begin $display("FAIL: dispense=%b, expected 1", dispense); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2545,13 +2547,13 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        coin5 = 1; coin10 = 0; @(posedge clk);
-        coin5 = 0; coin10 = 1; @(posedge clk); if (dispense !== 1) $finish;
-        reset = 1; @(posedge clk);
-        reset = 0; @(posedge clk);
-        coin5 = 0; coin10 = 1; @(posedge clk);
-        coin5 = 1; coin10 = 0; @(posedge clk); if (dispense !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        coin5 = 1; coin10 = 0; @(posedge clk); #1;
+        coin5 = 0; coin10 = 1; @(posedge clk); #1; if (dispense !== 1) begin $display("FAIL: dispense=%b, expected 1", dispense); $finish; end
+        reset = 1; @(posedge clk); #1;
+        reset = 0;
+        coin5 = 0; coin10 = 1; @(posedge clk); #1;
+        coin5 = 1; coin10 = 0; @(posedge clk); #1; if (dispense !== 1) begin $display("FAIL: dispense=%b, expected 1", dispense); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2642,7 +2644,7 @@ Pattern occurrences:
 
 Output (\`y\` value sampled after each cycle):
 \`\`\`
-000111
+001110
 \`\`\`
 
 Explanation:
@@ -2720,12 +2722,12 @@ When pattern "011" is complete:
   examples: [
     {
       input: "011011",
-      output: "000111",
+      output: "001110",
       explanation: "Two overlapping detections, y toggles each time"
     },
     {
       input: "011011011",
-      output: "000111000",
+      output: "001110001",
       explanation: "Three detections, final y=1 after toggling three times"
     }
   ],
@@ -2800,10 +2802,10 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2824,13 +2826,13 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2851,16 +2853,16 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2881,13 +2883,13 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 0) $finish;
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -2908,16 +2910,16 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        reset = 1; @(posedge clk);
-        if (y !== 0) $finish;
-        reset = 0; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        reset = 1; @(posedge clk); #1;
+        if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        reset = 0;
+        din = 0; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3143,10 +3145,10 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        toss = 1; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        toss = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3167,11 +3169,11 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        toss = 1; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk); if (y !== 1) $finish;
-        toss = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        toss = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3192,13 +3194,13 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        toss = 1; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk); if (y !== 0) $finish;
-        toss = 0; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        toss = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3219,16 +3221,16 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        toss = 1; @(posedge clk);
-        toss = 1; @(posedge clk);
-        toss = 0; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk);
-        toss = 1; @(posedge clk);
-        toss = 0; @(posedge clk); if (y !== 0) $finish;
-        toss = 1; @(posedge clk);
-        toss = 1; @(posedge clk);
-        toss = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        toss = 1; @(posedge clk); #1;
+        toss = 1; @(posedge clk); #1;
+        toss = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1;
+        toss = 1; @(posedge clk); #1;
+        toss = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        toss = 1; @(posedge clk); #1;
+        toss = 1; @(posedge clk); #1;
+        toss = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3249,16 +3251,16 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        toss = 1; @(posedge clk);
-        toss = 1; @(posedge clk);
-        toss = 1; @(posedge clk); if (y !== 1) $finish;
-        reset = 1; @(posedge clk);
-        if (y !== 0) $finish;
-        reset = 0; @(posedge clk);
-        toss = 1; @(posedge clk);
-        toss = 1; @(posedge clk);
-        toss = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        toss = 1; @(posedge clk); #1;
+        toss = 1; @(posedge clk); #1;
+        toss = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        reset = 1; @(posedge clk); #1;
+        if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        reset = 0;
+        toss = 1; @(posedge clk); #1;
+        toss = 1; @(posedge clk); #1;
+        toss = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3496,11 +3498,11 @@ module tb_h1;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h1);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3521,11 +3523,11 @@ module tb_h2;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h2);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 0; @(posedge clk); if (y !== 0) $finish;
-        din = 0; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3546,9 +3548,9 @@ module tb_h3;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h3);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3569,10 +3571,10 @@ module tb_h4;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h4);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 1) $finish;
-        din = 1; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 0; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end
@@ -3593,16 +3595,16 @@ module tb_h5;
     initial begin
         $dumpfile("wave.vcd");
         $dumpvars(0, tb_h5);
-        reset = 1; @(posedge clk); reset = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 1; @(posedge clk); if (y !== 1) $finish;
-        reset = 1; @(posedge clk);
-        if (y !== 1) $finish;
-        reset = 0; @(posedge clk);
-        din = 1; @(posedge clk);
-        din = 0; @(posedge clk);
-        din = 0; @(posedge clk); if (y !== 0) $finish;
-        din = 1; @(posedge clk); if (y !== 1) $finish;
+        reset = 1; @(posedge clk); #1; reset = 0;
+        din = 1; @(posedge clk); #1;
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        reset = 1; @(posedge clk); #1;
+        if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
+        reset = 0;
+        din = 1; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1;
+        din = 0; @(posedge clk); #1; if (y !== 0) begin $display("FAIL: y=%b, expected 0", y); $finish; end
+        din = 1; @(posedge clk); #1; if (y !== 1) begin $display("FAIL: y=%b, expected 1", y); $finish; end
         $display("ALL TESTS PASSED");
         $finish;
     end

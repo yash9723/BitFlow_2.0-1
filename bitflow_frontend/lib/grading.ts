@@ -17,6 +17,7 @@ export interface GradableQuestion {
   publicTestbench:    string;
   hiddenTestbench:    string | null;
   hiddenTestcases:    string; // JSON-stringified Testcase[]
+  dataFiles?:         string | null; // JSON {filename: content}
 }
 
 export interface GradeResult {
@@ -137,16 +138,26 @@ export function testcasePassed(success: boolean, stdout: string, expected: strin
     : !stdout.includes("FAIL") && !stdout.includes("TESTS FAILED");
 }
 
-async function simulate(design: string, testbench: string): Promise<SimulateResponse> {
+async function simulate(design: string, testbench: string, files?: Record<string, string> | null): Promise<SimulateResponse> {
   const { status, data } = await simulateOnBackend({
     design_v:    design,
     testbench_v: testbench,
     timeout:     30,
+    ...(files ? { files } : {}),
   });
   if (status !== 200) {
     throw new Error(data?.detail || data?.error || `Simulation backend returned ${status}`);
   }
   return data as SimulateResponse;
+}
+
+function parseDataFiles(json: string | null | undefined): Record<string, string> | null {
+  try {
+    const v = JSON.parse(json || "null");
+    return v && typeof v === "object" ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseTestcases(json: string): Testcase[] {
@@ -158,13 +169,32 @@ function parseTestcases(json: string): Testcase[] {
   }
 }
 
+/**
+ * A reference solution is accepted only under the rules a learner's Submit
+ * uses: the design policy, then every hidden test. Throws only on backend failure.
+ */
+export async function verifyReferenceSolution(
+  q: GradableQuestion, code: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const violation = designPolicyViolation(code, gradingTestbenches(q));
+  if (violation) return { ok: false, error: violation };
+  const grade = await gradeDesign(q, code);
+  if (grade.accepted) return { ok: true };
+  const failed = grade.verdicts.find((v) => !v.passed);
+  const why = failed
+    ? `fails hidden test ${failed.testcaseId}${failed.description ? ` (${failed.description})` : ""}`
+    : grade.errorMessage || "fails the hidden tests";
+  return { ok: false, error: why.slice(0, 500) };
+}
+
 /** Grade a design. Throws only on backend/infrastructure failure. */
 export async function gradeDesign(q: GradableQuestion, designCode: string): Promise<GradeResult> {
   const testcases = parseTestcases(q.hiddenTestcases);
+  const files     = parseDataFiles(q.dataFiles);
 
   // Single testbench: the hidden one, or the public one if the problem has none.
   if (testcases.length === 0) {
-    const r = await simulate(designCode, q.hiddenTestbench || q.publicTestbench);
+    const r = await simulate(designCode, q.hiddenTestbench || q.publicTestbench, files);
     const ok = sentinelPassed(r.success, r.stdout ?? "");
     return {
       verdicts:        [],
@@ -185,7 +215,7 @@ export async function gradeDesign(q: GradableQuestion, designCode: string): Prom
   // The API's MAX_CONCURRENT_SIMULATIONS semaphore bounds the actual load.
   const verdicts: TestcaseVerdict[] = await Promise.all(
     testcases.map(async (tc) => {
-      const r = await simulate(designCode, tc.testbench);
+      const r = await simulate(designCode, tc.testbench, files);
       const stdout = r.stdout ?? "";
       return {
         testcaseId:     tc.id,
@@ -258,6 +288,7 @@ export async function failingTestWaveform(
     const r = await simulate(
       designCode,
       `${testbench}\nmodule __bf_dump;\n  initial begin $dumpfile("wave.vcd"); $dumpvars(0, ${scope}); end\nendmodule\n`,
+      parseDataFiles(q.dataFiles),
     );
     const b64 = r.waveform?.vcd_base64;
     if (!b64) return null;

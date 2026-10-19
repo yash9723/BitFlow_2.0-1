@@ -163,6 +163,8 @@ export interface Problem {
    * Must print "ALL TESTS PASSED" on success, "FAIL: ..." lines on failure.
    */
   hiddenTestbench?: string;
+  /** Extra input files the simulator puts next to design.v (e.g. a $readmemh hex file). */
+  dataFiles?: Record<string, string> | null;
   /**
    * Public testcases — shown to user as examples.
    */

@@ -31,7 +31,6 @@ export interface DbProblem {
   starterCode:        string;
   testbenchSkeleton:  string | null;
   publicTestbench:    string;
-  hiddenTestcases:    unknown[];
   publicTestcases:    unknown[];
   expectedOutputMode: string;
   waveformRequired:   boolean;
@@ -49,14 +48,17 @@ function safeParseJson<T>(value: string | null | undefined, fallback: T): T {
   catch { return fallback; }
 }
 
+// Rows from here end up in pages sent to the browser (e.g. the Arena hub), so the
+// hidden tests and the reference solution are dropped: grading reads them
+// directly in app/api/problems/[slug]/submit.
 function parseQuestion(q: Record<string, unknown>): DbProblem {
+  const { hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, ...pub } = q;
   return {
-    ...(q as unknown as DbProblem),
+    ...(pub as unknown as DbProblem),
     tags:            safeParseJson(q.tags as string,            []),
     constraints:     safeParseJson(q.constraints as string,     []),
     examples:        safeParseJson(q.examples as string,        []),
     hints:           safeParseJson(q.hints as string,           []),
-    hiddenTestcases: safeParseJson(q.hiddenTestcases as string, []),
     publicTestcases: safeParseJson(q.publicTestcases as string, []),
   };
 }

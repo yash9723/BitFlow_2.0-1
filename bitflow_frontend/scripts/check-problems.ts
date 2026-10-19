@@ -6,10 +6,10 @@
  * For each Learning Path and Arena problem:
  *   1. starter code compiles with the public testbench and every hidden test
  *      (iverilog -g2012, same as the simulation API);
- *   2. starter code does NOT pass the hidden tests (that would be free XP);
- *   3. if a reference solution exists (lib/problems/reference-solutions.ts),
- *      it passes every hidden test under the grader's own rules (lib/grading.ts).
- * Exits 1 if anything fails. Run by the `content` job in CI.
+ *   2. starter code does NOT pass the hidden tests (that would be free XP).
+ * Reference solutions live in the database and are verified against the
+ * hidden tests when imported (scripts/import-reference-solutions.ts) or saved
+ * from the admin page. Exits 1 if anything fails. Run by the `content` CI job.
  */
 
 import { spawnSync } from "node:child_process";
@@ -18,37 +18,34 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LEARNING_PATH } from "../lib/problems/index";
 import { ALL_ARENA_PROBLEMS } from "../lib/arena/index";
-import { designPolicyViolation, sentinelPassed, testcasePassed, usesStdoutCompare } from "../lib/grading";
-
-// Optional: the reference-solutions file may be kept out of git (it contains
-// answers), so load it only if present — the app build must not depend on it.
-let REFERENCE_SOLUTIONS: Record<string, string> = {};
-try {
-  REFERENCE_SOLUTIONS = require("../lib/problems/reference-solutions").REFERENCE_SOLUTIONS;
-} catch {
-  console.log("(no lib/problems/reference-solutions.ts — skipping reference-solution checks)");
-}
+import { sentinelPassed, testcasePassed, usesStdoutCompare } from "../lib/grading";
 
 interface HiddenTest { name: string; testbench: string; expected: string | null }
 interface CheckProblem {
   slug: string; learningLevel: string; expectedOutputMode: string;
   starterCode: string; publicTestbench: string; hidden: HiddenTest[];
+  files: Record<string, string>;   // extra input files, e.g. a $readmemh hex file
 }
 interface RunResult { compiled: boolean; success: boolean; stdout: string; log: string }
 
-function simulate(design: string, testbench: string): RunResult {
+function simulate(design: string, testbench: string, files: Record<string, string> = {}): RunResult {
   const dir = mkdtempSync(join(tmpdir(), "bf-check-"));
   try {
     writeFileSync(join(dir, "design.v"), design);
     writeFileSync(join(dir, "tb.v"), testbench);
+    for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
     const c = spawnSync("iverilog", ["-g2012", "-o", "a.out", "design.v", "tb.v"],
       { cwd: dir, encoding: "utf8", timeout: 30_000 });
     if (c.error) throw c.error;                       // iverilog missing
     if (c.status !== 0) return { compiled: false, success: false, stdout: "", log: `${c.stdout}${c.stderr}` };
-    const v = spawnSync("vvp", ["a.out"],
-      { cwd: dir, encoding: "utf8", timeout: 15_000, maxBuffer: 8 * 1024 * 1024 });
+    // stdin from /dev/null like the API sandbox, and SIGKILL on timeout: vvp
+    // traps SIGTERM and exits 0, which made a hung design look like a pass.
+    const v = spawnSync("vvp", ["a.out"], {
+      cwd: dir, encoding: "utf8", timeout: 15_000, killSignal: "SIGKILL",
+      maxBuffer: 8 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"],
+    });
     const stdout = `${v.stdout ?? ""}${v.stderr ?? ""}`;
-    return { compiled: true, success: v.status === 0, stdout, log: stdout };
+    return { compiled: true, success: v.status === 0 && !v.error, stdout, log: v.error ? `timed out: ${stdout}` : stdout };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -58,7 +55,7 @@ function simulate(design: string, testbench: string): RunResult {
 function accepted(p: CheckProblem, design: string): { ok: boolean; detail: string } {
   const compare = usesStdoutCompare(p);
   for (const t of p.hidden) {
-    const r = simulate(design, t.testbench);
+    const r = simulate(design, t.testbench, p.files);
     const pass = t.expected === null
       ? sentinelPassed(r.success, r.stdout)
       : testcasePassed(r.success, r.stdout, t.expected, compare);
@@ -88,40 +85,25 @@ const problems: CheckProblem[] = [
   // Arena problems may only ship a testbench skeleton (users write their own).
   publicTestbench: p.publicTestbench || p.testbenchSkeleton || "",
   hidden: hiddenTests(p),
+  files: p.dataFiles ?? {},
 }));
 
 const errors: string[] = [];
 const fail = (slug: string, msg: string) => errors.push(`${slug}: ${msg}`);
-const slugs = new Set(problems.map((p) => p.slug));
 
-for (const slug of Object.keys(REFERENCE_SOLUTIONS)) {
-  if (!slugs.has(slug)) fail(slug, "reference solution for an unknown problem slug");
-}
-
-let checkedRefs = 0;
 for (const p of problems) {
-  const pub = simulate(p.starterCode, p.publicTestbench);
+  const pub = simulate(p.starterCode, p.publicTestbench, p.files);
   if (!pub.compiled) fail(p.slug, `starter + public testbench does not compile: ${pub.log.trim().split("\n")[0]}`);
 
   for (const t of p.hidden) {
-    const r = simulate(p.starterCode, t.testbench);
+    const r = simulate(p.starterCode, t.testbench, p.files);
     if (!r.compiled) fail(p.slug, `starter + ${t.name} does not compile: ${r.log.trim().split("\n")[0]}`);
   }
 
   if (accepted(p, p.starterCode).ok) fail(p.slug, "starter code already passes the hidden tests");
-
-  const ref = REFERENCE_SOLUTIONS[p.slug];
-  if (ref) {
-    checkedRefs++;
-    const policy = designPolicyViolation(ref, [p.publicTestbench, ...p.hidden.map((t) => t.testbench)]);
-    if (policy) fail(p.slug, `reference solution breaks the submit policy: ${policy}`);
-    if (!simulate(ref, p.publicTestbench).compiled) fail(p.slug, "reference solution does not compile with the public testbench");
-    const res = accepted(p, ref);
-    if (!res.ok) fail(p.slug, `reference solution fails hidden tests — ${res.detail}`);
-  }
 }
 
-console.log(`Checked ${problems.length} problems (${checkedRefs} with reference solutions).`);
+console.log(`Checked ${problems.length} problems.`);
 if (errors.length) {
   console.error(`\n${errors.length} problem(s) found:\n` + errors.map((e) => `  ✗ ${e}`).join("\n"));
   process.exit(1);

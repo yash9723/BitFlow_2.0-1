@@ -23,6 +23,9 @@ export interface SimulateRequest {
   /** Full source of tb.v */
   testbench_v: string;
 
+  /** Extra input files next to design.v, e.g. a $readmemh hex file. */
+  files?: Record<string, string>;
+
   /**
    * Override timeout in seconds (1–120).
    * Omit to use the server default (30 s).

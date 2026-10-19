@@ -672,3 +672,43 @@ endmodule""")
     def test_syntax_error_reported(self, client):
         d = self._synth(client, "module broken(input a; endmodule")
         assert d["ok"] is False and d["error"]
+
+
+# ===========================================================================
+# TestDataFiles — POST /simulate "files" (e.g. a $readmemh table)
+# ===========================================================================
+
+ROM_DESIGN = """
+module rom(input [1:0] addr, output [7:0] dout);
+  reg [7:0] mem [0:3];
+  initial $readmemh("table.hex", mem);
+  assign dout = mem[addr];
+endmodule"""
+
+ROM_TB = """
+module tb;
+  reg [1:0] addr; wire [7:0] dout;
+  rom dut(.addr(addr), .dout(dout));
+  initial begin addr = 2; #1 $display("dout=%h", dout); $finish; end
+endmodule"""
+
+
+class TestDataFiles:
+
+    @needs_iverilog
+    def test_file_is_readable_by_readmemh(self, client):
+        r = client.post("/simulate", json={"design_v": ROM_DESIGN, "testbench_v": ROM_TB,
+                                           "files": {"table.hex": "11\n22\nab\n44\n"}})
+        assert r.status_code == 200, r.text
+        assert "dout=ab" in r.json()["stdout"]
+
+    @pytest.mark.parametrize("name", ["../x.hex", "sub/x.hex", ".hidden", "tb.v", "design.v", "wave.vcd", ""])
+    def test_unsafe_names_rejected(self, client, name):
+        r = client.post("/simulate", json={"design_v": "module m; endmodule", "testbench_v": "module t; endmodule",
+                                           "files": {name: "00"}})
+        assert r.status_code == 422, (name, r.status_code)
+
+    def test_too_many_files_rejected(self, client):
+        files = {f"f{i}.hex": "00" for i in range(5)}
+        r = client.post("/simulate", json={"design_v": "module m; endmodule", "testbench_v": "module t; endmodule", "files": files})
+        assert r.status_code == 422

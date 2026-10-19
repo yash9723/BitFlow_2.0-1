@@ -2147,17 +2147,15 @@ module priority_enc_fixed (
     output reg        valid
 );
 
-    // TODO: fix the latch by providing defaults before the if-else chain
+    // This block infers latches: when req == 4'b0000 no branch assigns
+    // grant or valid, so they keep their previous values.
+    // TODO: fix it by giving grant and valid default values before the if-else chain.
     always @(*) begin
-        // Default assignments (prevents latch)
-        grant = 2'd0;
-        valid = 1'b0;
         // Priority: req[3] > req[2] > req[1] > req[0]
         if      (req[3]) begin grant = 2'd3; valid = 1'b1; end
         else if (req[2]) begin grant = 2'd2; valid = 1'b1; end
         else if (req[1]) begin grant = 2'd1; valid = 1'b1; end
         else if (req[0]) begin grant = 2'd0; valid = 1'b1; end
-        // No else needed — defaults cover req=0000
     end
 
 endmodule
@@ -2917,9 +2915,13 @@ ab  | 00 | 01 | 11 | 10 |
  10 |  0 |  0 |  1 |  0 |
 \`\`\`
 
-Using don't-cares for maximum grouping, the minimized expression is: **y = d**
+Using don't-cares to make the groups as large as possible gives two groups:
+- the \`cd = 11\` column (minterms 3, 7, 11, 15) → \`c & d\`
+- the \`ab = 00\` row (minterms 1, 3 plus don't-cares 0, 2) → \`~a & ~b\`
 
-(Grouping: all minterms and don't-cares have d=1 when selected as 1s — specifically 1,3,5,7,11,15 grouped with X at 0,2 forms a column d=1.)
+Minimized expression: **y = (c & d) | (~a & ~b)**
+
+Watch out: \`y = d\` is *not* correct. It would also output 1 for minterms 9 and 13, which are 0 in the map.
 
 Implement as a single assign. Verify only against the true minterms (don't-cares can be 0 or 1).`,
   constraints: ["Single assign statement.", "Show don't-care grouping in a comment."],
@@ -2942,7 +2944,7 @@ module kmap_dont_cares (
 );
 
     // Minterms: {1,3,7,11,15}  Don't-cares: {0,2,5}
-    // With don't-cares, group into: y = d
+    // Group the 1s, using don't-cares only where they make a group bigger
     // TODO: assign y = ...;
 
 endmodule
@@ -3218,6 +3220,7 @@ module demux_1to4 (
             // 2'b01: y[1] = in;
             // 2'b10: y[2] = in;
             // 2'b11: y[3] = in;
+            default: ;
         endcase
     end
 
@@ -3310,6 +3313,7 @@ module demux_1to8 (
             // 3'd0: y[0] = in;
             // 3'd1: y[1] = in;
             // ...
+            default: ;
         endcase
     end
 

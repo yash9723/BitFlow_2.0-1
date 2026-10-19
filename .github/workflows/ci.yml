@@ -19,6 +19,23 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest tests -q
 
+  content:
+    name: Problem set check (starters compile and don't already pass)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bitflow_frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: bitflow_frontend/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iverilog
+      - run: npm ci
+      - run: npm run check-problems
+
   web:
     name: Frontend type-check + build
     runs-on: ubuntu-latest

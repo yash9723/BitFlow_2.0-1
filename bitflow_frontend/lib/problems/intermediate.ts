@@ -794,7 +794,7 @@ module siso (
     // Shift register: si enters at bit 0, MSB exits as so
     always @(posedge clk) begin
         if (rst) sr <= 4'b0;
-        else     sr <= {sr[2:0], si};  // TODO: shift and insert si
+        else     sr <= sr;  // TODO: shift sr left by one and insert si at bit 0
     end
 
     assign so = sr[3];  // MSB is serial output
@@ -873,7 +873,7 @@ endmodule
 
 A 4-bit SIPO shift register. Data is clocked in serially via \`si\`, and after 4 clock cycles all 4 bits are available simultaneously on \`po[3:0]\`.
 
-On every \`posedge clk\`: shift and insert \`si\` at bit 0.
+On every \`posedge clk\`: shift right and insert \`si\` at bit 3, so bits arrive LSB-first and the first bit received ends up in bit 0.
 
 **Interface**
 
@@ -886,7 +886,7 @@ On every \`posedge clk\`: shift and insert \`si\` at bit 0.
 
 **Use case:** SPI receiver — the master sends 8 bits serially and the slave accumulates them into a parallel byte. UART receivers use this pattern.
 
-After clocking in \`si = 1,0,1,1\` (bit 0 first): \`po = 4'b1101\` (bit 3 contains the first bit received).`,
+After clocking in \`si = 1,0,1,1\` (bit 0 first): \`po = 4'b1101\` (bit 0 holds the first bit received, bit 3 the last).`,
 
     constraints: [
       "4-bit internal shift register exposed as parallel output.",
@@ -914,7 +914,7 @@ module sipo (
 
     always @(posedge clk) begin
         if (rst) sr <= 4'b0;
-        else     sr <= {sr[2:0], si};
+        else     sr <= sr;  // TODO: shift right, inserting si at bit 3
     end
 
     assign po = sr;  // all bits available in parallel
@@ -1031,8 +1031,8 @@ module piso (
 
     always @(posedge clk) begin
         if (rst)       sr <= 4'b0;
-        else if (load) sr <= pi;          // load parallel data
-        else           sr <= {sr[2:0], 1'b0}; // shift MSB out
+        else if (load) sr <= sr;          // TODO: load the parallel input pi
+        else           sr <= sr;          // TODO: shift left so the MSB goes out on so
     end
 
     assign so = sr[3];
@@ -1266,8 +1266,8 @@ module bidir_shift (
 
     always @(posedge clk) begin
         if (rst)     q <= 4'b0;
-        else if (!dir) q <= {q[2:0], si_l};  // left shift
-        else           q <= {si_r, q[3:1]};  // right shift
+        else if (!dir) q <= q;  // TODO: left shift, si_l enters at bit 0
+        else           q <= q;  // TODO: right shift, si_r enters at bit 3
     end
 
 endmodule
@@ -1393,9 +1393,9 @@ module universal_sr (
         if (rst) q <= 4'b0;
         else case (s)
             2'b00: q <= q;                    // hold
-            2'b01: q <= {si_r, q[3:1]};      // right shift
-            2'b10: q <= {q[2:0], si_l};      // left shift
-            2'b11: q <= pi;                   // parallel load
+            2'b01: q <= q;  // TODO: right shift, si_r enters at bit 3
+            2'b10: q <= q;  // TODO: left shift, si_l enters at bit 0
+            2'b11: q <= q;  // TODO: parallel load from pi
         endcase
     end
 
@@ -1710,15 +1710,15 @@ module tb_ripple_up_hidden;
         rst=1; #12; rst=0;
         for (i=0; i<16; i=i+1) begin
             @(negedge clk); #2;
-            if (count !== i[3:0]) begin
-                $display("FAIL cycle %0d: exp %0d got %0d", i, i, count);
+            if (count !== i[3:0] + 4'd1) begin   // the falling edge just seen is number i+1
+                $display("FAIL cycle %0d: exp %0d got %0d", i, i[3:0] + 4'd1, count);
                 errors = errors + 1;
             end
         end
-        // Wrap: cycle 16 should give 0
+        // One more edge after wrapping 15 -> 0
         @(negedge clk); #2;
-        if (count !== 4'd0) begin
-            $display("FAIL wrap: exp 0 got %0d", count);
+        if (count !== 4'd1) begin
+            $display("FAIL wrap: exp 1 got %0d", count);
             errors = errors + 1;
         end
         // Async reset mid-count
@@ -2281,7 +2281,7 @@ module ring_counter (
     // Reset → 4'b0001
     always @(posedge clk) begin
         if (rst) q <= 4'b0001;
-        else     q <= {q[2:0], q[3]};  // TODO: rotate — MSB wraps to LSB
+        else     q <= q;  // TODO: rotate left — the MSB wraps around to the LSB
     end
 
 endmodule
@@ -2404,11 +2404,10 @@ module johnson_counter (
 
     // Johnson (twisted-ring) counter
     // Left shift: new LSB = ~q[3] (inverted MSB feeds back to LSB)
-    // q <= {q[2:0], ~q[3]}
     // Sequence: 0000 → 0001 → 0011 → 0111 → 1111 → 1110 → 1100 → 1000 → 0000
     always @(posedge clk) begin
         if (rst) q <= 4'b0000;
-        else     q <= {q[2:0], ~q[3]};  // TODO: implement Johnson feedback
+        else     q <= q;  // TODO: implement the Johnson feedback
     end
 
 endmodule
@@ -2795,11 +2794,14 @@ The technique: store the previous value of the signal in a 1-bit register, then 
 
 **Logic:**
 \`\`\`
-sig_d   = sig delayed one cycle via DFF
-rising  = sig & ~sig_d     // was 0, now 1
-falling = ~sig & sig_d     // was 1, now 0
-either  = sig ^ sig_d      // changed in either direction
+sig_q   = sig sampled on each clock edge (this also tames an async input)
+sig_qq  = sig_q delayed one more cycle (the previous sample)
+rising  = sig_q & ~sig_qq    // was 0, now 1
+falling = ~sig_q & sig_qq    // was 1, now 0
+either  = sig_q ^ sig_qq     // changed in either direction
 \`\`\`
+
+Because the outputs are computed from registered samples, each pulse starts right after the clock edge that sees the change, and lasts exactly one cycle.
 
 The output pulse is exactly **one clock cycle wide** regardless of how long the input stays high or low. This circuit appears in every interrupt controller, debouncer, handshake detector, and edge-sensitive protocol trigger.`,
 
@@ -2831,16 +2833,15 @@ module edge_detector (
     output wire either
 );
 
-    reg sig_d;  // delayed (previous) value of sig
+    reg sig_q, sig_qq;  // sig sampled on the clock, and the previous sample
 
-    // Register: capture sig on each clock edge
     always @(posedge clk or posedge rst) begin
-        if (rst) sig_d <= 1'b0;
-        else     sig_d <= sig;
+        if (rst) begin sig_q <= 1'b0; sig_qq <= 1'b0; end
+        else     begin sig_q <= sig;  sig_qq <= sig_q; end
     end
 
     // Combinational edge detection
-    // TODO: assign rising, falling, either using sig and sig_d
+    // TODO: assign rising, falling, either using sig_q and sig_qq
 
 endmodule
 `,
@@ -3066,11 +3067,11 @@ module tb_shift_compare_hidden;
         a=0; @(posedge clk); #1;
         // Buggy: a=0, b=0, c=0
         if (c_buggy !== 1'b0) begin $display("FAIL: buggy cycle2 c=%b exp 0", c_buggy); errors=errors+1; end
-        // Correct: c should still be 0 (the 1 is at b)
-        if (c_correct !== 1'b0) begin $display("FAIL: correct cycle2 c=%b exp 0", c_correct); errors=errors+1; end
+        // Correct: the 1 has moved from b to c (two clock edges after it entered)
+        if (c_correct !== 1'b1) begin $display("FAIL: correct cycle2 c=%b exp 1", c_correct); errors=errors+1; end
         @(posedge clk); #1;
-        // Correct: now the 1 reaches c (2-cycle delay confirmed)
-        if (c_correct !== 1'b1) begin $display("FAIL: correct cycle3 c=%b exp 1", c_correct); errors=errors+1; end
+        // Correct: the 0 that followed has reached c
+        if (c_correct !== 1'b0) begin $display("FAIL: correct cycle3 c=%b exp 0", c_correct); errors=errors+1; end
         if (c_buggy !== 1'b0) begin $display("FAIL: buggy cycle3 c=%b exp 0", c_buggy); errors=errors+1; end
         @(posedge clk); #1;
         if (c_correct !== 1'b0) begin $display("FAIL: correct cycle4 c=%b exp 0", c_correct); errors=errors+1; end
@@ -3218,9 +3219,9 @@ module tb_register_file_8x8_hidden;
         // Write all 8 registers with unique values
         for (i=0; i<8; i=i+1) begin
             we=1; waddr=i; wdata=8'hA0+i;
-            @(posedge clk);
+            @(posedge clk); #1;   // change inputs away from the clock edge
         end
-        #1; we=0;
+        we=0;
         // Verify all 8 read back correctly
         for (i=0; i<8; i=i+1) begin
             raddr1=i; #1;
@@ -3234,6 +3235,7 @@ module tb_register_file_8x8_hidden;
         if (rdata1 !== 8'hA2) begin $display("FAIL: dual-read port1=%h exp A2", rdata1); errors=errors+1; end
         if (rdata2 !== 8'hA5) begin $display("FAIL: dual-read port2=%h exp A5", rdata2); errors=errors+1; end
         // Read-during-write: read returns OLD value
+        @(negedge clk);   // set up the write mid-cycle, well before the next rising edge
         raddr1=3'd3; we=1; waddr=3'd3; wdata=8'hBB; #1;
         if (rdata1 !== 8'hA3) begin $display("FAIL: read-during-write=%h exp A3 (old)", rdata1); errors=errors+1; end
         @(posedge clk); #1; we=0;
@@ -3562,8 +3564,8 @@ module tb_digital_clock_12hr_hidden;
         #1; check_time(1,2,0,0,5,9, 59);
         // Next tick → 12:01:00
         @(posedge clk); #1; check_time(1,2,0,1,0,0, 60);
-        // Fast-forward to 12:59:59 (need 59min 59sec = 3599 more ticks)
-        repeat(3538) @(posedge clk);
+        // Fast-forward to 12:59:59: 3599 ticks after 12:00:00, i.e. 3539 more after 12:01:00
+        repeat(3539) @(posedge clk);
         #1; check_time(1,2,5,9,5,9, 3599);
         // 12→01 rollover
         @(posedge clk); #1; check_time(0,1,0,0,0,0, 3600);
@@ -3708,7 +3710,7 @@ module tb_sram_write_first_hidden;
         // Write all 256 locations
         we=1;
         for (i=0; i<256; i=i+1) begin
-            addr=i; din=255-i; @(posedge clk);
+            addr=i; din=255-i; @(posedge clk); #1;   // change inputs away from the clock edge
         end
         #1; we=0;
         // Read back all
@@ -3848,7 +3850,7 @@ module tb_sram_read_first_hidden;
         we=0; addr=0; din=0;
         // Write all 256 locations
         we=1;
-        for (i=0; i<256; i=i+1) begin addr=i; din=i; @(posedge clk); end
+        for (i=0; i<256; i=i+1) begin addr=i; din=i; @(posedge clk); #1; end
         #1; we=0;
         // Read back all
         for (i=0; i<256; i=i+1) begin
@@ -3961,7 +3963,7 @@ module tb_sram_simple_dual_port;
         $display("=== Simple Dual-Port SRAM Test ===");
         we=0;
         // Write 4 entries
-        for (i=0; i<4; i=i+1) begin we=1; waddr=i; wdata=i*0x11; @(posedge clk); end
+        for (i=0; i<4; i=i+1) begin we=1; waddr=i; wdata=i*8'h11; @(posedge clk); end
         #1; we=0;
         // Read two simultaneously
         raddr=8'h00; #1; $display("read addr=0: %h (expect 00)", rdata);
@@ -3989,7 +3991,7 @@ module tb_sram_simple_dual_port_hidden;
         errors = 0; we=0;
         // Write all 256 locations
         we=1;
-        for (i=0; i<256; i=i+1) begin waddr=i; wdata=i^8'hA5; @(posedge clk); end
+        for (i=0; i<256; i=i+1) begin waddr=i; wdata=i^8'hA5; @(posedge clk); #1; end
         #1; we=0;
         // Read all back via read port
         for (i=0; i<256; i=i+1) begin
@@ -4142,11 +4144,11 @@ module tb_sram_true_dual_port_hidden;
         errors = 0; we_a=0; we_b=0;
         // Port A writes first 128 locations
         we_a=1; we_b=0;
-        for (i=0; i<128; i=i+1) begin addr_a=i; din_a=i; @(posedge clk); end
+        for (i=0; i<128; i=i+1) begin addr_a=i; din_a=i; @(posedge clk); #1; end
         #1; we_a=0;
         // Port B writes next 128 locations
         we_b=1;
-        for (i=128; i<256; i=i+1) begin addr_b=i; din_b=i; @(posedge clk); end
+        for (i=128; i<256; i=i+1) begin addr_b=i; din_b=i; @(posedge clk); #1; end
         #1; we_b=0;
         // Read all back via Port A
         for (i=0; i<256; i=i+1) begin
@@ -4287,14 +4289,281 @@ module tb_rom_readmemh_hidden;
         addr=8'h40; #1;
         if (dout !== 8'hFF) begin $display("FAIL: not combinational at addr=40"); errors=errors+1; end
         // Spot check mid-range values are not all zero (ROM was loaded)
+        // Exact samples from sine_lut.hex: the whole table was loaded
         addr=8'h10; #1;
-        if (dout === 8'h00 && dout === 8'hFF) begin $display("FAIL: ROM appears uninitialised"); errors=errors+1; end
+        if (dout !== 8'hB1) begin $display("FAIL: addr=10 got %h exp B1", dout); errors=errors+1; end
+        addr=8'h30; #1;
+        if (dout !== 8'hF5) begin $display("FAIL: addr=30 got %h exp F5", dout); errors=errors+1; end
+        addr=8'h55; #1;
+        if (dout !== 8'hEF) begin $display("FAIL: addr=55 got %h exp EF", dout); errors=errors+1; end
+        addr=8'hA0; #1;
+        if (dout !== 8'h26) begin $display("FAIL: addr=A0 got %h exp 26", dout); errors=errors+1; end
+        addr=8'hE7; #1;
+        if (dout !== 8'h37) begin $display("FAIL: addr=E7 got %h exp 37", dout); errors=errors+1; end
         if (errors == 0) $display("ALL TESTS PASSED");
         else $display("TESTS FAILED: %0d error(s)", errors);
         $finish;
     end
 endmodule
 `,
+    // The hex file $readmemh loads: one full sine cycle, 0x01..0xFF
+    dataFiles: { "sine_lut.hex": `80
+83
+86
+89
+8c
+90
+93
+96
+99
+9c
+9f
+a2
+a5
+a8
+ab
+ae
+b1
+b3
+b6
+b9
+bc
+bf
+c1
+c4
+c7
+c9
+cc
+ce
+d1
+d3
+d5
+d8
+da
+dc
+de
+e0
+e2
+e4
+e6
+e8
+ea
+eb
+ed
+ef
+f0
+f1
+f3
+f4
+f5
+f6
+f8
+f9
+fa
+fa
+fb
+fc
+fd
+fd
+fe
+fe
+fe
+ff
+ff
+ff
+ff
+ff
+ff
+ff
+fe
+fe
+fe
+fd
+fd
+fc
+fb
+fa
+fa
+f9
+f8
+f6
+f5
+f4
+f3
+f1
+f0
+ef
+ed
+eb
+ea
+e8
+e6
+e4
+e2
+e0
+de
+dc
+da
+d8
+d5
+d3
+d1
+ce
+cc
+c9
+c7
+c4
+c1
+bf
+bc
+b9
+b6
+b3
+b1
+ae
+ab
+a8
+a5
+a2
+9f
+9c
+99
+96
+93
+90
+8c
+89
+86
+83
+80
+7d
+7a
+77
+74
+70
+6d
+6a
+67
+64
+61
+5e
+5b
+58
+55
+52
+4f
+4d
+4a
+47
+44
+41
+3f
+3c
+39
+37
+34
+32
+2f
+2d
+2b
+28
+26
+24
+22
+20
+1e
+1c
+1a
+18
+16
+15
+13
+11
+10
+0f
+0d
+0c
+0b
+0a
+08
+07
+06
+06
+05
+04
+03
+03
+02
+02
+02
+01
+01
+01
+01
+01
+01
+01
+02
+02
+02
+03
+03
+04
+05
+06
+06
+07
+08
+0a
+0b
+0c
+0d
+0f
+10
+11
+13
+15
+16
+18
+1a
+1c
+1e
+20
+22
+24
+26
+28
+2b
+2d
+2f
+32
+34
+37
+39
+3c
+3f
+41
+44
+47
+4a
+4d
+4f
+52
+55
+58
+5b
+5e
+61
+64
+67
+6a
+6d
+70
+74
+77
+7a
+7d
+` },
   },
 
   // ─── MEM.06 — Synchronous FIFO with Full/Empty ───────────────────────────

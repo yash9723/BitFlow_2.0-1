@@ -28,8 +28,11 @@ export async function GET(
       );
     }
 
+    // Hidden tests and the reference solution never leave the server.
+    const {
+      hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, ...publicQuestion
+    } = question;
     // Parse all JSON-stringified fields back to arrays/objects
-    const { hiddenTestbench: _hb, hiddenTestcases: _ht, ...publicQuestion } = question;
     const parsed = {
       ...publicQuestion,
       tags:           safeParseJson(question.tags,           []),
@@ -37,20 +40,15 @@ export async function GET(
       examples:       safeParseJson(question.examples,       []),
       hints:          safeParseJson(question.hints,          []),
       publicTestcases: safeParseJson(question.publicTestcases, []),
+      dataFiles:       safeParseJson(question.dataFiles, null),
     };
 
     return NextResponse.json({ problem: parsed });
 
   } catch (err) {
-  console.error(err);
-
-  return NextResponse.json(
-    {
-      error: String(err)
-    },
-    { status: 500 }
-  );
-}
+    console.error("[problems/slug GET]", err);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
 
 function safeParseJson<T>(value: string | null | undefined, fallback: T): T {

@@ -94,6 +94,7 @@ export function useProblem(problem: Problem): UseProblemReturn {
         testbench_v: testbenchCode,
         timeout:     30,
         lint:        true,
+        ...(problem.dataFiles ? { files: problem.dataFiles } : {}),
       });
       setRunResult(result);
       setRunState("run_done");
