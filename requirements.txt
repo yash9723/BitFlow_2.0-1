@@ -13,6 +13,7 @@ uvicorn[standard]>=0.29.0,<1.0.0  # ASGI server (includes websockets + httptools
 pydantic>=2.7.0,<3.0.0            # data validation (used for models + config)
 pydantic-settings>=2.2.0,<3.0.0  # settings management with env / .env support
 PyJWT>=2.8.0,<3.0.0                 # JSON Web Token encoding / decoding
+cryptography>=42.0.0              # ES256 (JWT_PUBLIC_KEY mode)
 
 # ── Docker integration ────────────────────────────────────────────────────────
 # docker SDK removed — simulations now run natively via subprocess

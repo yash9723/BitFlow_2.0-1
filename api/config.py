@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -132,11 +132,20 @@ class Settings(BaseSettings):
     )
 
     # ── JWT authentication & Security ─────────────────────────────────────
-    # Required — no default. A public default secret lets anyone mint tokens.
-    jwt_secret: str = Field(
-        ...,
+    # One of the two is required — no default. A public default secret lets
+    # anyone mint tokens.
+    jwt_secret: str | None = Field(
+        default=None,
         min_length=32,
         description="Shared HMAC-SHA256 secret for signing/verifying JWTs between frontend and backend.",
+    )
+    jwt_public_key: str | None = Field(
+        default=None,
+        description=(
+            "ES256 public key (PEM; literal \\n allowed). When set, only tokens signed with the "
+            "frontend's JWT_PRIVATE_KEY are accepted and jwt_secret is ignored. Nothing secret "
+            "lives on the API host."
+        ),
     )
     enable_docs: bool = Field(
         default=False,
@@ -148,6 +157,12 @@ class Settings(BaseSettings):
     def sandbox_user(self) -> str:
         """Returns 'uid:gid' string expected by the Docker SDK's `user` param."""
         return f"{self.sandbox_uid}:{self.sandbox_gid}"
+
+    @model_validator(mode="after")
+    def _need_jwt_key(self) -> "Settings":
+        if not self.jwt_secret and not self.jwt_public_key:
+            raise ValueError("Set JWT_PUBLIC_KEY (ES256) or JWT_SECRET (32+ chars).")
+        return self
 
     @field_validator("mem_limit")
     @classmethod

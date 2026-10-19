@@ -39,13 +39,15 @@ async def verify_jwt(
     Raises HTTPException 401 on any failure (missing, expired, bad signature).
     """
     token = credentials.credentials
+    # Public-key mode accepts ES256 only, so an HS256 token "signed" with the
+    # public key can't slip through (algorithm confusion).
+    if settings.jwt_public_key:
+        key, algorithms = settings.jwt_public_key.replace("\\n", "\n"), ["ES256"]
+    else:
+        key, algorithms = settings.jwt_secret, ["HS256"]
 
     try:
-        payload = jwt.decode(
-            token,
-            settings.jwt_secret,
-            algorithms=["HS256"],
-        )
+        payload = jwt.decode(token, key, algorithms=algorithms)
         return payload
 
     except jwt.ExpiredSignatureError:

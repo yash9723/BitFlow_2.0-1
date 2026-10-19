@@ -221,6 +221,51 @@ class TestAuth:
         assert anon_client.post("/simulate/upload", files=files).status_code in (401, 403)
 
 
+class TestPublicKeyAuth:
+    """JWT_PUBLIC_KEY mode (Vercel signs with JWT_PRIVATE_KEY, the API holds no secret)."""
+
+    BODY = TestAuth.BODY
+
+    @pytest.fixture()
+    def keys(self, monkeypatch):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        import api.jwt_auth as auth
+
+        priv = ec.generate_private_key(ec.SECP256R1())
+        pub_pem = priv.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+        # As stored in an env var: one line with literal \n
+        monkeypatch.setattr(auth.settings, "jwt_public_key", pub_pem.replace("\n", "\\n"))
+        return priv, pub_pem
+
+    def _post(self, client, token):
+        return client.post("/simulate", json=self.BODY, headers={"Authorization": f"Bearer {token}"})
+
+    def _es256(self, key):
+        return jwt.encode({"iss": "test", "exp": int(time.time()) + 60}, key, algorithm="ES256")
+
+    def test_es256_token_accepted(self, anon_client, keys):
+        assert self._post(anon_client, self._es256(keys[0])).status_code != 401
+
+    def test_shared_secret_token_rejected(self, anon_client, keys):
+        assert self._post(anon_client, _token()).status_code == 401
+
+    def test_hs256_signed_with_public_key_rejected(self, anon_client, keys):
+        # Algorithm confusion: an HMAC "signed" with the (public) key.
+        import base64, hashlib, hmac, json as _json
+        b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+        head = b64(_json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+        body = b64(_json.dumps({"iss": "x", "exp": int(time.time()) + 60}).encode())
+        sig = b64(hmac.new(keys[1].encode(), f"{head}.{body}".encode(), hashlib.sha256).digest())
+        assert self._post(anon_client, f"{head}.{body}.{sig}").status_code == 401
+
+    def test_other_key_rejected(self, anon_client, keys):
+        from cryptography.hazmat.primitives.asymmetric import ec
+        other = ec.generate_private_key(ec.SECP256R1())
+        assert self._post(anon_client, self._es256(other)).status_code == 401
+
+
 # ===========================================================================
 # TestSandboxLimits — real iverilog/vvp; skipped where they aren't installed
 # ===========================================================================
