@@ -83,6 +83,7 @@ import AIAssistantPanel               from "@/components/AIAssistantPanel";
 import SynthesisPanel                 from "@/components/SynthesisPanel";
 import BoardPanel                     from "@/components/BoardPanel";
 import FormalPanel                    from "@/components/FormalPanel";
+import { TEMPLATES }                  from "@/lib/templates";
 import type { DesignLanguage, TestbenchLanguage } from "@/lib/types";
 import ExportCard                     from "@/components/ExportCard";
 import AuthGate                       from "@/components/AuthGate";
@@ -860,7 +861,12 @@ function SandboxContent() {
       <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} language={designLanguage} />
       <BoardPanel isOpen={boardOpen} onClose={() => setBoardOpen(false)} designCode={designCode} language={designLanguage} />
       <FormalPanel isOpen={proveOpen} onClose={() => setProveOpen(false)} designCode={designCode} language={designLanguage}
-                   testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""} />
+                   testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""}
+                   onLoadExample={() => {
+                     if (window.confirm("Replace both editors with the formal example (a BCD counter with properties)?")) {
+                       loadProject(TEMPLATES.formalCounter);
+                     }
+                   }} />
 
       <AIAssistantPanel
         isOpen={isAIOpen}

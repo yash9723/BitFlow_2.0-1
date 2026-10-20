@@ -33,6 +33,8 @@ interface Props {
   designCode:     string;
   testbenchCode?: string;
   language?:      "verilog" | "vhdl";
+  /** Replace the editors with a design that has properties (the formal template). */
+  onLoadExample?: () => void;
 }
 
 const MODES: [Mode, string, string][] = [
@@ -43,7 +45,7 @@ const MODES: [Mode, string, string][] = [
 
 const HAS_PROPERTIES = /\b(assert|assume|cover)\s*(property\s*)?\(/;
 
-export default function FormalPanel({ isOpen, onClose, designCode, testbenchCode = "", language = "verilog" }: Props) {
+export default function FormalPanel({ isOpen, onClose, designCode, testbenchCode = "", language = "verilog", onLoadExample }: Props) {
   const [mode,    setMode]    = useState<Mode>("prove");
   const [depth,   setDepth]   = useState(20);
   const [result,  setResult]  = useState<FormalResult | null>(null);
@@ -51,8 +53,12 @@ export default function FormalPanel({ isOpen, onClose, designCode, testbenchCode
 
   // tb.v is used as the property harness only when it states properties itself.
   const harness = HAS_PROPERTIES.test(testbenchCode) ? testbenchCode : null;
+  // Nothing to check until the design (or a tb.v harness) states assert/assume/cover:
+  // say so up front instead of sending it to the solver and showing an error.
+  const hasProperties = !!harness || (language === "verilog" && HAS_PROPERTIES.test(designCode));
 
   const run = useCallback(async (m: Mode = mode) => {
+    if (!hasProperties) return;
     setLoading(true);
     setResult(null);
     try {
@@ -67,12 +73,14 @@ export default function FormalPanel({ isOpen, onClose, designCode, testbenchCode
     } finally {
       setLoading(false);
     }
-  }, [mode, designCode, harness, depth, language]);
+  }, [mode, designCode, harness, depth, language, hasProperties]);
 
   useEffect(() => {
-    if (isOpen) run();
+    if (isOpen && hasProperties) run();
+    if (!hasProperties) setResult(null);
+    // Re-runs when the panel opens, and when properties appear (e.g. the example was loaded).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+  }, [isOpen, hasProperties]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -139,12 +147,32 @@ export default function FormalPanel({ isOpen, onClose, designCode, testbenchCode
                    className="w-14 bg-surface border border-rim rounded px-1 py-0.5 text-pale" aria-label="Depth in clock cycles" />
             cycles
           </label>
-          <button className="text-info hover:underline disabled:opacity-40" disabled={loading} onClick={() => run()}>
+          <button className="text-info hover:underline disabled:opacity-40" disabled={loading || !hasProperties} onClick={() => run()}>
             {loading ? "Solving…" : "Run again"}
           </button>
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3 font-mono text-[11px] text-pale">
+          {!hasProperties && (
+            <div className="border border-info/40 bg-info/5 rounded p-3 space-y-2 max-w-2xl">
+              <div className="font-bold text-info">Your design has no properties yet</div>
+              <p className="text-[10px] text-ghost">
+                Formal verification doesn&apos;t run a testbench: it proves statements you write about the design, such as
+                {" "}<code>assert(count &lt;= 9)</code>, for every possible input sequence, or shows the exact sequence that breaks one.
+                {language === "vhdl"
+                  ? " For a VHDL design, write them in tb.v (Testbench: Verilog) as a harness module that instantiates your design."
+                  : " Add assert / assume / cover statements to the design inside `ifdef FORMAL, or write a harness module in tb.v."}
+              </p>
+              {onLoadExample && (
+                <button onClick={onLoadExample}
+                  className="px-3 py-1 rounded border border-phosphor/50 text-phosphor bg-phosphor/10 hover:bg-phosphor/20 text-[10px]">
+                  Load a working example (BCD counter with properties)
+                </button>
+              )}
+              <HowTo open />
+            </div>
+          )}
+
           {loading && <p className="text-dim">Solving… (usually a second or two)</p>}
 
           {result?.status === "error" && (
@@ -194,9 +222,9 @@ export default function FormalPanel({ isOpen, onClose, designCode, testbenchCode
   );
 }
 
-function HowTo() {
+function HowTo({ open = false }: { open?: boolean }) {
   return (
-    <details className="text-[10px] text-dim">
+    <details className="text-[10px] text-dim" open={open}>
       <summary className="cursor-pointer">How to write properties</summary>
       <div className="mt-1 space-y-1 max-w-2xl">
         <p>Put them in the design inside <code>`ifdef FORMAL … `endif</code> (simulation skips that block), or write a
