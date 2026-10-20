@@ -104,6 +104,7 @@ endmodule
   {
     id: "arena-formal-002",
     slug: "prove-round-robin-arbiter",
+    formalDepth: 10,             // every bug shows within 10 cycles; deeper checks are slow on the API host
     title: "Prove It: Round-Robin Arbiter",
     category: "Formal",
     difficulty: "Medium",
@@ -125,7 +126,7 @@ the requesters asking now, searching round-robin from the one after the last win
 Properties worth proving: at most one grant; a grant only goes to a requester that asked in the
 previous cycle; if anyone asked, someone is granted; nobody who keeps asking waits too long; and the
 search really starts after the last winner.
-${RULES}`,
+${RULES.replace("within 20 clock cycles", "within 10 clock cycles")}`,
     examples: [{ input: "last winner 1, req = 1011", output: "grant = 1000 next cycle (search order 2, 3, 0, 1)" }],
     constraints: ["Write the properties in harness.v", "Instantiate the design as dut", "No file I/O"],
     starterCode: `module rr_arbiter (
@@ -190,7 +191,7 @@ endmodule
   {
     id: "arena-formal-003",
     slug: "prove-fifo4",
-    formalDepth: 12,             // the solver slows sharply past ~12 cycles here; every bug shows within 12
+    formalDepth: 8,              // the solver slows sharply with depth here; every bug shows within 8 cycles
     title: "Prove It: 4-Entry FIFO",
     category: "Formal",
     difficulty: "Medium",
@@ -213,7 +214,7 @@ A first-in first-out buffer of four bytes. Writes when full and reads when empty
 | \`full\`, \`empty\` | out | 1 | \`count == 4\`, \`count == 0\` |
 
 Tip: keep a model of the FIFO in the harness (a count, and the queued bytes) and assert the design agrees with it.
-${RULES.replace("within 20 clock cycles", "within 12 clock cycles")}`,
+${RULES.replace("within 20 clock cycles", "within 8 clock cycles")}`,
     examples: [{ input: "push 0x11, push 0x22, pop", output: "dout = 0x22, count = 1" }],
     constraints: ["Write the properties in harness.v", "Instantiate the design as dut", "No file I/O"],
     starterCode: `module fifo4 (

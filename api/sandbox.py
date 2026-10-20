@@ -99,15 +99,33 @@ def _run_limited(
             limits.append(f"--nproc={MAX_PROCS}")
         cmd = ["prlimit", *limits, "--", *cmd]
 
+    # The child enforces its own wall-clock limit (`timeout` runs as the sandbox uid, inside
+    # prlimit): hosts like Render drop CAP_KILL, so the API can't signal a process owned by
+    # another uid, and subprocess.run's own kill on timeout would raise PermissionError.
+    if shutil.which("timeout"):
+        if cmd[0] == "prlimit":
+            split = cmd.index("--") + 1
+            cmd = [*cmd[:split], "timeout", "-s", "KILL", str(timeout), *cmd[split:]]
+        else:
+            cmd = ["timeout", "-s", "KILL", str(timeout), *cmd]
+
     env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME": cwd, **(extra_env or {})}
     log_path = os.path.join(cwd, ".proc_output.log")
+    t0 = time.monotonic()
     with open(log_path, "w+b") as log:
-        proc = subprocess.run(
-            cmd, stdout=log, stderr=subprocess.STDOUT,
-            cwd=cwd, env=env, timeout=timeout, **kwargs,
-        )
+        try:
+            proc = subprocess.run(
+                cmd, stdout=log, stderr=subprocess.STDOUT,
+                cwd=cwd, env=env, timeout=timeout + 5, **kwargs,   # backstop; `timeout` fires first
+            )
+        except PermissionError:
+            if time.monotonic() - t0 < timeout:
+                raise                                   # a real exec/setuid failure, not a timeout
+            raise subprocess.TimeoutExpired(cmd, timeout)
         log.seek(0)
         data = log.read(MAX_OUTPUT_BYTES + 1)
+    if proc.returncode in (137, -9) and time.monotonic() - t0 >= timeout - 0.5:
+        raise subprocess.TimeoutExpired(cmd, timeout)   # killed by `timeout` (128 + SIGKILL)
 
     text = data[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
     if len(data) > MAX_OUTPUT_BYTES:
