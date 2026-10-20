@@ -236,6 +236,31 @@ export function buildTutorContext(problem: TutorProblem, last: TutorLastSubmissi
   return lines.join("\n");
 }
 
+export interface DesignScores {
+  metrics?: { gates: number; depth: number; ffBits: number } | null;
+  timing?:  { fmaxMhz: number | null; targetMhz: number } | null;
+  rank?:    { rank: number; solvers: number } | null;
+}
+
+/**
+ * After an accepted submit: ask the tutor to review the learner's own design
+ * for size and speed, using the scores the grader measured (never the reference).
+ */
+export function designReviewPrompt(s: DesignScores): string {
+  const facts: string[] = [];
+  if (s.metrics) facts.push(`${s.metrics.gates} two-input gates, logic depth ${s.metrics.depth}, ${s.metrics.ffBits} flip-flop bits`);
+  if (s.timing?.fmaxMhz != null) facts.push(`${s.timing.fmaxMhz} MHz on an iCE40-HX8K (target ${s.timing.targetMhz} MHz)`);
+  if (s.rank) facts.push(`#${s.rank.rank} of ${s.rank.solvers} on the leaderboard`);
+  return [
+    "My design was accepted.",
+    facts.length ? `The grader measured: ${facts.join("; ")}.` : "",
+    "Review it like a senior hardware engineer: give me 2 or 3 concrete ways to make it smaller",
+    s.timing ? "or faster (shorter paths between registers)," : "or shallower (less logic between registers),",
+    "or clearer, each pointing at the line it applies to and saying why it helps. Don't rewrite the design;",
+    "if it's already close to minimal, say so and explain what makes it efficient.",
+  ].filter(Boolean).join(" ");
+}
+
 export const TUTOR_QUICK_ACTIONS: QuickAction[] = [
   { label: "Why did it fail?",   icon: "?", prompt: "My last submission failed. Help me understand why, without giving me the answer." },
   { label: "Give me a hint",     icon: "→", prompt: "Give me a small hint for the next step on this problem." },

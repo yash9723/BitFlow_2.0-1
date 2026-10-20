@@ -264,6 +264,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         >
           <ProblemStatement
             onExplainFailure={() => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt: "My last submission failed. Help me understand why, without giving me the answer." }); }}
+            onReviewDesign={(prompt) => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt }); }}
             problem={problem}
             progress={progress}
             submission={submission}

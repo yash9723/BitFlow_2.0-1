@@ -5,7 +5,7 @@ import { parseDiagnostics } from "@/lib/diagnostics";
 import type { ArenaProblem } from "@/lib/arena/types";
 import { useArenaProblem } from "@/hooks/useArenaProblem";
 import { ArenaProblemStatement } from "@/components/ArenaProblemStatement";
-import { ExplainFailureButton } from "@/components/ProblemStatement";
+import { ExplainFailureButton, ReviewDesignButton } from "@/components/ProblemStatement";
 import SubmissionHistory from "@/components/SubmissionHistory";
 import OptimizationBoard from "@/components/OptimizationBoard";
 import Discussion from "@/components/Discussion";
@@ -163,6 +163,10 @@ export function ArenaSolverClient({ problem }: Props) {
             {writesTb && hook.submission && <BugHuntResult result={hook.submission} formal={isFormal} />}
             {hook.submission && !hook.submission.accepted && (
               <ExplainFailureButton onClick={() => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt: "My last submission failed. Help me understand why, without giving me the answer." }); }} />
+            )}
+            {hook.submission?.accepted && !writesTb && (
+              <ReviewDesignButton slug={problem.slug} submission={hook.submission}
+                                  onAsk={(prompt) => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt }); }} />
             )}
             {hook.submission?.timing && <TimingResult {...hook.submission.timing} />}
             {hook.submission?.counterexample && <CounterexampleView data={hook.submission.counterexample} />}
