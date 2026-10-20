@@ -25,8 +25,6 @@ import ProblemToolbar         from "../../../components/ProblemToolbar";
 import ProblemStatement       from "../../../components/ProblemStatement";
 import Terminal               from "../../../components/Terminal";
 import WaveformPanel          from "../../../components/WaveformPanel";
-import AIAssistantPanel       from "../../../components/AIAssistantPanel";
-import SynthesisPanel         from "../../../components/SynthesisPanel";
 import { useProblem }         from "../../../hooks/useProblem";
 import { useProgress }        from "../../../hooks/useProgress";
 import { useSplitter }        from "../../../hooks/useSplitter";
@@ -42,6 +40,9 @@ const Editor = dynamic(() => import("@/components/Editor"), {
   ssr:     false,
   loading: () => <div className="w-full h-full bg-pit animate-pulse" />,
 });
+// Panels start closed, so they load after the page instead of in its first bundle.
+const SynthesisPanel = dynamic(() => import("../../../components/SynthesisPanel"), { ssr: false });
+const AIAssistantPanel = dynamic(() => import("../../../components/AIAssistantPanel"), { ssr: false });
 
 const SPLITTER_H         = 6;
 const DEFAULT_LEFT_FRAC  = 0.32;   // Statement panel: 32% width

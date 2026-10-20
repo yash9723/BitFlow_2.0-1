@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { prewarmSimulator } from "@/lib/sim-status";
 import Link from "next/link";
 import type { DbProblem } from "@/lib/db-loader";
 
@@ -23,6 +24,7 @@ function difficultyRank(value: string) {
 }
 
 export default function ArenaHubClient({ problems }: ArenaHubClientProps) {
+  useEffect(prewarmSimulator, []);
   const difficulties = Array.from(new Set(problems.map((p) => p.difficulty)))
     .sort((a, b) => difficultyRank(a) - difficultyRank(b) || a.localeCompare(b));
 

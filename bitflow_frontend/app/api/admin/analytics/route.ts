@@ -5,14 +5,13 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth-utils";
+import { adminDenied } from "@/lib/auth-utils";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  if (user.role !== "ADMIN") return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  const denied = await adminDenied();
+  if (denied) return denied;
 
   const days  = Math.min(Math.max(Number(new URL(request.url).searchParams.get("days")) || 30, 1), 365);
   const since = new Date(Date.now() - (days - 1) * 86_400_000).toISOString().slice(0, 10);

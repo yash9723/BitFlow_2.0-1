@@ -10,7 +10,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth-utils";
+import { adminDenied } from "@/lib/auth-utils";
 import { verifyReferenceSolution } from "@/lib/grading";
 import { reportError } from "@/lib/error-log";
 
@@ -18,15 +18,9 @@ export const dynamic = "force-dynamic";
 
 const MAX_SOURCE_CHARS = 512 * 1024;
 
-async function requireAdmin() {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  if (user.role !== "ADMIN") return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-  return null;
-}
 
 export async function GET(request: Request) {
-  const denied = await requireAdmin();
+  const denied = await adminDenied();
   if (denied) return denied;
 
   const slug = new URL(request.url).searchParams.get("slug");
@@ -48,7 +42,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const denied = await requireAdmin();
+  const denied = await adminDenied();
   if (denied) return denied;
 
   const body = await request.json().catch(() => ({}));
@@ -81,7 +75,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const denied = await requireAdmin();
+  const denied = await adminDenied();
   if (denied) return denied;
   const slug = new URL(request.url).searchParams.get("slug") ?? "";
   const { count } = await prisma.question.updateMany({ where: { slug }, data: { referenceSolution: null } });

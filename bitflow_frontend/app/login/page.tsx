@@ -489,6 +489,13 @@ export default function LoginPage() {
     setTimeout(() => setError(false), 650);
   };
 
+  /** ?next= when it is a path on this site (never another origin), else the role's home. */
+  const afterSignIn = (role: string) => {
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")) return next;
+    return role === "ADMIN" ? "/admin" : "/dashboard";
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -505,7 +512,7 @@ export default function LoginPage() {
           }
         } else {
           setTimeout(() => {
-            router.push(role === "ADMIN" ? "/admin" : "/dashboard");
+            router.push(afterSignIn(role));
           }, 500);
         }
       } else {
@@ -515,7 +522,7 @@ export default function LoginPage() {
           triggerError();
         } else {
           setTimeout(() => {
-            router.push(role === "ADMIN" ? "/admin" : "/dashboard");
+            router.push(afterSignIn(role));
           }, 500);
         }
       }

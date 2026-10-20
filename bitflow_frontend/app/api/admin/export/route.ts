@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth-utils";
+import { adminDenied } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
@@ -30,13 +30,8 @@ function downloadResponse(body: string, filename: string, contentType: string) {
 
 export async function GET(request: Request) {
   try {
-    const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-    }
-    if (user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    }
+    const denied = await adminDenied();
+    if (denied) return denied;
 
     const { searchParams } = new URL(request.url);
     const dataset = searchParams.get("dataset") ?? "submissions";

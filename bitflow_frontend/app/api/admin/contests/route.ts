@@ -9,22 +9,16 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth-utils";
+import { adminDenied } from "@/lib/auth-utils";
 
 export const dynamic = "force-dynamic";
 
 const MAX_PROBLEMS = 26;              // labelled A–Z
 const MAX_DAYS     = 31;
 
-async function requireAdmin() {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  if (user.role !== "ADMIN") return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-  return null;
-}
 
 export async function POST(request: Request) {
-  const denied = await requireAdmin();
+  const denied = await adminDenied();
   if (denied) return denied;
 
   const body = await request.json().catch(() => ({}));
@@ -52,7 +46,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const denied = await requireAdmin();
+  const denied = await adminDenied();
   if (denied) return denied;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id is required." }, { status: 400 });

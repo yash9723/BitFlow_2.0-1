@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 const SESSION_COOKIE = "bitflow_session";
@@ -93,6 +94,14 @@ export async function destroySession(): Promise<void> {
   const token = cookies().get(SESSION_COOKIE)?.value;
   if (token) await prisma.session.deleteMany({ where: { token } });
   cookies().set(SESSION_COOKIE, "", { httpOnly: true, maxAge: 0, path: "/" });
+}
+
+/** For admin API routes: a 401/403 response to return, or null when the caller is an admin. */
+export async function adminDenied(): Promise<NextResponse | null> {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  if (user.role !== "ADMIN") return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  return null;
 }
 
 export async function getSessionUser() {

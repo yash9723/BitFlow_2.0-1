@@ -13,7 +13,7 @@
 
 import axios, { AxiosError } from "axios";
 import type { SimulateRequest, SimulateResponse } from "./types";
-import { trackWake } from "./sim-status";
+import { awakeRecently, trackWake } from "./sim-status";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Axios instance
@@ -163,13 +163,15 @@ export async function submitSolution<T>(
  * it is usually ready by the first Run (lib/sim-status.ts shows the wait).
  * Returns true if the backend responds, false otherwise (never throws).
  */
-export async function checkHealth(): Promise<boolean> {
-  try {
-    await trackWake(axios.get("/api/simulate/health", { timeout: 120_000 }));
-    return true;
-  } catch {
-    return false;
-  }
+let healthCheck: Promise<boolean> | null = null;
+
+export function checkHealth(): Promise<boolean> {
+  if (awakeRecently()) return Promise.resolve(true);
+  // Pages that open together (or a quick back-and-forth) share one request.
+  healthCheck ??= trackWake(axios.get("/api/simulate/health", { timeout: 120_000 }))
+    .then(() => true, () => false)
+    .finally(() => { healthCheck = null; });
+  return healthCheck;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

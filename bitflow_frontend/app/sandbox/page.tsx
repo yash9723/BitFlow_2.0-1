@@ -79,10 +79,6 @@ import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import { parseDiagnostics }           from "@/lib/diagnostics";
-import AIAssistantPanel               from "@/components/AIAssistantPanel";
-import SynthesisPanel                 from "@/components/SynthesisPanel";
-import BoardPanel                     from "@/components/BoardPanel";
-import FormalPanel                    from "@/components/FormalPanel";
 import { TEMPLATES }                  from "@/lib/templates";
 import type { DesignLanguage, TestbenchLanguage } from "@/lib/types";
 import ExportCard                     from "@/components/ExportCard";
@@ -104,6 +100,11 @@ const Editor = dynamic(() => import("@/components/Editor"), {
   ssr:     false,
   loading: () => <div className="w-full h-full bg-pit animate-pulse" />,
 });
+// Panels start closed, so they load after the page instead of in its first bundle.
+const FormalPanel = dynamic(() => import("@/components/FormalPanel"), { ssr: false });
+const BoardPanel = dynamic(() => import("@/components/BoardPanel"), { ssr: false });
+const SynthesisPanel = dynamic(() => import("@/components/SynthesisPanel"), { ssr: false });
+const AIAssistantPanel = dynamic(() => import("@/components/AIAssistantPanel"), { ssr: false });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Layout constants

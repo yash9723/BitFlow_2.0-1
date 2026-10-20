@@ -30,6 +30,19 @@ export function useSimStatus(): SimStatus {
   );
 }
 
+/** Did the simulator answer within the last minute? Then a health check would add nothing. */
+export const awakeRecently = () => Date.now() - lastOk < 60_000;
+
+/**
+ * Start waking the simulator from a page that usually leads to an editor
+ * (Learn, Arena), without the wake notice, so it gets a head start on its
+ * cold start before the editor's own health check.
+ */
+export function prewarmSimulator(): void {
+  if (awakeRecently()) return;
+  fetch("/api/simulate/health").then((r) => { if (r.ok) lastOk = Date.now(); }, () => {});
+}
+
 /** Await a simulator request, flagging a probable cold start while it's slow. */
 export async function trackWake<T>(request: Promise<T>): Promise<T> {
   const timer = setTimeout(() => {

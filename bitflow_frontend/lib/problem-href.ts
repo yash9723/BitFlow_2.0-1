@@ -1,6 +1,4 @@
-/** URL of a problem's solving page: Arena problems live under their category. */
-export function problemHref(p: { slug: string; category: string; learningLevel: string }): string {
-  return p.learningLevel === "Arena"
-    ? `/arena/${p.category.toLowerCase()}/${p.slug}`
-    : `/problems/${p.slug}`;
+/** Where a problem is solved: Arena problems live under /arena/<category>/, the rest under /problems/. */
+export function problemHref(q: { slug: string; learningLevel: string; category: string }): string {
+  return q.learningLevel === "Arena" ? `/arena/${q.category.toLowerCase()}/${q.slug}` : `/problems/${q.slug}`;
 }

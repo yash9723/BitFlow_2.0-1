@@ -7,19 +7,13 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth-utils";
+import { adminDenied } from "@/lib/auth-utils";
 
 export const dynamic = "force-dynamic";
 
-async function requireAdmin() {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  if (user.role !== "ADMIN") return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-  return null;
-}
 
 export async function GET() {
-  const denied = await requireAdmin();
+  const denied = await adminDenied();
   if (denied) return denied;
 
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -48,7 +42,7 @@ export async function GET() {
 }
 
 export async function DELETE() {
-  const denied = await requireAdmin();
+  const denied = await adminDenied();
   if (denied) return denied;
   const { count } = await prisma.errorLog.deleteMany({});
   return NextResponse.json({ deleted: count });

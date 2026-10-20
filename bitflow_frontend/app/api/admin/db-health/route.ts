@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth-utils";
+import { adminDenied } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
@@ -16,24 +16,15 @@ function sanitizeDatabaseUrl(value: string | undefined) {
 
 export async function GET() {
   try {
-    const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-    }
-    if (user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    }
+    const denied = await adminDenied();
+    if (denied) return denied;
 
-    const [users, submissions, progress, questions, firstUser, latestUser, latestSubmission] =
+    const [users, submissions, progress, questions, latestUser, latestSubmission] =
       await Promise.all([
         prisma.user.count(),
         prisma.submission.count(),
         prisma.userProgress.count(),
         prisma.question.count(),
-        prisma.user.findFirst({
-          orderBy: { createdAt: "asc" },
-          select: { username: true, createdAt: true },
-        }),
         prisma.user.findFirst({
           orderBy: { createdAt: "desc" },
           select: { username: true, createdAt: true },
@@ -45,27 +36,25 @@ export async function GET() {
       ]);
 
     const databaseUrl = sanitizeDatabaseUrl(process.env.DATABASE_URL);
-    const usingRenderDisk = databaseUrl?.startsWith("file:/var/data/") ?? false;
+    const provider = databaseUrl?.startsWith("file:") ? "sqlite" : databaseUrl ? "postgres" : "unknown";
+    const t0 = Date.now();
+    await prisma.user.findFirst({ select: { id: true } });    // one round trip, for the latency figure
 
     return NextResponse.json({
       bootId,
       bootedAt,
       now: new Date(),
       databaseUrl,
-      usingRenderDisk,
+      provider,
+      latencyMs: Date.now() - t0,
       counts: {
         users,
         submissions,
         progress,
         questions,
       },
-      firstUser,
       latestUser,
       latestSubmission,
-      render: {
-        serviceId: process.env.RENDER_SERVICE_ID ?? null,
-        externalUrl: process.env.RENDER_EXTERNAL_URL ?? null,
-      },
     });
   } catch (err) {
     await reportError("[GET /api/admin/db-health] error:", err);

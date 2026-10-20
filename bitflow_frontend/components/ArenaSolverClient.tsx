@@ -10,12 +10,18 @@ import SubmissionHistory from "@/components/SubmissionHistory";
 import OptimizationBoard from "@/components/OptimizationBoard";
 import { ArenaToolbar } from "@/components/ArenaToolbar";
 import ScrollUnlock from "@/components/ScrollUnlock";
-import Editor from "@/components/Editor";
-import AIAssistantPanel from "@/components/AIAssistantPanel";
-import SynthesisPanel from "@/components/SynthesisPanel";
+import dynamic from "next/dynamic";
 import Terminal from "@/components/Terminal";
 import WaveformPanel, { CounterexampleView, FailingWaveformView } from "@/components/WaveformPanel";
 import { WaveformPanelWrapper } from "./WaveformPanelWrapper";
+
+// Monaco is browser-only; the panels start closed, so they load after the page.
+const Editor = dynamic(() => import("@/components/Editor"), {
+  ssr:     false,
+  loading: () => <div className="w-full h-full bg-pit animate-pulse" />,
+});
+const SynthesisPanel   = dynamic(() => import("@/components/SynthesisPanel"), { ssr: false });
+const AIAssistantPanel = dynamic(() => import("@/components/AIAssistantPanel"), { ssr: false });
 
 function useWaveformSplitter(initial: number) {
   const [size, setSize] = useState(initial);

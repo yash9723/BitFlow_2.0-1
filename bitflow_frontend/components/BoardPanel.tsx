@@ -4,27 +4,41 @@
  *
  * Synthesizes the design to gates (POST /api/synthesize {board: true}) and runs
  * it in the browser with lib/gate-sim. Ports are wired up by name:
- *   clk / clock            → the board clock: Step, or Run at 1–50 Hz
+ *   clk / clock            → the board clock: Step, or Run at 1 Hz – 10 kHz
  *   rst / reset / rst_n …  → reset button (a trailing n means active low)
- *   btn* / key*            → push buttons (active while held)
- *   Buttons latch on click, so they can be held down across a Step.
- *   other inputs           → switches
+ *   btn* / key*            → push buttons; they latch on click, so they can be held across a Step
+ *   other inputs           → switches (buses also get a number box)
  *   7- or 8-bit seg* / hex* outputs → a 7-segment digit, seg[0]=a … seg[6]=g, seg[7]=dp
+ *   4-bit hex* / digit* outputs     → a 7-segment digit showing the value 0–F
+ *   3-bit rgb* outputs     → an RGB LED, bit 2 = red, bit 1 = green, bit 0 = blue
  *   other outputs          → LEDs
+ * Keys: Space = Step, P = Run/Pause, Esc = close.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { GateSim, toNumber, type BoardNetlist } from "@/lib/gate-sim";
 
 const CLOCK  = /^(clk|clock)$/i;
 const RESET  = /^(rst|reset|rst_n|reset_n|rstn|resetn|areset|arst|arst_n|aresetn)$/i;
 const BUTTON = /^(btn|key|button)/i;
 const SEVEN  = /^(seg|hex|sseg|seven)/i;
-const RATES  = [1, 2, 5, 10, 50];
+const HEX    = /^(hex|digit)/i;
+const RGB    = /^rgb/i;
+const RATES  = [1, 2, 5, 10, 50, 100, 1000, 10000];
+/** Cap on clock cycles simulated per animation frame; past it the board runs slower than asked. */
+const MAX_PER_FRAME = 2000;
 
 const activeLow = (name: string) => RESET.test(name) && /n$/i.test(name);
 const idle      = (name: string) => (activeLow(name) ? 1 : 0);
-const isDigit   = (p: { name: string; width: number }) => SEVEN.test(p.name) && (p.width === 7 || p.width === 8);
+type Port = { name: string; width: number };
+const isSeg   = (p: Port) => SEVEN.test(p.name) && (p.width === 7 || p.width === 8);
+const isHex   = (p: Port) => HEX.test(p.name) && p.width === 4;
+const isRgb   = (p: Port) => RGB.test(p.name) && p.width === 3;
+const hz      = (r: number) => (r >= 1000 ? `${r / 1000} kHz` : `${r} Hz`);
+const toBits  = (n: number, width: number) => Array.from({ length: width }, (_, i) => Math.floor(n / 2 ** i) % 2);
+
+/** The last netlist synthesized, so reopening the board on unchanged code skips the server. */
+let cached: { key: string; net: BoardNetlist } | null = null;
 
 interface Props {
   isOpen:     boolean;
@@ -40,12 +54,14 @@ const SEGMENTS = [
   "M8 4h20l-3 5H11z", "M30 6l-1 25-4 3 1-24z", "M29 37l-1 25-5-4 1-21z", "M7 66h20l-3-5H10z",
   "M6 36l-1 22 4 4 1-23z", "M7 6l4 4-1 21-4 3z", "M9 34l3-3h14l3 3-3 3H12z",
 ];
+/** Segments (bit 0 = a … bit 6 = g) lit for the hex digits 0–F. */
+const HEX_SEGS = [0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f, 0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71];
 
-function SevenSeg({ bits }: { bits: number[] }) {
+function SevenSeg({ bits, label }: { bits: number[]; label: string }) {
   return (
-    <svg viewBox="0 0 40 70" className="w-12 h-20" role="img" aria-label={`7-segment display, segments a–g = ${bits.slice(0, 7).join("")}`}>
-      {SEGMENTS.map((d, i) => <path key={i} d={d} className={bits[i] ? "fill-phosphor" : "fill-rim"} />)}
-      {bits.length > 7 && <circle cx="35" cy="64" r="2.5" className={bits[7] ? "fill-phosphor" : "fill-rim"} />}
+    <svg viewBox="0 0 40 70" className="w-12 h-20" role="img" aria-label={label}>
+      {SEGMENTS.map((d, i) => <path key={i} d={d} className={bits[i] ? "fill-phosphor" : "fill-rim/60"} />)}
+      {bits.length > 7 && <circle cx="35" cy="64" r="2.5" className={bits[7] ? "fill-phosphor" : "fill-rim/60"} />}
     </svg>
   );
 }
@@ -61,12 +77,30 @@ function Leds({ bits }: { bits: number[] }) {
   );
 }
 
+function RgbLed({ bits }: { bits: number[] }) {
+  const [b, g, r] = bits;
+  const color = `rgb(${r ? 255 : 0},${g ? 255 : 0},${b ? 255 : 0})`;
+  const lit = r || g || b;
+  return <span className="inline-block w-6 h-6 rounded-full border border-rim"
+               style={{ background: lit ? color : undefined, boxShadow: lit ? `0 0 10px ${color}` : undefined }}
+               title={`R${r} G${g} B${b}`} />;
+}
+
 function Label({ name, width, value }: { name: string; width: number; value: number }) {
   return (
     <div className="font-mono text-[10px] text-ghost mb-1">
       {name}
       {width > 1 && <span className="text-dim">[{width - 1}:0] = {value} (0x{value.toString(16)})</span>}
     </div>
+  );
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded border border-rim/60 bg-surface/30 p-3 space-y-3 min-w-0">
+      <h3 className="font-mono text-[9px] text-dim uppercase tracking-widest">{title}</h3>
+      {children}
+    </section>
   );
 }
 
@@ -82,7 +116,6 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
   const [running, setRunning] = useState(false);
   const [segLow,  setSegLow]  = useState(false);
   const [, redraw]            = useState(0);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const ports = useMemo(() => {
     const all   = Object.entries(sim?.ports ?? {}).map(([name, p]) => ({ name, width: p.bits.length, dir: p.direction }));
@@ -94,8 +127,9 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
       clock,
       buttons:  rest.filter((p) => RESET.test(p.name) || BUTTON.test(p.name)),
       switches: rest.filter((p) => !RESET.test(p.name) && !BUTTON.test(p.name)),
-      digits:   outs.filter(isDigit),
-      leds:     outs.filter((p) => !isDigit(p)),
+      digits:   outs.filter((p) => isSeg(p) || isHex(p)),
+      rgbs:     outs.filter(isRgb),
+      leds:     outs.filter((p) => !isSeg(p) && !isHex(p) && !isRgb(p)),
     };
   }, [sim]);
 
@@ -105,31 +139,40 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
     redraw((n) => n + 1);
   }, []);
 
+  /** Build the board from the netlist: registers at 0, inputs released. */
+  const power = useCallback((net: BoardNetlist) => {
+    const s = new GateSim(net);
+    const start: Record<string, number[]> = {};
+    for (const [name, p] of Object.entries(s.ports)) {
+      if (p.direction !== "input") continue;
+      start[name] = p.bits.map(() => idle(name));
+      s.set(name, start[name]);
+    }
+    setInputs(start);
+    setCycles(0);
+    setSim(s);
+  }, []);
+
   const load = useCallback(async () => {
-    setLoading(true); setRunning(false); setError(null); setSim(null); setCycles(0);
+    setLoading(true); setRunning(false); setError(null); setSim(null);
+    const key = `${language}\n${designCode}`;
     try {
-      const res  = await fetch("/api/synthesize", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designCode, language, board: true }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      const s = new GateSim(data as BoardNetlist);
-      // Inputs start released: 0, or 1 for an active-low reset.
-      const start: Record<string, number[]> = {};
-      for (const [name, p] of Object.entries(s.ports)) {
-        if (p.direction !== "input") continue;
-        start[name] = p.bits.map(() => idle(name));
-        s.set(name, start[name]);
+      if (cached?.key !== key) {
+        const res  = await fetch("/api/synthesize", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ designCode, language, board: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+        cached = { key, net: data as BoardNetlist };
       }
-      setInputs(start);
-      setSim(s);
+      power(cached.net);
     } catch (e) {
       setError((e as Error).message || "Network error.");
     } finally {
       setLoading(false);
     }
-  }, [designCode, language]);
+  }, [designCode, language, power]);
 
   const drive = useCallback((name: string, bits: number[]) => {
     if (!sim) return;
@@ -137,10 +180,12 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
     act(() => sim.set(name, bits));
   }, [sim, act]);
 
-  const step = useCallback(() => {
+  /** n full clock cycles. */
+  const pulse = useCallback((n: number) => {
     if (!sim || !ports.clock) return;
-    act(() => { sim.set(ports.clock!, [1]); sim.set(ports.clock!, [0]); });
-    setCycles((c) => c + 1);
+    const clk = ports.clock;
+    act(() => { for (let i = 0; i < n; i++) { sim.set(clk, [1]); sim.set(clk, [0]); } });
+    setCycles((c) => c + n);
   }, [sim, ports.clock, act]);
 
   useEffect(() => {
@@ -149,29 +194,45 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  // Run: cycles owed since the last frame, simulated in one batch and drawn once.
   useEffect(() => {
     if (!running) return;
-    timer.current = setInterval(step, 1000 / rate);
-    return () => { if (timer.current) clearInterval(timer.current); };
-  }, [running, rate, step]);
+    let frame = 0, last = performance.now(), owed = 0;
+    const tick = (now: number) => {
+      owed += ((now - last) * rate) / 1000;
+      last = now;
+      const n = Math.floor(owed);
+      owed -= n;                                    // a backlog past the cap is dropped, not queued
+      if (n) pulse(Math.min(n, MAX_PER_FRAME));
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [running, rate, pulse]);
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return onClose();
+      if ((e.target as HTMLElement).closest?.("input, select, textarea")) return;
+      if (e.key === " " && !running) { e.preventDefault(); pulse(1); }
+      if (e.key === "p" || e.key === "P") setRunning((r) => !r);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, running, pulse]);
 
   if (!isOpen) return null;
 
   const isDown = (name: string) => inputs[name]?.[0] !== idle(name);
   const press  = (name: string, width: number, down: boolean) => drive(name, Array(width).fill(down ? 1 - idle(name) : idle(name)));
   const btn    = "px-3 py-1.5 rounded border font-mono text-[11px] select-none";
+  const noInputs = !ports.clock && ports.buttons.length === 0 && ports.switches.length === 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-void/80 flex items-center justify-center p-2 sm:p-4" onClick={onClose}
          role="dialog" aria-modal="true" aria-label="Virtual board">
-      <div className="w-full max-w-3xl max-h-[88vh] flex flex-col bg-pit border border-rim rounded" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-4xl max-h-[90vh] flex flex-col bg-pit border border-rim rounded" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-rim">
           <div className="flex items-center gap-3">
             <span className="font-mono text-[11px] text-bright uppercase tracking-widest">Board</span>
@@ -180,14 +241,15 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
             </span>
           </div>
           <div className="flex items-center gap-3 font-mono text-[10px]">
-            <button className="text-info hover:underline disabled:opacity-40" disabled={loading} onClick={load}>
-              {loading ? "Synthesizing…" : "Reload design"}
+            <button className="text-info hover:underline disabled:opacity-40" disabled={loading} onClick={load}
+                    title="Clear every register and release every input">
+              {loading ? "Synthesizing…" : "Power cycle"}
             </button>
             <button className="text-ghost hover:text-bright" onClick={onClose}>Close</button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-3 space-y-4">
+        <div className="flex-1 overflow-auto p-3 space-y-3">
           {error && <pre className="whitespace-pre-wrap font-mono text-[11px] text-danger">{error}</pre>}
           {loading && !sim && <p className="font-mono text-[11px] text-dim">Synthesizing to gates…</p>}
 
@@ -198,91 +260,125 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
                 {ports.clock ? (
                   <>
                     <span className="font-mono text-[10px] text-ghost">{ports.clock}</span>
-                    <button className={`${btn} border-rim text-pale hover:text-bright disabled:opacity-40`} onClick={step} disabled={running}>Step</button>
+                    <button className={`${btn} border-rim text-pale hover:text-bright disabled:opacity-40`} onClick={() => pulse(1)} disabled={running}
+                            title="One clock cycle (Space)">Step</button>
                     <button className={`${btn} ${running ? "border-warn/50 text-warn" : "border-phosphor/40 text-phosphor"}`}
-                            onClick={() => setRunning((r) => !r)}>{running ? "Pause" : "Run"}</button>
+                            onClick={() => setRunning((r) => !r)} title="P">{running ? "Pause" : "Run"}</button>
                     <select className="bg-pit border border-rim rounded font-mono text-[11px] text-pale px-1 py-1"
                             value={rate} onChange={(e) => setRate(Number(e.target.value))} aria-label="Clock rate">
-                      {RATES.map((r) => <option key={r} value={r}>{r} Hz</option>)}
+                      {RATES.map((r) => <option key={r} value={r}>{hz(r)}</option>)}
                     </select>
-                    <span className="font-mono text-[10px] text-dim">cycle {cycles}</span>
+                    <span className="font-mono text-[10px] text-dim tabular-nums">cycle {cycles}</span>
                   </>
                 ) : (
                   <span className="font-mono text-[10px] text-dim">No clock input (name it clk), so outputs simply follow the inputs.</span>
                 )}
               </section>
 
-              {/* Reset and push buttons latch (click to hold, click to release), so a
-                  synchronous reset can be held down across a Step */}
-              {ports.buttons.length > 0 && (
-                <section className="flex flex-wrap items-center gap-2">
-                  {ports.buttons.map((p) => (
-                    <button key={p.name} aria-pressed={isDown(p.name)}
-                            onClick={() => press(p.name, p.width, !isDown(p.name))}
-                            className={`${btn} ${isDown(p.name) ? "border-phosphor bg-phosphor/20 text-phosphor" : "border-rim text-pale"}`}
-                            title={activeLow(p.name) ? "Active low: drives 0 while held" : "Drives 1 while held"}>
-                      {p.name}{isDown(p.name) ? " (held)" : ""}
-                    </button>
-                  ))}
-                  <span className="font-mono text-[9px] text-dim">click to hold, click again to release</span>
-                </section>
-              )}
-
-              {/* Switches, MSB on the left */}
-              {ports.switches.map((p) => {
-                const bits = inputs[p.name] ?? [];
-                return (
-                  <section key={p.name}>
-                    <Label name={p.name} width={p.width} value={toNumber(bits)} />
-                    <div className="flex flex-wrap gap-1">
-                      {bits.map((_, j) => {
-                        const i  = p.width - 1 - j;
-                        const on = bits[i] === 1;
-                        return (
-                          <button key={i} title={`${p.name}[${i}]`} aria-label={`${p.name}[${i}]`} aria-pressed={on}
-                                  onClick={() => drive(p.name, bits.map((b, k) => (k === i ? b ^ 1 : b)))}
-                                  className={`w-6 h-9 rounded border font-mono text-[9px] flex flex-col items-center justify-between py-0.5 ${on ? "border-phosphor/60 text-phosphor" : "border-rim text-dim"}`}>
-                            <span className={`w-3 h-3 rounded-sm ${on ? "bg-phosphor" : "bg-rim mt-auto"}`} />
-                            <span>{on ? 1 : 0}</span>
-                          </button>
-                        );
-                      })}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Group title="Inputs">
+                  {noInputs && <p className="font-mono text-[10px] text-dim">This design has no inputs.</p>}
+                  {/* Reset and push buttons latch, so a synchronous reset can be held across a Step */}
+                  {ports.buttons.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {ports.buttons.map((p) => (
+                        <button key={p.name} aria-pressed={isDown(p.name)}
+                                onClick={() => press(p.name, p.width, !isDown(p.name))}
+                                className={`${btn} ${isDown(p.name) ? "border-phosphor bg-phosphor/20 text-phosphor" : "border-rim text-pale"}`}
+                                title={activeLow(p.name) ? "Active low: drives 0 while held" : "Drives 1 while held"}>
+                          {p.name}{isDown(p.name) ? " (held)" : ""}
+                        </button>
+                      ))}
+                      <span className="font-mono text-[9px] text-dim">click to hold, again to release</span>
                     </div>
-                  </section>
-                );
-              })}
+                  )}
 
-              {/* Outputs */}
-              {ports.digits.length > 0 && (
-                <section>
-                  <div className="flex flex-wrap items-end gap-4">
-                    {ports.digits.map((p) => (
-                      <div key={p.name} className="flex flex-col items-center">
-                        <SevenSeg bits={sim.get(p.name).map((b) => (segLow ? b ^ 1 : b))} />
-                        <span className="font-mono text-[10px] text-ghost">{p.name}</span>
+                  {/* Switches, MSB on the left; buses also take a number */}
+                  {ports.switches.map((p) => {
+                    const bits = inputs[p.name] ?? [];
+                    const max  = 2 ** Math.min(p.width, 32) - 1;
+                    return (
+                      <div key={p.name}>
+                        <div className="flex items-center justify-between gap-2">
+                          <Label name={p.name} width={p.width} value={toNumber(bits)} />
+                          {p.width > 1 && (
+                            <input type="number" min={0} max={max} value={toNumber(bits)} aria-label={`${p.name} value`}
+                                   onChange={(e) => drive(p.name, toBits(Math.max(0, Math.min(max, Number(e.target.value) || 0)), p.width))}
+                                   className="w-24 mb-1 bg-pit border border-rim rounded px-1 py-0.5 font-mono text-[10px] text-pale" />
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {bits.map((_, j) => {
+                            const i  = p.width - 1 - j;
+                            const on = bits[i] === 1;
+                            return (
+                              <button key={i} title={`${p.name}[${i}]`} aria-label={`${p.name}[${i}]`} aria-pressed={on}
+                                      onClick={() => drive(p.name, bits.map((b, k) => (k === i ? b ^ 1 : b)))}
+                                      className={`w-6 h-9 rounded border font-mono text-[9px] flex flex-col items-center justify-between py-0.5 ${on ? "border-phosphor/60 text-phosphor" : "border-rim text-dim"}`}>
+                                <span className={`w-3 h-3 rounded-sm ${on ? "bg-phosphor" : "bg-rim mt-auto"}`} />
+                                <span>{on ? 1 : 0}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <label className="flex items-center gap-1.5 mt-1 font-mono text-[10px] text-dim">
-                    <input type="checkbox" checked={segLow} onChange={(e) => setSegLow(e.target.checked)} />
-                    segments are active low (0 = lit)
-                  </label>
-                </section>
-              )}
-              {ports.leds.map((p) => {
-                const bits = sim.get(p.name);
-                return (
-                  <section key={p.name}>
-                    <Label name={p.name} width={p.width} value={toNumber(bits)} />
-                    <Leds bits={bits} />
-                  </section>
-                );
-              })}
+                    );
+                  })}
+                </Group>
 
-              <p className="font-mono text-[9px] text-dim">
-                Wired by port name: clk = clock, rst/reset and btn* = buttons, other inputs = switches;
-                7/8-bit seg*/hex* outputs = 7-segment digit (seg[0]=a … seg[6]=g), other outputs = LEDs. Registers start at 0.
-              </p>
+                <Group title="Outputs">
+                  {ports.digits.length > 0 && (
+                    <div>
+                      <div className="flex flex-wrap items-end gap-4">
+                        {ports.digits.map((p) => {
+                          const raw  = sim.get(p.name);
+                          const bits = isHex(p) ? toBits(HEX_SEGS[toNumber(raw)], 7) : raw.map((b) => (segLow ? b ^ 1 : b));
+                          return (
+                            <div key={p.name} className="flex flex-col items-center">
+                              <SevenSeg bits={bits} label={isHex(p) ? `${p.name} = ${toNumber(raw).toString(16).toUpperCase()}` : `${p.name}, segments a–g = ${bits.slice(0, 7).join("")}`} />
+                              <span className="font-mono text-[10px] text-ghost">{p.name}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {ports.digits.some(isSeg) && (
+                        <label className="flex items-center gap-1.5 mt-1 font-mono text-[10px] text-dim">
+                          <input type="checkbox" checked={segLow} onChange={(e) => setSegLow(e.target.checked)} />
+                          segments are active low (0 = lit)
+                        </label>
+                      )}
+                    </div>
+                  )}
+                  {ports.rgbs.length > 0 && (
+                    <div className="flex flex-wrap gap-4">
+                      {ports.rgbs.map((p) => (
+                        <div key={p.name} className="flex flex-col items-center gap-1">
+                          <RgbLed bits={sim.get(p.name)} />
+                          <span className="font-mono text-[10px] text-ghost">{p.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {ports.leds.map((p) => {
+                    const bits = sim.get(p.name);
+                    return (
+                      <div key={p.name}>
+                        <Label name={p.name} width={p.width} value={toNumber(bits)} />
+                        <Leds bits={bits} />
+                      </div>
+                    );
+                  })}
+                </Group>
+              </div>
+
+              <details className="font-mono text-[9px] text-dim">
+                <summary className="cursor-pointer hover:text-ghost">How ports map to the board</summary>
+                <p className="mt-1 leading-relaxed">
+                  clk = clock (Space steps, P runs). rst/reset and btn*/key* = buttons; other inputs = switches.
+                  7/8-bit seg*/hex* outputs = raw 7-segment digit (seg[0]=a … seg[6]=g, seg[7]=dp); 4-bit hex*/digit* = digit showing 0–F;
+                  3-bit rgb* = RGB LED (bit 2 red, 1 green, 0 blue); other outputs = LEDs. Registers start at 0.
+                </p>
+              </details>
             </>
           )}
         </div>
