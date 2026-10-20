@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
 
 interface Fsm {
   module:      string;
@@ -121,18 +122,8 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
   const run = useCallback(async () => {
     setLoading(true);
     setFpga({});
-    try {
-      const res  = await fetch("/api/synthesize", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designCode, language }),
-      });
-      const data = await res.json().catch(() => ({}));
-      setResult(res.ok ? data : { ok: false, error: data.error ?? `Request failed (${res.status})` });
-    } catch {
-      setResult({ ok: false, error: "Network error." });
-    } finally {
-      setLoading(false);
-    }
+    setResult(await synthesizeDesign("synth", designCode, language));
+    setLoading(false);
   }, [designCode, language]);
 
   // Synthesize whatever is in the editor each time the panel opens.
@@ -196,7 +187,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto p-3">
-          {!result && loading && <p className="font-mono text-[11px] text-dim">Synthesizing…</p>}
+          {!result && loading && <p className="font-mono text-[11px] text-dim">{synthToolsLoaded() || language === "vhdl" ? "Synthesizing…" : "Loading the synthesis tools (about 6 MB, first time only)…"}</p>}
 
           {result && !result.ok && (
             <div className="space-y-2">

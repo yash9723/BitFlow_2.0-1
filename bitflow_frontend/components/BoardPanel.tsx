@@ -2,7 +2,7 @@
 /**
  * components/BoardPanel.tsx — virtual FPGA board, opened from the Sandbox toolbar.
  *
- * Synthesizes the design to gates (POST /api/synthesize {board: true}) and runs
+ * Synthesizes the design to gates (lib/synth/client: in the browser, or the server) and runs
  * it in the browser with lib/gate-sim. Ports are wired up by name:
  *   clk / clock            → the board clock: Step, or Run at 1 Hz – 10 kHz
  *   rst / reset / rst_n …  → reset button (a trailing n means active low)
@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GateSim, toNumber, type BoardNetlist } from "@/lib/gate-sim";
+import { synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
 
 const CLOCK  = /^(clk|clock)$/i;
 const RESET  = /^(rst|reset|rst_n|reset_n|rstn|resetn|areset|arst|arst_n|aresetn)$/i;
@@ -158,12 +159,8 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
     const key = `${language}\n${designCode}`;
     try {
       if (cached?.key !== key) {
-        const res  = await fetch("/api/synthesize", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ designCode, language, board: true }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+        const data = await synthesizeDesign("board", designCode, language);
+        if (!data.ok) throw new Error(data.error ?? "Synthesis failed.");
         cached = { key, net: data as BoardNetlist };
       }
       power(cached.net);
@@ -251,7 +248,7 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
 
         <div className="flex-1 overflow-auto p-3 space-y-3">
           {error && <pre className="whitespace-pre-wrap font-mono text-[11px] text-danger">{error}</pre>}
-          {loading && !sim && <p className="font-mono text-[11px] text-dim">Synthesizing to gates…</p>}
+          {loading && !sim && <p className="font-mono text-[11px] text-dim">{synthToolsLoaded() || language === "vhdl" ? "Synthesizing to gates…" : "Loading the synthesis tools (about 6 MB, first time only)…"}</p>}
 
           {sim && (
             <>

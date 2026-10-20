@@ -36,12 +36,14 @@ const nextConfig = {
             value: [
               "default-src 'self'",
               // Monaco is self-hosted under /monaco (no CDN needed)
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:",
+              // jsDelivr: YoWASP Yosys (WebAssembly) for synthesis in the browser (lib/synth/worker.ts)
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net",
               "style-src 'self' 'unsafe-inline'",
               "font-src 'self' data:",   // fonts are self-hosted (lib/fonts.ts)
               "img-src 'self' data: blob:",
-              // Simulation + AI calls go through our own /api routes (server-side)
-              "connect-src 'self'",
+              // Simulation + AI calls go through our own /api routes (server-side);
+              // jsDelivr serves the YoWASP WebAssembly files
+              "connect-src 'self' https://cdn.jsdelivr.net",
               "worker-src 'self' blob:",
               "frame-ancestors 'none'",
             ].join("; "),
