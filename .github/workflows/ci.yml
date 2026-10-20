@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iverilog verilator yosys
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iverilog verilator yosys z3 ghdl nextpnr-ice40
       - run: pip install -r requirements.txt
       - run: python -m pytest tests -q
 
@@ -40,6 +40,7 @@ jobs:
       - run: npm run check-diagnostics
       - run: npm run check-mutants
       - run: npm run check-waveform-diff
+      - run: npm run check-vhdl-starter
 
   web:
     name: Frontend type-check + build

@@ -30,6 +30,7 @@ interface Props {
   isOpen:     boolean;
   onClose:    () => void;
   designCode: string;
+  language?:  "verilog" | "vhdl";
 }
 
 // ── Display pieces ──────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ function Label({ name, width, value }: { name: string; width: number; value: num
 
 // ── Panel ───────────────────────────────────────────────────────────────────
 
-export default function BoardPanel({ isOpen, onClose, designCode }: Props) {
+export default function BoardPanel({ isOpen, onClose, designCode, language = "verilog" }: Props) {
   const [sim,     setSim]     = useState<GateSim | null>(null);
   const [error,   setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,7 +110,7 @@ export default function BoardPanel({ isOpen, onClose, designCode }: Props) {
     try {
       const res  = await fetch("/api/synthesize", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designCode, board: true }),
+        body: JSON.stringify({ designCode, language, board: true }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
@@ -128,7 +129,7 @@ export default function BoardPanel({ isOpen, onClose, designCode }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [designCode]);
+  }, [designCode, language]);
 
   const drive = useCallback((name: string, bits: number[]) => {
     if (!sim) return;

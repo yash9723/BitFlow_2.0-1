@@ -119,6 +119,10 @@ export function ArenaSolverClient({ problem }: Props) {
   const diagnostics = useMemo(() => parseDiagnostics(hook.runResult?.stdout), [hook.runResult]);
   const [aiAsk, setAiAsk] = useState<{ id: number; prompt: string } | null>(null);
   const isTestbench = problem.problemType === "testbench";
+  const isFormal    = problem.problemType === "formal";
+  const writesTb    = isTestbench || isFormal;   // the DUT is given; the learner writes tb / properties
+  const cocotb      = isTestbench && hook.testbenchLanguage === "python";
+  const tbFile      = isFormal ? "harness.v" : cocotb ? "test_tb.py" : "tb.v";
   const horiz = useHorizSplitter(380);
   const termSpl = useArenaSplitter(200);
   const waveSpl = useWaveformSplitter(200);
@@ -149,7 +153,7 @@ export function ArenaSolverClient({ problem }: Props) {
           style={{ width: horiz.width }}
         >
           <ArenaProblemStatement problem={problem}>
-            {isTestbench && hook.submission && <BugHuntResult result={hook.submission} />}
+            {writesTb && hook.submission && <BugHuntResult result={hook.submission} formal={isFormal} />}
             {hook.submission && !hook.submission.accepted && (
               <ExplainFailureButton onClick={() => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt: "My last submission failed. Help me understand why, without giving me the answer." }); }} />
             )}
@@ -160,14 +164,14 @@ export function ArenaSolverClient({ problem }: Props) {
               <div className="mt-2">
                 <SubmissionHistory
                   slug={problem.slug}
-                  file={isTestbench ? "testbench" : "design"}
-                  currentCode={isTestbench ? hook.testbenchCode : hook.designCode}
-                  onLoad={isTestbench ? hook.setTestbenchCode : hook.setDesignCode}
+                  file={writesTb ? "testbench" : "design"}
+                  currentCode={writesTb ? hook.testbenchCode : hook.designCode}
+                  onLoad={writesTb ? hook.setTestbenchCode : hook.setDesignCode}
                   refreshOn={[hook.runResult, hook.submission]}
                 />
               </div>
             </details>
-            {!isTestbench && (
+            {!writesTb && (
               <details className="group">
                 <summary className="font-mono text-[11px] font-semibold text-pale cursor-pointer select-none">Smallest-design leaderboard</summary>
                 <div className="mt-2">
@@ -188,31 +192,42 @@ export function ArenaSolverClient({ problem }: Props) {
             <div className="flex-1 border-r border-rim/40 overflow-hidden flex flex-col min-w-0">
               <div className="h-8 flex items-center px-3 bg-surface/60 border-b border-rim/40 shrink-0">
                 <span className="font-mono text-[10px] text-ghost">design.v</span>
-                {isTestbench && <span className="ml-2 font-mono text-[8px] text-dim/70 border border-rim/30 px-1 py-0.5 rounded">DUT · read-only</span>}
+                {writesTb && <span className="ml-2 font-mono text-[8px] text-dim/70 border border-rim/30 px-1 py-0.5 rounded">DUT · read-only</span>}
               </div>
               <div className="flex-1 overflow-hidden">
                 <Editor
-                  value={isTestbench ? problem.starterCode : hook.designCode}
+                  value={writesTb ? problem.starterCode : hook.designCode}
                   onChange={hook.setDesignCode}
                   language="verilog"
                   diagnostics={diagnostics.design}
-                  readOnly={isTestbench}
+                  readOnly={writesTb}
                 />
               </div>
             </div>
 
             <div className="flex-1 overflow-hidden flex flex-col min-w-0">
             <div className="h-8 flex items-center justify-between px-3 bg-surface/60 border-b border-rim/40 shrink-0">
-              <span className="font-mono text-[10px] text-ghost">tb.v</span>
-              <span className="font-mono text-[8px] text-dim/50 border border-rim/30 px-1 py-0.5 rounded">
-                {isTestbench ? "Write a testbench that catches the bugs" : "Write Your Testbench"}
-               </span>
+              <span className="font-mono text-[10px] text-ghost">{tbFile}</span>
+              {isTestbench ? (
+                <div className="flex gap-1 font-mono text-[8px]" role="radiogroup" aria-label="Testbench language">
+                  {([["verilog", "Verilog"], ["python", "cocotb (Python)"]] as const).map(([id, label]) => (
+                    <button key={id} role="radio" aria-checked={hook.testbenchLanguage === id} onClick={() => hook.setTestbenchLanguage(id)}
+                      className={`px-1.5 py-0.5 rounded border ${hook.testbenchLanguage === id ? "border-phosphor/50 text-phosphor bg-phosphor/10" : "border-rim/30 text-dim/70 hover:text-ghost"}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <span className="font-mono text-[8px] text-dim/50 border border-rim/30 px-1 py-0.5 rounded">
+                  {isFormal ? "Write properties that catch the bugs" : "Write Your Testbench"}
+                </span>
+              )}
                </div>
                  <div className="flex-1 overflow-hidden">
                   <Editor
                     value={hook.testbenchCode}
                     onChange={hook.setTestbenchCode}
-                    language="verilog"
+                    language={cocotb ? "python" : "systemverilog"}
                     diagnostics={diagnostics.tb}
                     readOnly={false}  // ← Always editable in Arena
                   />
@@ -276,7 +291,7 @@ export function ArenaSolverClient({ problem }: Props) {
   );
 }
 /** Testbench problems: which of the hidden bugs the student's testbench caught. */
-function BugHuntResult({ result }: { result: { accepted: boolean; passed: number; total: number; verdicts: { testcaseId: string; description: string; passed: boolean }[]; errorMessage?: string } }) {
+function BugHuntResult({ result, formal = false }: { formal?: boolean; result: { accepted: boolean; passed: number; total: number; verdicts: { testcaseId: string; description: string; passed: boolean }[]; errorMessage?: string } }) {
   return (
     <div className={`rounded border p-3 space-y-2 ${result.accepted ? "border-phosphor/40 bg-phosphor/5" : "border-warn/40 bg-warn/5"}`}>
       <div className={`font-mono text-[12px] font-bold ${result.accepted ? "text-phosphor" : "text-warn"}`}>
@@ -294,7 +309,9 @@ function BugHuntResult({ result }: { result: { accepted: boolean; passed: number
       )}
       {!result.accepted && result.verdicts.some((v) => !v.passed) && (
         <p className="font-mono text-[9px] text-dim">
-          Each ✗ is a one-line change to the DUT that your testbench doesn&apos;t notice. Add checks that would give a different result if that line were wrong.
+          {formal
+            ? "Each ✗ is a one-line change to the DUT that still satisfies all your properties. Add an assertion that this change would break."
+            : "Each ✗ is a one-line change to the DUT that your testbench doesn’t notice. Add checks that would give a different result if that line were wrong."}
         </p>
       )}
     </div>

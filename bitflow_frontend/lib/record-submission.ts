@@ -10,6 +10,8 @@ export interface RecordSubmissionInput {
   question:        { id: string; moduleId: string };
   designCode:      string;
   testbenchCode:   string;
+  /** Language of the code the learner wrote: "vhdl" design, "python" (cocotb) testbench, else "verilog". */
+  language?:       "verilog" | "vhdl" | "python";
   submissionType:  "RUN" | "SUBMIT";
   simStatus:       string;
   simStdout:       string | null;
@@ -41,6 +43,7 @@ export async function recordSubmission(input: RecordSubmissionInput) {
       problemId:       question.id,
       designCode:      input.designCode,
       testbenchCode:   input.testbenchCode,
+      language:        input.language ?? "verilog",
       submissionType:  input.submissionType,
       attemptNumber:   attemptCount + 1,
       simStatus:       input.simStatus,

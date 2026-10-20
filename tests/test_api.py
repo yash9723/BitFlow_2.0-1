@@ -525,7 +525,7 @@ class TestConcurrencyCap:
 
         active = peak = 0
 
-        async def fake_run(tmpdir, workspace_id, timeout, lint=False):
+        async def fake_run(tmpdir, workspace_id, timeout, lint=False, *languages):
             nonlocal active, peak
             active += 1
             peak = max(peak, active)
@@ -950,3 +950,300 @@ def test_fpga_resources_grouping():
     assert xc7 == {"luts": 20, "lutram": 16, "ffs": 11, "carry": 3, "bram": 2.5, "dsp": 2, "io": 24}, xc7
     ice = fpga_resources({"SB_LUT4": 44, "SB_DFF": 7, "SB_DFFSR": 4, "SB_CARRY": 7, "SB_RAM40_4K": 1}, "ice40")
     assert ice == {"luts": 44, "lutram": 0, "ffs": 11, "carry": 7, "bram": 1, "dsp": 0, "io": 0}, ice
+
+
+# =============================================================================
+# Round 8 — VHDL (GHDL), cocotb, formal (yosys-smtbmc), place & route (nextpnr)
+# =============================================================================
+
+import importlib.util  # noqa: E402
+
+from api.langs import cocotb_policy_violation, cocotb_summary, top_module  # noqa: E402
+from api.routes.hdl import parse_smtbmc  # noqa: E402
+from api.routes.synthesize import pnr_summary  # noqa: E402
+
+needs_ghdl    = pytest.mark.skipif(not shutil.which("ghdl"), reason="ghdl not installed")
+needs_cocotb  = pytest.mark.skipif(importlib.util.find_spec("cocotb_tools") is None or not shutil.which("iverilog"),
+                                   reason="cocotb not installed")
+needs_formal  = pytest.mark.skipif(not (shutil.which("yosys-smtbmc") and shutil.which("z3")), reason="yosys-smtbmc/z3 not installed")
+needs_nextpnr = pytest.mark.skipif(not shutil.which("nextpnr-ice40"), reason="nextpnr-ice40 not installed")
+
+VHDL_COUNTER = """library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+entity counter is
+  port (clk, rst : in std_logic; count : out std_logic_vector(3 downto 0));
+end entity;
+architecture rtl of counter is
+  signal c : unsigned(3 downto 0) := (others => '0');
+begin
+  process (clk) begin
+    if rising_edge(clk) then
+      if rst = '1' then c <= (others => '0'); else c <= c + 1; end if;
+    end if;
+  end process;
+  count <= std_logic_vector(c);
+end architecture;"""
+
+VHDL_TB = """library ieee;
+use ieee.std_logic_1164.all;
+entity tb is end entity;
+architecture sim of tb is
+  signal clk, rst : std_logic := '0';
+  signal count : std_logic_vector(3 downto 0);
+begin
+  dut: entity work.counter port map (clk => clk, rst => rst, count => count);
+  process begin
+    rst <= '1'; wait for 5 ns; clk <= '1'; wait for 5 ns; clk <= '0'; rst <= '0';
+    for i in 1 to 5 loop wait for 5 ns; clk <= '1'; wait for 5 ns; clk <= '0'; end loop;
+    assert count = "0101" report "count is wrong" severity failure;
+    report "ALL TESTS PASSED";
+    std.env.finish;
+  end process;
+end architecture;"""
+
+COUNTER_CHECK_TB = """`timescale 1ns/1ps
+module tb;
+  reg clk = 0, rst = 1; wire [3:0] count;
+  counter dut(.clk(clk), .rst(rst), .count(count));
+  always #5 clk = ~clk;
+  initial begin
+    @(negedge clk) rst = 0;
+    repeat (5) @(negedge clk);
+    if (count == 5) $display("ALL TESTS PASSED"); else $display("TESTS FAILED: count=%0d", count);
+    $finish;
+  end
+endmodule"""
+
+
+def test_top_module():
+    assert top_module("module a(input x); endmodule\nmodule b; a u(.x(1'b0)); endmodule") == "b"
+    assert top_module("// module fake;\nmodule only; endmodule") == "only"
+    assert top_module("no modules here") is None
+
+
+@needs_ghdl
+class TestVhdl:
+
+    def test_convert_to_verilog(self, client):
+        r = client.post("/vhdl", json={"design_vhdl": VHDL_COUNTER}).json()
+        assert r["ok"] and r["top"] == "counter" and "module counter" in r["verilog"], r
+
+    def test_convert_reports_errors_with_location(self, client):
+        r = client.post("/vhdl", json={"design_vhdl": "entity broken is port (a : in bit) end;"}).json()
+        assert r["ok"] is False and "design.vhd:" in r["error"], r
+
+    def test_vhdl_design_with_verilog_testbench(self, client):
+        r = client.post("/simulate", json={"design_v": VHDL_COUNTER, "testbench_v": COUNTER_CHECK_TB,
+                                           "design_language": "vhdl"}).json()
+        assert r["success"] and "ALL TESTS PASSED" in r["stdout"] and "converted to Verilog" in r["stdout"], r["stdout"]
+
+    def test_vhdl_testbench(self, client):
+        r = client.post("/simulate", json={"design_v": VHDL_COUNTER, "testbench_v": VHDL_TB,
+                                           "design_language": "vhdl", "testbench_language": "vhdl"}).json()
+        assert r["success"] and "ALL TESTS PASSED" in r["stdout"] and r["waveform"]["available"], r["stdout"]
+
+    def test_vhdl_assertion_failure_is_a_runtime_error(self, client):
+        bad = VHDL_COUNTER.replace("c <= c + 1", "c <= c + 2")
+        r = client.post("/simulate", json={"design_v": bad, "testbench_v": VHDL_TB,
+                                           "design_language": "vhdl", "testbench_language": "vhdl"}).json()
+        assert r["status"] == "runtime_error" and "count is wrong" in r["stdout"], r["stdout"]
+
+    def test_vhdl_testbench_needs_vhdl_design(self, client):
+        r = client.post("/simulate", json={"design_v": GOOD_DESIGN, "testbench_v": VHDL_TB, "testbench_language": "vhdl"})
+        assert r.status_code == 422
+
+
+COCOTB_TEST = """import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import ClockCycles, ReadOnly
+
+@cocotb.test()
+async def counts(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, unit="ns").start())
+    dut.rst.value = 1
+    await ClockCycles(dut.clk, 2)
+    dut.rst.value = 0
+    await ClockCycles(dut.clk, 5)
+    await ReadOnly()
+    assert int(dut.count.value) == 5, f"count={int(dut.count.value)}"
+"""
+
+
+def test_cocotb_policy():
+    assert cocotb_policy_violation(COCOTB_TEST) is None
+    for bad in ["import os", "from subprocess import run", "import cocotb\ncocotb.handle.os.system('id')",
+                "x = ().__class__", "open('/etc/passwd')", "getattr(cocotb, 'x')", "from . import x",
+                "import cocotb\ncocotb._sim", "def f(:"]:
+        assert cocotb_policy_violation(bad), bad
+
+
+def test_cocotb_summary():
+    xml = ('<testsuites><testsuite><testcase name="a"/><testcase name="b"><failure message="x"/></testcase>'
+           '</testsuite></testsuites>')
+    assert cocotb_summary(xml) == (2, ["b"])
+    assert cocotb_summary('<!DOCTYPE x [<!ENTITY a "b">]><testsuites/>') == (0, [])
+    assert cocotb_summary("not xml") == (0, [])
+
+
+@needs_cocotb
+class TestCocotb:
+
+    def _run(self, client, test, design=GOOD_DESIGN):
+        return client.post("/simulate", json={"design_v": design, "testbench_v": test, "testbench_language": "python"}).json()
+
+    def test_passing_tests(self, client):
+        r = self._run(client, COCOTB_TEST)
+        assert r["success"] and "ALL TESTS PASSED (1 cocotb test)" in r["stdout"], r["stdout"][-2000:]
+        assert r["waveform"]["available"], "bf_dump should write wave.vcd"
+
+    def test_failing_test_names_it(self, client):
+        r = self._run(client, COCOTB_TEST + "\n@cocotb.test()\nasync def wrong(dut):\n    assert False, 'nope'\n")
+        assert r["status"] == "runtime_error" and "TESTS FAILED: 1 of 2 (wrong)" in r["stdout"], r["stdout"][-2000:]
+
+    def test_refused_code_never_runs(self, client):
+        r = self._run(client, "import os\nos.system('touch /tmp/pwned')")
+        assert r["status"] == "compile_error" and "not allowed" in r["stdout"], r
+
+    def test_vhdl_design_with_cocotb(self, client):
+        r = client.post("/simulate", json={"design_v": VHDL_COUNTER, "testbench_v": COCOTB_TEST,
+                                           "design_language": "vhdl", "testbench_language": "python"}).json()
+        assert r["success"], r["stdout"][-2000:]
+
+    def test_can_be_disabled(self, client):
+        with patch("api.routes.simulate.settings.cocotb_enabled", False):
+            assert client.post("/simulate", json={"design_v": GOOD_DESIGN, "testbench_v": COCOTB_TEST,
+                                                  "testbench_language": "python"}).status_code == 422
+
+
+FORMAL_DUT = """module counter10(input clk, input rst, output reg [3:0] q);
+  always @(posedge clk) if (rst || q == 9) q <= 0; else q <= q + 1;
+endmodule"""
+FORMAL_HARNESS = """module formal_tb(input clk, input rst);
+  wire [3:0] q;
+  counter10 dut(.clk(clk), .rst(rst), .q(q));
+  reg init = 1;
+  always @(posedge clk) begin
+    init <= 0;
+    if (init) assume(rst);
+    if (!init) assert(q <= 9);
+    cover(q == 9);
+  end
+endmodule"""
+
+
+def test_parse_smtbmc():
+    out = ("##   0:00:00  Checking assertions in step 3..\n##   0:00:00  BMC failed!\n"
+           "##   0:00:00  Assert failed in formal_tb: harness.v:8.16-8.30 ($assert$harness.v:8$8)\n"
+           "##   0:00:00  Status: FAILED\n")
+    r = parse_smtbmc(out)
+    assert r["status"] == "failed" and r["failed"] == {"file": "harness.v", "line": 8, "step": 3}, r
+    cov = parse_smtbmc("Reached cover statement in step 4 at t: harness.v:9.5-9.18 ($cover)\n"
+                       "Unreached cover statement at t: harness.v:12.5-12.18 ($cover)\nStatus: FAILED")
+    assert [(c["line"], c["reached"], c["step"]) for c in cov["covers"]] == [(9, True, 4), (12, False, None)], cov
+
+
+@needs_formal
+class TestFormal:
+
+    def _f(self, client, design, mode="bmc", harness=FORMAL_HARNESS, depth=15):
+        r = client.post("/formal", json={"design_v": design, "harness_v": harness, "mode": mode, "depth": depth})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_correct_design_passes_bmc_and_proof(self, client):
+        assert self._f(client, FORMAL_DUT)["status"] == "passed"
+        assert self._f(client, FORMAL_DUT, "prove")["status"] == "passed"
+
+    def test_bug_gives_counterexample(self, client):
+        r = self._f(client, FORMAL_DUT.replace("q == 9", "q == 10"))
+        assert r["status"] == "failed" and r["failed"]["file"] == "harness.v" and r["failed"]["line"] == 8, r
+        assert r["vcd_base64"], "counterexample trace expected"
+
+    def test_cover_reached(self, client):
+        r = self._f(client, FORMAL_DUT, "cover")
+        assert r["status"] == "passed" and r["covers"] and r["covers"][0]["reached"], r
+
+    def test_inline_properties_without_harness(self, client):
+        inline = FORMAL_DUT.replace("endmodule", "`ifdef FORMAL\n  always @(posedge clk) if (!rst) assert(q <= 9);\n`endif\nendmodule")
+        assert self._f(client, inline, harness=None)["status"] in ("passed", "failed")
+
+    def test_prove_finds_real_bugs_in_the_base_case(self, client):
+        r = self._f(client, FORMAL_DUT.replace("q == 9", "q == 10"), "prove")
+        assert r["status"] == "failed" and not r["inductionFailed"] and r["vcd_base64"], r
+
+    def test_non_inductive_property_is_unproven_not_failed(self, client):
+        # c never reaches 15 from reset, but 12 -> 13 -> 14 -> 15 is a 3-step path from unreachable states.
+        design = """module wrap10(input clk); reg [3:0] c = 0;
+          always @(posedge clk) c <= (c == 9) ? 4'd0 : c + 4'd1;
+          always @(posedge clk) assert(c != 15);
+        endmodule"""
+        r = self._f(client, design, "prove", harness=None, depth=3)
+        assert r["status"] == "unproven" and r["inductionFailed"], r
+        assert self._f(client, design, "prove", harness=None, depth=8)["status"] == "passed"   # stronger induction
+
+    def test_no_assertions(self, client):
+        r = self._f(client, FORMAL_DUT, harness=None)
+        assert r["status"] == "error" and "No assertions" in r["error"], r
+
+
+def test_pnr_summary():
+    report = {"fmax": {"clk$SB_IO_IN_$glb_clk": {"achieved": 138.29, "constraint": 12}},
+              "utilization": {"ICESTORM_LC": {"available": 7680, "used": 3}, "SB_GB": {"available": 8, "used": 0}}}
+    placed = {"modules": {"top": {"attributes": {"top": "1"}, "cells": {
+        "a": {"attributes": {"NEXTPNR_BEL": "X5/Y1/lc7"}}, "b": {"attributes": {"NEXTPNR_BEL": "X5/Y1/lc4"}},
+        "c": {"attributes": {"NEXTPNR_BEL": "X13/Y33/io0"}}}}}}
+    s = pnr_summary(report, placed)
+    assert s["fmax"] == [{"clock": "clk", "mhz": 138.3}] and list(s["utilization"]) == ["ICESTORM_LC"], s
+    assert s["tiles"] == [[5, 1, "logic", 2], [13, 33, "io", 1]], s
+
+
+@needs_nextpnr
+class TestPlaceAndRoute:
+
+    def test_clocked_design_gets_fmax_and_floorplan(self, client):
+        d = client.post("/fpga", json={"design_v": GOOD_DESIGN, "family": "ice40"}).json()
+        pnr = d["pnr"]
+        assert pnr["ok"] and pnr["fmax"] and pnr["fmax"][0]["clock"] == "clk" and pnr["fmax"][0]["mhz"] > 50, pnr
+        assert any(t[2] == "logic" for t in pnr["tiles"]), pnr["tiles"]
+
+    def test_combinational_design_has_no_clock(self, client):
+        d = client.post("/fpga", json={"design_v": "module a(input [3:0] x, y, output [4:0] s); assign s = x + y; endmodule",
+                                       "family": "ice40"}).json()
+        assert d["pnr"]["ok"] and d["pnr"]["fmax"] == [], d["pnr"]
+
+    def test_xilinx_has_no_place_and_route(self, client):
+        assert client.post("/fpga", json={"design_v": GOOD_DESIGN, "family": "xc7"}).json()["pnr"] is None
+
+
+ESCAPES = {
+    "network":    "import socket\n    socket.create_connection(('1.1.1.1', 80), timeout=2)",
+    "process":    "import subprocess\n    subprocess.run(['id'])",
+    "shell":      "import os\n    os.system('id')",
+    "read_api":   "open('/app/api/config.py').read()",
+    "read_etc":   "open('/etc/hostname').read()",
+    "write_out":  "open('/tmp/bitflow_escape', 'w').write('x')",
+    "ctypes":     "import ctypes\n    ctypes.CDLL(None)",
+    "new_code":   ("import types\n    c = (lambda: 0).__code__\n    types.CodeType(c.co_argcount, c.co_posonlyargcount, "
+                   "c.co_kwonlyargcount, c.co_nlocals, c.co_stacksize, c.co_flags, c.co_code, c.co_consts, c.co_names, "
+                   "c.co_varnames, c.co_filename, c.co_name, c.co_qualname, c.co_firstlineno, c.co_linetable, "
+                   "c.co_exceptiontable)"),
+    # Adding a hook works, but hooks can't be removed: the sandbox one still blocks sockets.
+    "unhook":     "import sys, socket\n    sys.addaudithook(lambda *a: None)\n    socket.socket()",
+}
+
+
+@needs_cocotb
+@pytest.mark.parametrize("name", sorted(ESCAPES))
+def test_cocotb_runtime_guard_blocks_escapes(client, name):
+    """Even with the AST check switched off, the audit hook stops each escape at run time."""
+    test = f"import cocotb\n\n@cocotb.test()\nasync def escape(dut):\n    {ESCAPES[name]}\n"
+    with patch("api.langs.cocotb_policy_violation", return_value=None):
+        r = client.post("/simulate", json={"design_v": GOOD_DESIGN, "testbench_v": test, "testbench_language": "python"}).json()
+    assert r["status"] == "runtime_error" and "BitFlow sandbox:" in r["stdout"], r["stdout"][-1500:]
+
+
+def test_code_files_rejected_as_data_files(client):
+    for name in ("cocotb.py", "sitecustomize.py", "x.pth", "bf_guard.py"):
+        r = client.post("/simulate", json={"design_v": GOOD_DESIGN, "testbench_v": GOOD_TESTBENCH, "files": {name: "x"}})
+        assert r.status_code == 422, name

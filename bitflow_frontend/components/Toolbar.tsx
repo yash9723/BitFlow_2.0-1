@@ -33,6 +33,8 @@ interface ToolbarProps {
   onSynthesize?:  () => void;
   /** Opens the virtual board (gate-level simulation in the browser). */
   onBoard?:       () => void;
+  /** Opens formal verification (assertions proved by a solver). */
+  onProve?:       () => void;
   /** Saves the design as a read-only share link (/s/[id]). */
   onShare?:       () => void;
   /** Download project ZIP — only shown when result exists */
@@ -84,6 +86,7 @@ export default function Toolbar({
   onAIToggle,
   onSynthesize,
   onBoard,
+  onProve,
   onShare,
   onExportZip,
   onExportImage,
@@ -228,6 +231,16 @@ export default function Toolbar({
             className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
           >
             Board
+          </button>
+        )}
+
+        {onProve && (
+          <button
+            onClick={onProve}
+            title="Formal verification: prove your assertions hold for every input, or get a counterexample"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-phosphor/40 hover:text-phosphor/80 transition-all duration-150"
+          >
+            Prove
           </button>
         )}
 

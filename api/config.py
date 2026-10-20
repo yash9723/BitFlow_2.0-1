@@ -130,6 +130,10 @@ class Settings(BaseSettings):
         default=10001,
         description="GID of the non-root user inside the sandbox container.",
     )
+    cocotb_enabled: bool = Field(
+        default=True,
+        description="Accept Python (cocotb) testbenches. They run user Python; see langs.py for the limits.",
+    )
 
     # ── JWT authentication & Security ─────────────────────────────────────
     # One of the two is required — no default. A public default secret lets

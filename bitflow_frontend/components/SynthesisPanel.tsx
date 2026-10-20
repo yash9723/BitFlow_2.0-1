@@ -39,15 +39,52 @@ interface Props {
   isOpen:     boolean;
   onClose:    () => void;
   designCode: string;
+  /** VHDL is synthesized from its GHDL Verilog netlist (server-side). */
+  language?:  "verilog" | "vhdl";
 }
 
 type Tab = "summary" | "schematic" | "fsm" | "fpga";
 
 type Family = "ice40" | "xc7";
+type TileKind = "logic" | "io" | "ram" | "clock" | "other";
+interface PnrResult {
+  ok: boolean; error?: string;
+  fmax?:        { clock: string; mhz: number }[];
+  utilization?: Record<string, { available: number; used: number }>;
+  grid?:        { width: number; height: number };
+  tiles?:       [number, number, TileKind, number][];
+}
 interface FpgaResult {
   ok: boolean; error?: string; device?: string;
   resources?: { luts: number; lutram: number; ffs: number; carry: number; bram: number; dsp: number; io: number };
   capacity?:  { luts: number; ffs: number; bram: number; dsp: number };
+  pnr?:       PnrResult | null;
+}
+
+const TILE_COLORS: Record<TileKind, string> = { logic: "#00e87a", io: "#4db8ff", ram: "#ffb84d", clock: "#ff6b6b", other: "#b0b3cc" };
+const UTIL_NAMES: Record<string, string> = { ICESTORM_LC: "Logic cells", SB_IO: "I/O pins", ICESTORM_RAM: "Block RAM", SB_GB: "Global buffers", ICESTORM_PLL: "PLLs" };
+
+/** Where nextpnr put the design on the chip: one square per tile, brighter = more cells used. */
+function Floorplan({ grid, tiles }: { grid: { width: number; height: number }; tiles: NonNullable<PnrResult["tiles"]> }) {
+  const s = 10;
+  return (
+    <div className="space-y-1">
+      <svg viewBox={`0 0 ${grid.width * s} ${grid.height * s}`} className="w-full max-w-[340px] bg-void/60 border border-rim/50 rounded"
+           role="img" aria-label={`Floorplan: ${tiles.length} tiles used`}>
+        {tiles.map(([x, y, kind, n]) => (
+          <rect key={`${x}-${y}-${kind}`} x={x * s + 1} y={(grid.height - 1 - y) * s + 1} width={s - 2} height={s - 2}
+                fill={TILE_COLORS[kind]} opacity={kind === "logic" ? 0.3 + 0.7 * Math.min(n, 8) / 8 : 0.9}>
+            <title>{`X${x} Y${y}: ${n} ${kind === "logic" ? "logic cell" : kind}${n === 1 ? "" : "s"}`}</title>
+          </rect>
+        ))}
+      </svg>
+      <div className="flex flex-wrap gap-3 text-[9px] text-dim">
+        {(["logic", "io", "ram", "clock"] as TileKind[]).map((k) => (
+          <span key={k} className="flex items-center gap-1"><span className="inline-block w-2 h-2" style={{ background: TILE_COLORS[k] }} />{k === "io" ? "I/O" : k}</span>
+        ))}
+      </div>
+    </div>
+  );
 }
 const FAMILIES: [Family, string][] = [["ice40", "Lattice iCE40"], ["xc7", "Xilinx 7-series"]];
 
@@ -74,7 +111,7 @@ function Diagram({ svg, alt }: { svg: string; alt: string }) {
   );
 }
 
-export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
+export default function SynthesisPanel({ isOpen, onClose, designCode, language = "verilog" }: Props) {
   const [result,  setResult]  = useState<SynthResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab,     setTab]     = useState<Tab>("summary");
@@ -87,7 +124,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
     try {
       const res  = await fetch("/api/synthesize", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designCode }),
+        body: JSON.stringify({ designCode, language }),
       });
       const data = await res.json().catch(() => ({}));
       setResult(res.ok ? data : { ok: false, error: data.error ?? `Request failed (${res.status})` });
@@ -96,7 +133,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [designCode]);
+  }, [designCode, language]);
 
   // Synthesize whatever is in the editor each time the panel opens.
   useEffect(() => {
@@ -110,7 +147,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
     setFpga((f) => ({ ...f, [family]: "loading" }));
     fetch("/api/synthesize", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ designCode, fpga: family }),
+      body: JSON.stringify({ designCode, language, fpga: family }),
     })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -118,7 +155,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
       })
       .catch(() => ({ ok: false, error: "Network error." }))
       .then((r: FpgaResult) => setFpga((f) => ({ ...f, [family]: r })));
-  }, [isOpen, tab, family, fpga, designCode]);
+  }, [isOpen, tab, family, fpga, designCode, language]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -252,6 +289,39 @@ export default function SynthesisPanel({ isOpen, onClose, designCode }: Props) {
                       place &amp; route; a vendor tool may pack logic differently.
                       {family === "ice40" && " iCE40 HX parts have no DSP blocks, so multipliers are built from LUTs."}
                     </p>
+                    {r.pnr && (
+                      <div className="space-y-3 border-t border-rim/50 pt-3">
+                        <div className="text-[9px] text-dim uppercase tracking-wider">Place &amp; route (nextpnr)</div>
+                        {!r.pnr.ok && <pre className="text-[10px] whitespace-pre-wrap text-danger">{r.pnr.error}</pre>}
+                        {r.pnr.ok && (
+                          <div className="flex flex-wrap gap-6">
+                            <div className="space-y-3 min-w-[220px]">
+                              <div>
+                                <div className="text-[9px] text-dim uppercase tracking-wider">Max clock frequency</div>
+                                {r.pnr.fmax?.length ? r.pnr.fmax.map((f) => (
+                                  <div key={f.clock} className="text-[18px] font-bold text-bright">
+                                    {f.mhz} MHz <span className="text-[10px] font-normal text-dim">on {f.clock}</span>
+                                  </div>
+                                )) : <div className="text-[11px] text-ghost">No clock: a purely combinational design.</div>}
+                              </div>
+                              <table className="text-[10px]">
+                                <tbody>
+                                  {Object.entries(r.pnr.utilization ?? {}).map(([k, u]) => (
+                                    <tr key={k}><td className="pr-4 text-ghost">{UTIL_NAMES[k] ?? k}</td>
+                                      <td className="text-bright text-right">{u.used} / {u.available}</td></tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <p className="text-[10px] text-dim max-w-[260px]">
+                                The slowest register-to-register path after routing sets the max frequency. Shorter logic
+                                between flip-flops (fewer levels, pipelining) raises it.
+                              </p>
+                            </div>
+                            {r.pnr.grid && r.pnr.tiles && <Floorplan grid={r.pnr.grid} tiles={r.pnr.tiles} />}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>

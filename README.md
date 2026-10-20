@@ -4,7 +4,9 @@ An HDL learning platform: write, simulate and debug Verilog in the browser,
 work through graded problems and Arena challenges, and earn XP.
 
 - **Frontend** — Next.js 14 + Prisma (SQLite by default) in `bitflow_frontend/`
-- **Simulation API** — FastAPI + Icarus Verilog (`iverilog` / `vvp`) in `api/`
+- **Simulation API** — FastAPI in `api/`: Icarus Verilog (Verilog / SystemVerilog subset), GHDL (VHDL),
+  cocotb (Python testbenches), Yosys + Z3 (synthesis, formal verification), nextpnr-ice40 (place & route),
+  Verilator (lint)
 
 ---
 
@@ -146,6 +148,12 @@ Browser ──► Next.js API routes ──(short-lived JWT)──► FastAPI /s
   This stops resource abuse and secret reads, but runs share one uid and the
   container's filesystem; for hostile multi-tenant use, move simulation into a
   gVisor/nsjail runner.
+- **Python testbenches** (`api/langs.py`) run learner code, so they get two
+  more layers on top of the sandbox: an AST allowlist (imports `cocotb`,
+  `random`, `math`, `itertools`; no dunder/private attributes, `open`, `eval`…)
+  and a Python audit hook loaded before the test module that blocks sockets,
+  process creation, `ctypes`, new code objects and file access outside the
+  workspace. Set `COCOTB_ENABLED=false` on the API to turn them off.
 
 ## Development
 

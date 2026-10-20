@@ -12,14 +12,20 @@
  *   submit() → POST /api/problems/[slug]/submit; the server runs the hidden
  *              tests, records the submission and awards XP. Hidden tests
  *              never reach the browser.
+ *
+ * LANGUAGES:
+ *   The design can be written in Verilog/SystemVerilog or, when the problem's
+ *   ports fit a VHDL entity, in VHDL (graded through its GHDL Verilog netlist by
+ *   the same tests). Each language keeps its own editor contents.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import type { Problem, SubmissionResult } from "@/lib/problem-types";
-import type { SimulateResponse } from "@/lib/types";
+import type { DesignLanguage, SimulateResponse } from "@/lib/types";
 import { runSimulation, checkHealth, submitSolution } from "@/lib/api";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
+import { vhdlStarter } from "@/lib/vhdl-starter";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -39,6 +45,11 @@ export interface UseProblemReturn {
   testbenchCode:    string;
   setDesignCode:    (v: string) => void;
   setTestbenchCode: (v: string) => void;
+
+  // Design language (VHDL only where vhdlAvailable)
+  language:         DesignLanguage;
+  vhdlAvailable:    boolean;
+  setLanguage:      (l: DesignLanguage) => void;
 
   // Run state
   runState:         ProblemRunState;
@@ -72,7 +83,16 @@ export function useProblem(problem: Problem): UseProblemReturn {
     checkHealth();
   }, []);
 
-  const [designCode,    setDesignCode]    = useState(problem.starterCode);
+  // RISC-V steps carry accepted Verilog into later steps' starters, and SystemVerilog
+  // problems teach SV, so both stay Verilog-only.
+  const vhdlStart = useMemo(
+    () => (problem.category === "riscv" || problem.category === "systemverilog" ? null : vhdlStarter(problem.starterCode)),
+    [problem.category, problem.starterCode],
+  );
+
+  const [language,      setLanguage]      = useState<DesignLanguage>("verilog");
+  const [verilogCode,   setVerilogCode]   = useState(problem.starterCode);
+  const [vhdlCode,      setVhdlCode]      = useState(vhdlStart ?? "");
   const [testbenchCode, setTestbenchCode] = useState(problem.publicTestbench);
   const [runState,      setRunState]      = useState<ProblemRunState>("idle");
   const [runResult,     setRunResult]     = useState<SimulateResponse | null>(null);
@@ -80,6 +100,9 @@ export function useProblem(problem: Problem): UseProblemReturn {
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   const [submittingIndex, setSubmittingIndex] = useState(0);
   const [submittingTotal, setSubmittingTotal] = useState(0);
+
+  const designCode    = language === "vhdl" ? vhdlCode : verilogCode;
+  const setDesignCode = language === "vhdl" ? setVhdlCode : setVerilogCode;
 
   // ── Local run (public testbench) ──────────────────────────────────────────
 
@@ -94,6 +117,7 @@ export function useProblem(problem: Problem): UseProblemReturn {
         testbench_v: testbenchCode,
         timeout:     30,
         lint:        true,
+        design_language: language,
         ...(problem.dataFiles ? { files: problem.dataFiles } : {}),
       });
       setRunResult(result);
@@ -115,13 +139,14 @@ export function useProblem(problem: Problem): UseProblemReturn {
         waveformVcd:    result.waveform?.vcd_base64 ?? null,
         xpEarned:       0,
         accepted:       false,
+        language,
       }).catch(err => console.warn("[useProblem.run] submission save:", err));
 
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Network error");
       setRunState("error");
     }
-  }, [runState, designCode, testbenchCode, problem, user?.id]);
+  }, [runState, designCode, testbenchCode, problem, user?.id, language]);
 
   // ── Submit (graded on the server against hidden tests) ────────────────────
 
@@ -132,7 +157,7 @@ export function useProblem(problem: Problem): UseProblemReturn {
     setSubmittingIndex(0);
     setErrorMsg(null);
     try {
-      const sub = await submitSolution<SubmissionResult>(problem.slug, designCode, testbenchCode);
+      const sub = await submitSolution<SubmissionResult>(problem.slug, designCode, testbenchCode, { language });
       setSubmission(sub);
       setRunState("submitted");
       return sub;
@@ -141,24 +166,28 @@ export function useProblem(problem: Problem): UseProblemReturn {
       setRunState("error");
       return null;
     }
-  }, [runState, problem.slug, designCode, testbenchCode]);
+  }, [runState, problem.slug, designCode, testbenchCode, language]);
 
   // ── Reset to starter code ─────────────────────────────────────────────────
 
   const resetToStarter = useCallback(() => {
-    setDesignCode(problem.starterCode);
+    setVerilogCode(problem.starterCode);
+    setVhdlCode(vhdlStart ?? "");
     setTestbenchCode(problem.publicTestbench);
     setRunState("idle");
     setRunResult(null);
     setSubmission(null);
     setErrorMsg(null);
-  }, [problem]);
+  }, [problem, vhdlStart]);
 
   return {
     designCode,
     testbenchCode,
     setDesignCode,
     setTestbenchCode,
+    language,
+    vhdlAvailable: vhdlStart !== null,
+    setLanguage,
     runState,
     isRunning:      runState === "running",
     isSubmitting:   runState === "submitting",

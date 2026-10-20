@@ -138,6 +138,7 @@ model Submission {
   // The code user wrote
   designCode      String   // design.v content
   testbenchCode   String   // tb.v content (either public or user-written)
+  language        String   @default("verilog") // of the code the learner wrote: "verilog" | "vhdl" | "python" (cocotb)
 
   // Run type
   submissionType  String   @default("RUN") // "RUN" | "SUBMIT"

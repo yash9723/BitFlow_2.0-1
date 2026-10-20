@@ -1,7 +1,7 @@
 /**
  * POST /api/synthesize — Yosys synthesis of a design, with diagrams.
  *
- * Body: { designCode: string, board?: true, fpga?: "ice40" | "xc7" }
+ * Body: { designCode: string, language?: "verilog" | "vhdl", board?: true, fpga?: "ice40" | "xc7" }
  * Proxies to the backend's POST /synthesize, then draws the schematic and
  * FSM diagrams here (lib/hardware-diagrams.ts) so the browser gets ready SVG.
  * With board: true it returns the gate-level netlist for the virtual board instead;
@@ -10,7 +10,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { boardOnBackend, fpgaOnBackend, metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
+import { boardOnBackend, designAsVerilog, fpgaOnBackend, metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth-utils";
 import { fsmSvg, schematicSvg, type FsmInfo } from "@/lib/hardware-diagrams";
@@ -31,12 +31,23 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const designCode = body?.designCode;
-  if (typeof designCode !== "string" || !designCode.trim()) {
+  const source = body?.designCode;
+  if (typeof source !== "string" || !source.trim()) {
     return NextResponse.json({ error: "designCode is required." }, { status: 400 });
   }
-  if (designCode.length > MAX_SOURCE_CHARS) {
+  if (source.length > MAX_SOURCE_CHARS) {
     return NextResponse.json({ error: "Source exceeds 512 KB." }, { status: 413 });
+  }
+
+  // A VHDL design ("language": "vhdl") is synthesized from its GHDL Verilog netlist.
+  let designCode: string;
+  try {
+    const converted = await designAsVerilog(source, body.language);
+    if ("error" in converted) return NextResponse.json({ ok: false, error: converted.error });
+    designCode = converted.verilog;
+  } catch (err) {
+    await reportError("[synthesize] backend unreachable:", err);
+    return NextResponse.json({ error: "Synthesis backend unavailable." }, { status: 502 });
   }
 
   let status: number, data: any;

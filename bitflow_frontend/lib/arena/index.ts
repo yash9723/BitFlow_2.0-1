@@ -9,6 +9,7 @@
 import type { ArenaProblem, ArenaCategory, ArenaDifficulty } from "./types";
 import { FSM_PROBLEMS } from "./fsm";
 import { VERIFICATION_PROBLEMS } from "./verification";
+import { FORMAL_PROBLEMS } from "./formal";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Flat registry — all arena problems across all categories
@@ -17,6 +18,7 @@ import { VERIFICATION_PROBLEMS } from "./verification";
 export const ALL_ARENA_PROBLEMS: ArenaProblem[] = [
   ...FSM_PROBLEMS,
   ...VERIFICATION_PROBLEMS,
+  ...FORMAL_PROBLEMS,
   // TODO: ...COMBINATIONAL_PROBLEMS,
   // TODO: ...SEQUENTIAL_PROBLEMS,
   // TODO: ...PROTOCOL_PROBLEMS,

@@ -21,12 +21,15 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { TEMPLATES, TEMPLATE_ORDER } from "@/lib/templates";
-import { DEFAULT_DESIGN, DEFAULT_TESTBENCH } from "@/hooks/useSimulation";
+import { TEMPLATES, TEMPLATE_ORDER, type VerilogTemplate } from "@/lib/templates";
+import {
+  DEFAULT_DESIGN, DEFAULT_DESIGN_VHDL, DEFAULT_TESTBENCH, DEFAULT_TESTBENCH_COCOTB, DEFAULT_TESTBENCH_VHDL,
+} from "@/hooks/useSimulation";
 
-/** Code the user hasn't written: empty, the starter, or an unmodified template. */
+/** Code the user hasn't written: empty, a starter, or an unmodified template. */
 const PRISTINE = new Set(
-  [DEFAULT_DESIGN, DEFAULT_TESTBENCH, "", ...Object.values(TEMPLATES).flatMap((t) => [t.design, t.testbench])]
+  [DEFAULT_DESIGN, DEFAULT_TESTBENCH, DEFAULT_DESIGN_VHDL, DEFAULT_TESTBENCH_VHDL, DEFAULT_TESTBENCH_COCOTB, "",
+   ...Object.values(TEMPLATES).flatMap((t) => [t.design, t.testbench])]
     .map((c) => c.trim()),
 );
 
@@ -39,10 +42,8 @@ interface TemplateMenuProps {
   currentDesign:     string;
   /** Current content of tb.v editor — checked before it is replaced. */
   currentTestbench:  string;
-  /** setDesignCode from useSimulation — populates the left editor. */
-  onDesignChange:    (code: string) => void;
-  /** setTestbenchCode from useSimulation — populates the right editor. */
-  onTestbenchChange: (code: string) => void;
+  /** loadProject from useSimulation — fills both editors and switches their languages. */
+  onLoad:            (template: VerilogTemplate) => void;
   /** Disable during simulation runs so a template load doesn't race. */
   disabled?: boolean;
 }
@@ -54,8 +55,7 @@ interface TemplateMenuProps {
 export default function TemplateMenu({
   currentDesign,
   currentTestbench,
-  onDesignChange,
-  onTestbenchChange,
+  onLoad,
   disabled = false,
 }: TemplateMenuProps) {
   /**
@@ -79,15 +79,14 @@ export default function TemplateMenu({
         e.target.value = "";
         return;
       }
-      onDesignChange(template.design);
-      onTestbenchChange(template.testbench);
+      onLoad(template);
 
       // Reset to placeholder after a brief tick so the user sees the
       // selection flash before it returns — confirms the load happened.
       setSelectedKey(key);
       setTimeout(() => setSelectedKey(""), 800);
     },
-    [currentDesign, currentTestbench, onDesignChange, onTestbenchChange],
+    [currentDesign, currentTestbench, onLoad],
   );
 
   return (

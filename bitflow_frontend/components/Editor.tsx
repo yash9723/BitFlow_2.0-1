@@ -67,7 +67,45 @@ interface EditorProps {
  * Token colours match the tailwind.config.ts palette so the editors
  * feel visually integrated with the rest of the dark UI.
  */
+const VHDL_KEYWORDS = (
+  "abs access after alias all and architecture array assert attribute begin block body buffer bus case component " +
+  "configuration constant disconnect downto else elsif end entity exit file for function generate generic group " +
+  "guarded if impure in inertial inout is label library linkage literal loop map mod nand new next nor not null of " +
+  "on open or others out package port postponed procedure process pure range record register reject rem report " +
+  "return rol ror select severity signal shared sla sll sra srl subtype then to transport type unaffected units " +
+  "until use variable wait when while with xnor xor context force release"
+).split(" ");
+const VHDL_TYPES = (
+  "std_logic std_logic_vector std_ulogic std_ulogic_vector unsigned signed integer natural positive boolean bit " +
+  "bit_vector character string time real"
+).split(" ");
+
 const defineTheme: BeforeMount = (monaco) => {
+  // Monaco ships no VHDL mode: a small Monarch tokenizer (VHDL is case-insensitive).
+  if (!monaco.languages.getLanguages().some((l: { id: string }) => l.id === "vhdl")) {
+    monaco.languages.register({ id: "vhdl", extensions: [".vhd", ".vhdl"] });
+    monaco.languages.setLanguageConfiguration("vhdl", {
+      comments: { lineComment: "--" },
+      brackets: [["(", ")"]],
+      autoClosingPairs: [{ open: "(", close: ")" }, { open: '"', close: '"' }],
+    });
+    monaco.languages.setMonarchTokensProvider("vhdl", {
+      ignoreCase: true,
+      keywords: VHDL_KEYWORDS,
+      typeKeywords: VHDL_TYPES,
+      tokenizer: {
+        root: [
+          [/--.*$/, "comment"],
+          [/[xXoObB]?"[^"]*"/, "string"],
+          [/'[01xzuwlhXZUWLH\-]'/, "number"],
+          [/\d+(\.\d+)?(e[+-]?\d+)?/, "number"],
+          [/[a-zA-Z_]\w*/, { cases: { "@keywords": "keyword", "@typeKeywords": "type", "@default": "identifier" } }],
+          [/<=|=>|:=|\/=|>=|[<>=+\-*&|]/, "operator"],
+        ],
+      },
+    });
+  }
+
   monaco.editor.defineTheme("phosphor-dark", {
     base: "vs-dark",
     inherit: true,

@@ -23,11 +23,14 @@ export interface VerilogTemplate {
   /** Human-readable display label shown in the dropdown. */
   label: string;
   /** Category for future grouping (not used in UI yet). */
-  category: "combinational" | "sequential" | "fsm";
+  category: "combinational" | "sequential" | "fsm" | "languages" | "formal";
   /** Full contents of design.v. */
   design: string;
   /** Full contents of tb.v. */
   testbench: string;
+  /** Languages of the two editors; Verilog (incl. SystemVerilog) when omitted. */
+  designLanguage?:    "verilog" | "vhdl";
+  testbenchLanguage?: "verilog" | "vhdl" | "python";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -445,6 +448,245 @@ endmodule
 `,
   },
 
+  // ── SystemVerilog FSM ──────────────────────────────────────────────────────
+  svTrafficLight: {
+    label: "SystemVerilog: enum FSM",
+    category: "languages",
+    design: `\`timescale 1ns / 1ps
+
+// Traffic light in SystemVerilog: logic, enum, always_ff / always_comb, unique case.
+module traffic_light (
+    input  logic       clk,
+    input  logic       rst,
+    output logic [2:0] lamps        // {red, yellow, green}
+);
+    typedef enum logic [1:0] { GREEN, YELLOW, RED } state_t;
+    state_t     state, next;
+    logic [2:0] timer;
+
+    always_ff @(posedge clk) begin
+        if (rst) begin
+            state <= RED;
+            timer <= '0;
+        end else begin
+            state <= next;
+            timer <= (next == state) ? timer + 3'd1 : '0;
+        end
+    end
+
+    always_comb begin
+        next = state;
+        unique case (state)
+            GREEN:  if (timer == 3'd4) next = YELLOW;
+            YELLOW: if (timer == 3'd1) next = RED;
+            RED:    if (timer == 3'd3) next = GREEN;
+            default: next = RED;
+        endcase
+    end
+
+    assign lamps = (state == RED) ? 3'b100 : (state == YELLOW) ? 3'b010 : 3'b001;
+endmodule
+`,
+    testbench: `\`timescale 1ns / 1ps
+
+module tb_traffic_light;
+    logic       clk = 0, rst = 1;
+    logic [2:0] lamps;
+
+    traffic_light dut (.clk(clk), .rst(rst), .lamps(lamps));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("wave.vcd");
+        $dumpvars(0, tb_traffic_light);
+        @(negedge clk) rst = 0;
+        repeat (16) @(negedge clk) $display("t=%0t lamps(RYG)=%b state=%s", $time, lamps, dut.state.name());
+        $finish;
+    end
+endmodule
+`,
+  },
+
+  // ── VHDL ───────────────────────────────────────────────────────────────────
+  vhdlAlu: {
+    label: "VHDL: 4-bit ALU",
+    category: "languages",
+    designLanguage: "vhdl",
+    testbenchLanguage: "vhdl",
+    design: `-- 4-bit ALU in VHDL. Run simulates it with GHDL; Synthesize converts it to gates.
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+entity alu4 is
+    port (
+        a, b : in  std_logic_vector(3 downto 0);
+        op   : in  std_logic_vector(1 downto 0);   -- 00 add, 01 sub, 10 and, 11 or
+        y    : out std_logic_vector(3 downto 0);
+        zero : out std_logic
+    );
+end entity;
+
+architecture rtl of alu4 is
+    signal r : std_logic_vector(3 downto 0);
+begin
+    with op select r <=
+        std_logic_vector(unsigned(a) + unsigned(b)) when "00",
+        std_logic_vector(unsigned(a) - unsigned(b)) when "01",
+        a and b                                     when "10",
+        a or b                                      when others;
+    y    <= r;
+    zero <= '1' when r = "0000" else '0';
+end architecture;
+`,
+    testbench: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity tb_alu4 is
+end entity;
+
+architecture sim of tb_alu4 is
+    signal a, b, y : std_logic_vector(3 downto 0);
+    signal op      : std_logic_vector(1 downto 0);
+    signal zero    : std_logic;
+
+    procedure check(got, expected : std_logic_vector; msg : string) is
+    begin
+        assert got = expected report "FAIL " & msg & ": got " & to_string(got) severity error;
+    end procedure;
+begin
+    dut: entity work.alu4 port map (a => a, b => b, op => op, y => y, zero => zero);
+
+    process begin
+        a <= "0101"; b <= "0011";
+        op <= "00"; wait for 10 ns; check(y, "1000", "5 + 3");
+        op <= "01"; wait for 10 ns; check(y, "0010", "5 - 3");
+        op <= "10"; wait for 10 ns; check(y, "0001", "5 and 3");
+        op <= "11"; wait for 10 ns; check(y, "0111", "5 or 3");
+        b <= "0101"; op <= "01"; wait for 10 ns;
+        assert zero = '1' report "FAIL zero flag" severity error;
+        report "Done: every check passed unless an error is reported above.";
+        wait;                        -- no clock here, so the simulation simply ends
+    end process;
+end architecture;
+`,
+  },
+
+  // ── cocotb ─────────────────────────────────────────────────────────────────
+  cocotbAdder: {
+    label: "cocotb: random adder test (Python)",
+    category: "languages",
+    testbenchLanguage: "python",
+    design: `\`timescale 1ns / 1ps
+
+// 8-bit adder, tested from Python with cocotb (see the testbench).
+module adder8 (
+    input  wire [7:0] a,
+    input  wire [7:0] b,
+    input  wire       cin,
+    output wire [7:0] sum,
+    output wire       cout
+);
+    assign {cout, sum} = a + b + cin;
+endmodule
+`,
+    testbench: `# cocotb: drive the design from Python and check it against a Python model.
+# Allowed imports: cocotb, random, math, itertools.
+import random
+import cocotb
+from cocotb.triggers import Timer
+
+
+@cocotb.test()
+async def random_sums(dut):
+    """200 random additions, compared with Python's +."""
+    for _ in range(200):
+        a, b, cin = random.randrange(256), random.randrange(256), random.randrange(2)
+        dut.a.value = a
+        dut.b.value = b
+        dut.cin.value = cin
+        await Timer(1, unit="ns")
+        got = (int(dut.cout.value) << 8) | int(dut.sum.value)
+        assert got == a + b + cin, f"{a} + {b} + {cin}: got {got}"
+
+
+@cocotb.test()
+async def corner_cases(dut):
+    for a, b, cin in [(0, 0, 0), (255, 1, 0), (255, 255, 1), (128, 128, 0)]:
+        dut.a.value = a
+        dut.b.value = b
+        dut.cin.value = cin
+        await Timer(1, unit="ns")
+        assert int(dut.sum.value) == (a + b + cin) % 256
+        assert int(dut.cout.value) == (a + b + cin) // 256
+`,
+  },
+
+  // ── Formal verification ────────────────────────────────────────────────────
+  formalCounter: {
+    label: "Formal: prove a BCD counter",
+    category: "formal",
+    design: `\`timescale 1ns / 1ps
+
+// Decimal (BCD) digit counter. The properties at the bottom are checked by the
+// "Prove" button: the solver tries every input sequence, not just your testbench.
+module bcd_counter (
+    input  wire       clk,
+    input  wire       rst,
+    input  wire       en,
+    output reg  [3:0] digit,
+    output wire       carry
+);
+    always @(posedge clk)
+        if (rst)     digit <= 4'd0;
+        else if (en) digit <= (digit == 4'd9) ? 4'd0 : digit + 4'd1;
+
+    assign carry = en && (digit == 4'd9);
+
+\`ifdef FORMAL
+    // Only the formal tools define FORMAL; simulation skips this block.
+    reg past_valid = 1'b0;
+    always @(posedge clk) past_valid <= 1'b1;
+
+    always @(*) if (!past_valid) assume(rst);          // start from reset
+
+    always @(posedge clk) if (past_valid) begin
+        assert(digit <= 4'd9);                          // never leaves 0..9
+        if (!$past(rst) && $past(en) && $past(digit) == 4'd9)
+            assert(digit == 4'd0);                      // 9 wraps to 0
+        if (!$past(rst) && !$past(en))
+            assert(digit == $past(digit));              // holds when disabled
+    end
+
+    always @(posedge clk) if (past_valid) cover(carry); // a carry can happen (after reset,
+                                                        //  not from a random power-up value)
+\`endif
+endmodule
+`,
+    testbench: `\`timescale 1ns / 1ps
+
+module tb_bcd_counter;
+    reg clk = 0, rst = 1, en = 0;
+    wire [3:0] digit;
+    wire       carry;
+
+    bcd_counter dut (.clk(clk), .rst(rst), .en(en), .digit(digit), .carry(carry));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        $dumpfile("wave.vcd");
+        $dumpvars(0, tb_bcd_counter);
+        @(negedge clk) begin rst = 0; en = 1; end
+        repeat (12) @(negedge clk) $display("digit=%0d carry=%b", digit, carry);
+        $display("Now click Prove: try changing 4'd9 to 4'd10 in the design and prove again.");
+        $finish;
+    end
+endmodule
+`,
+  },
+
 }; // end TEMPLATES
 
 /**
@@ -458,4 +700,8 @@ export const TEMPLATE_ORDER: string[] = [
   "counter4bit",
   "fsmSkeleton",
   "boardDemo",
+  "svTrafficLight",
+  "vhdlAlu",
+  "cocotbAdder",
+  "formalCounter",
 ];

@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       durationMs,       // number | null
       waveformVcd,      // string | null (base64)
     } = body;
+    const language = ["vhdl", "python"].includes(body?.language) ? body.language as "vhdl" | "python" : "verilog";
 
     if (!problemSlug || !designCode || !testbenchCode) {
       return NextResponse.json(
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
       question,
       designCode,
       testbenchCode,
+      language,
       submissionType:  "RUN",
       simStatus:       simStatus ?? "SUCCESS",
       simStdout:       simStdout ?? null,

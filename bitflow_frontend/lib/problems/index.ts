@@ -28,6 +28,7 @@ import { BEGINNER_PROBLEMS }      from "@/lib/problems/beginner";
 import { INTERMEDIATE_PROBLEMS }  from "@/lib/problems/intermediate";
 import { ADVANCED_PROBLEMS } from "@/lib/problems/advanced";
 import { RISCV_PROBLEMS }    from "@/lib/problems/riscv";
+import { SV_PROBLEMS }       from "@/lib/problems/systemverilog";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // All problems flat list — used for O(1) slug/id lookups
@@ -38,6 +39,7 @@ const ALL_PROBLEMS: Problem[] = [
   ...INTERMEDIATE_PROBLEMS,
   ...ADVANCED_PROBLEMS,
   ...RISCV_PROBLEMS,
+  ...SV_PROBLEMS,
   // TODO: ...ARENA_PROBLEMS,
 ];
 
@@ -175,6 +177,14 @@ const INTERMEDIATE_MODULE_DEFS: Omit<PathModule, "problems">[] = [
     prerequisites: ["mod_counters_advanced"],
     xpToUnlock:    700,
   },
+  {
+    id:            "mod_sv",
+    title:         "SystemVerilog Essentials",
+    description:   "logic, always_comb / always_ff, enum state machines, packed structs and unique case.",
+    icon:          "⧉",
+    prerequisites: [],
+    xpToUnlock:    200,
+  },
 ];
 const ADVANCED_MODULE_DEFS: Omit<PathModule, "problems">[] = [
   {
@@ -230,7 +240,7 @@ export const LEARNING_PATH: LearningPath = {
       difficulty:  "intermediate",
       accentColor: "#4db8ff",   // info blue
       xpToUnlock:  200,         // need 200 XP from Beginner to unlock
-      modules:     groupIntoModules(INTERMEDIATE_PROBLEMS, INTERMEDIATE_MODULE_DEFS),
+      modules:     groupIntoModules([...INTERMEDIATE_PROBLEMS, ...SV_PROBLEMS], INTERMEDIATE_MODULE_DEFS),
     },
     {
       id:          "lvl_advanced",

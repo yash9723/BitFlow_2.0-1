@@ -78,6 +78,9 @@ function ProblemSolverInner({ problem }: { problem: any }) {
     testbenchCode,
     setDesignCode,
     setTestbenchCode,
+    language,
+    vhdlAvailable,
+    setLanguage,
     runState,
     isRunning,
     isSubmitting,
@@ -289,14 +292,27 @@ function ProblemSolverInner({ problem }: { problem: any }) {
               style={{ flex: `0 0 ${designFrac * 100}%` }}
             >
               <div className="flex items-center justify-between px-4 h-9 shrink-0 bg-surface border-b border-rim">
-                <span className="font-mono text-[11px] text-pale">design.v</span>
-                <span className="font-mono text-[9px] text-dim">DUT</span>
+                <span className="font-mono text-[11px] text-pale">{language === "vhdl" ? "design.vhd" : "design.v"}</span>
+                {vhdlAvailable ? (
+                  <div className="flex gap-1 font-mono text-[9px]" role="radiogroup" aria-label="Design language">
+                    {([["verilog", "Verilog / SV"], ["vhdl", "VHDL"]] as const).map(([id, label]) => (
+                      <button key={id} role="radio" aria-checked={language === id} disabled={isRunning || isSubmitting}
+                        onClick={() => setLanguage(id)}
+                        title={id === "vhdl" ? "Write this design in VHDL: it is converted to Verilog (GHDL) and graded by the same tests" : undefined}
+                        className={`px-2 py-0.5 rounded border ${language === id ? "border-phosphor/50 text-phosphor bg-phosphor/10" : "border-rim text-dim hover:text-ghost"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="font-mono text-[9px] text-dim">DUT</span>
+                )}
               </div>
               <div className="flex-1 min-h-0">
                 <Editor
                   value={designCode}
                   onChange={setDesignCode}
-                  language="verilog"
+                  language={language === "vhdl" ? "vhdl" : "systemverilog"}
                   readOnly={isRunning || isSubmitting}
                   diagnostics={diagnostics.design}
                 />
@@ -365,7 +381,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         </div>
       </div>
 
-      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} />
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} language={language} />
 
       <AIAssistantPanel
         isOpen={tutorOpen}

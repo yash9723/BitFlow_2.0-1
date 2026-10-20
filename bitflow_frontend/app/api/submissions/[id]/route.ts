@@ -28,5 +28,6 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   }
 
   const { userId: _owner, testbenchCode, question, ...rest } = submission;
-  return NextResponse.json({ submission: question.problemType === "testbench" ? { ...rest, testbenchCode } : rest });
+  const learnerWroteTb = question.problemType === "testbench" || question.problemType === "formal";
+  return NextResponse.json({ submission: learnerWroteTb ? { ...rest, testbenchCode } : rest });
 }

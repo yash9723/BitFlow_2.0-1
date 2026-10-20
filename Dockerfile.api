@@ -8,13 +8,20 @@ ENV PORT=8080
 
 WORKDIR /app
 
-# Install system dependencies (curl for healthcheck, iverilog for running simulations)
+# Install system dependencies: curl (healthcheck), iverilog (simulation), verilator (lint),
+# yosys (synthesis, formal), z3 (formal solver), ghdl (VHDL), nextpnr-ice40 (place & route).
+# Place & route targets the HX8K only (api/routes/synthesize.py): the other chip databases (137 MB) go.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     iverilog \
-    verilator     yosys \
+    verilator \
+    yosys \
+    z3 \
+    ghdl \
+    nextpnr-ice40 \
     coreutils \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && find /usr/share/nextpnr/ice40 -name 'chipdb-*.bin' ! -name 'chipdb-8k.bin' -delete
 
 # Install python dependencies
 COPY requirements.txt .

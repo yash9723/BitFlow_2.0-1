@@ -51,8 +51,11 @@ export interface ArenaProblem {
   testbenchSkeleton:  string;
   hiddenTestcases:  ArenaTestcase[];
 
-  /** "testbench": starterCode is a correct DUT and the student writes tb.v that catches its bugs. */
-  problemType?: "design" | "testbench";
+  /** "testbench": starterCode is a correct DUT and the student writes tb.v that catches its bugs.
+   *  "formal": the same, but the student writes a property harness that a solver checks. */
+  problemType?: "design" | "testbench" | "formal";
+  /** Formal problems: clock cycles the solver searches when checking and grading (default 20). */
+  formalDepth?: number;
 
   // Rewards
   xpReward:     number;
@@ -78,7 +81,8 @@ export type ArenaCategory =
   | "Memory"
   | "Protocol"
   | "Pipeline"
-  | "Verification";
+  | "Verification"
+  | "Formal";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Submission result — parallel shape to Learning Path SubmissionResult

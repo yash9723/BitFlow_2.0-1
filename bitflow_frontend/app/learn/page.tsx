@@ -139,6 +139,14 @@ const INTERMEDIATE_MODULE_DEFS = [
     prerequisites: ["mod_counters_advanced"],
     xpToUnlock:    700,
   },
+  {
+    id:            "mod_sv",
+    title:         "SystemVerilog Essentials",
+    description:   "logic, always_comb / always_ff, enum state machines, packed structs and unique case.",
+    icon:          "⧉",
+    prerequisites: [],
+    xpToUnlock:    200,
+  },
 ];
 
 const ADVANCED_MODULE_DEFS = [

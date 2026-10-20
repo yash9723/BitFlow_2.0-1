@@ -141,12 +141,13 @@ export async function runSimulation(
 export async function submitSolution<T>(
   slug: string,
   designCode: string,
-  testbenchCode: string
+  testbenchCode: string,
+  languages: { language?: "verilog" | "vhdl"; testbenchLanguage?: "verilog" | "python" } = {},
 ): Promise<T> {
   try {
     const { data } = await trackWake(axios.post<{ submission: T }>(
       `/api/problems/${encodeURIComponent(slug)}/submit`,
-      { designCode, testbenchCode },
+      { designCode, testbenchCode, ...languages },
       { timeout: 300_000 } // several hidden testcases, each up to 30 s
     ));
     return data.submission;

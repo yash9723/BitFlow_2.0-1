@@ -61,6 +61,7 @@ export type ProblemCategory =
   | "interface"        // UART, SPI, I2C protocols (future)
   | "pipeline"         // Pipelined datapaths (advanced)
   | "riscv"            // RISC-V CPU project track (lib/problems/riscv.ts)
+  | "systemverilog"    // SystemVerilog Essentials (lib/problems/systemverilog.ts)
   | "verification";    // Testbench writing and assertion-based verification
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -73,7 +73,7 @@ async function carriedStarter(starter: string): Promise<string> {
   const replacements = await Promise.all(blocks.map(async ([, slug, stub]) => {
     const step = steps.find((s) => s.slug === slug);
     const accepted = user && step && await prisma.submission.findFirst({
-      where:   { userId: user.id, problemId: step.id, accepted: true },
+      where:   { userId: user.id, problemId: step.id, accepted: true, language: "verilog" },   // pasted into a Verilog starter
       orderBy: { createdAt: "desc" },
       select:  { designCode: true },
     });

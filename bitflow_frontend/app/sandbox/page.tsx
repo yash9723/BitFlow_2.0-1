@@ -82,6 +82,8 @@ import { parseDiagnostics }           from "@/lib/diagnostics";
 import AIAssistantPanel               from "@/components/AIAssistantPanel";
 import SynthesisPanel                 from "@/components/SynthesisPanel";
 import BoardPanel                     from "@/components/BoardPanel";
+import FormalPanel                    from "@/components/FormalPanel";
+import type { DesignLanguage, TestbenchLanguage } from "@/lib/types";
 import ExportCard                     from "@/components/ExportCard";
 import AuthGate                       from "@/components/AuthGate";
 import { useSimulation }              from "@/hooks/useSimulation";
@@ -273,6 +275,26 @@ function EditorTab({
   );
 }
 
+const DESIGN_FILES:    Record<DesignLanguage, [string, string]>    = { verilog: ["design.v", "systemverilog"], vhdl: ["design.vhd", "vhdl"] };
+const TESTBENCH_FILES: Record<TestbenchLanguage, [string, string]> = {
+  verilog: ["tb.v", "systemverilog"], vhdl: ["tb.vhd", "vhdl"], python: ["test_tb.py", "python"],
+};
+
+/** Small native select for the editor languages (same look as the template menu). */
+function LanguageSelect<T extends string>({ label, value, options, onChange, disabled }: {
+  label: string; value: T; options: [T, string][]; onChange: (v: T) => void; disabled?: boolean;
+}) {
+  return (
+    <label className="flex items-center gap-1.5 font-mono text-[9px] text-dim tracking-wider uppercase select-none">
+      <span className="hidden sm:inline">{label}</span>
+      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as T)} aria-label={`${label} language`}
+              className="font-mono text-[10px] normal-case tracking-normal h-6 bg-surface border border-rim rounded text-ghost hover:text-pale px-1.5 cursor-pointer disabled:opacity-40">
+        {options.map(([v, text]) => <option key={v} value={v} style={{ backgroundColor: "#13141a" }}>{text}</option>)}
+      </select>
+    </label>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
@@ -292,6 +314,11 @@ function SandboxContent() {
     testbenchCode,
     setDesignCode,
     setTestbenchCode,
+    designLanguage,
+    testbenchLanguage,
+    setDesignLanguage,
+    setTestbenchLanguage,
+    loadProject,
     runState,
     isRunning,
     result,
@@ -300,6 +327,9 @@ function SandboxContent() {
     simulate,
     clearResult,
   } = useSimulation();
+  const [proveOpen, setProveOpen] = useState(false);
+  const [designFile, designMonaco] = DESIGN_FILES[designLanguage];
+  const [tbFile, tbMonaco] = TESTBENCH_FILES[testbenchLanguage];
 
   // ── AI assistant ──────────────────────────────────────────────────────────
 
@@ -315,6 +345,10 @@ function SandboxContent() {
 
   /** Save the editors as a read-only link, copy it, and show it (clipboard access can be blocked). */
   const handleShare = useCallback(async () => {
+    if (designLanguage !== "verilog" || testbenchLanguage !== "verilog") {
+      window.alert("Share links support Verilog / SystemVerilog projects for now. Switch both editors to Verilog to share.");
+      return;
+    }
     try {
       const res = await fetch("/api/share", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -328,7 +362,7 @@ function SandboxContent() {
     } catch (err) {
       window.alert((err as Error).message || "Sharing failed.");
     }
-  }, [designCode, testbenchCode]);
+  }, [designCode, testbenchCode, designLanguage, testbenchLanguage]);
   const toggleAI = useCallback(() => setIsAIOpen((v) => !v), []);
 
   // ── Export state ──────────────────────────────────────────────────────────
@@ -604,6 +638,7 @@ function SandboxContent() {
         onAIToggle={toggleAI}
         onSynthesize={() => setSynthOpen(true)}
         onBoard={() => setBoardOpen(true)}
+        onProve={() => setProveOpen(true)}
         onShare={handleShare}
         onExportZip={result ? handleExportZip : undefined}
         onExportImage={result ? handleExportImage : undefined}
@@ -624,10 +659,13 @@ function SandboxContent() {
           <TemplateMenu
             currentDesign={designCode}
             currentTestbench={testbenchCode}
-            onDesignChange={setDesignCode}
-            onTestbenchChange={setTestbenchCode}
+            onLoad={loadProject}
             disabled={isRunning}
           />
+          <LanguageSelect<DesignLanguage> label="Design" value={designLanguage} disabled={isRunning}
+            options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"]]} onChange={setDesignLanguage} />
+          <LanguageSelect<TestbenchLanguage> label="Testbench" value={testbenchLanguage} disabled={isRunning}
+            options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"], ["python", "Python (cocotb)"]]} onChange={setTestbenchLanguage} />
           {/* Last submission metadata — shown when a prior successful run exists */}
           {lastSubmission && (
             <span
@@ -712,12 +750,12 @@ function SandboxContent() {
             className="flex flex-col overflow-hidden min-w-0"
             style={{ width: `${leftFrac * 100}%` }}
           >
-            <EditorTab filename="design.v" sublabel="DUT" />
+            <EditorTab filename={designFile} sublabel="DUT" />
             <div className="flex-1 min-h-0">
               <Editor
                 value={designCode}
                 onChange={setDesignCode}
-                language="verilog"
+                language={designMonaco}
                 readOnly={isRunning}
                 diagnostics={diagnostics.design}
               />
@@ -737,12 +775,12 @@ function SandboxContent() {
            * min-w-0: same as left panel — prevents Monaco overflow.
            */}
           <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-            <EditorTab filename="tb.v" sublabel="Testbench" />
+            <EditorTab filename={tbFile} sublabel={testbenchLanguage === "python" ? "cocotb testbench" : "Testbench"} />
             <div className="flex-1 min-h-0">
               <Editor
                 value={testbenchCode}
                 onChange={setTestbenchCode}
-                language="verilog"
+                language={tbMonaco}
                 readOnly={isRunning}
                 diagnostics={diagnostics.tb}
               />
@@ -819,8 +857,10 @@ function SandboxContent() {
        * State (chat history) lives in useAI inside AIAssistantPanel so it
        * survives open/close cycles.
        */}
-      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} />
-      <BoardPanel isOpen={boardOpen} onClose={() => setBoardOpen(false)} designCode={designCode} />
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} language={designLanguage} />
+      <BoardPanel isOpen={boardOpen} onClose={() => setBoardOpen(false)} designCode={designCode} language={designLanguage} />
+      <FormalPanel isOpen={proveOpen} onClose={() => setProveOpen(false)} designCode={designCode} language={designLanguage}
+                   testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""} />
 
       <AIAssistantPanel
         isOpen={isAIOpen}

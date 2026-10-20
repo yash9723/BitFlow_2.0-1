@@ -13,14 +13,19 @@ from __future__ import annotations
 
 import re
 from enum import IntEnum
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Extra input files (POST /simulate "files"): plain names, never the sandbox's own.
 MAX_DATA_FILES      = 4
 DATA_FILE_NAME      = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}")
-RESERVED_FILE_NAMES = {"design.v", "tb.v", "a.out", "wave.vcd", ".proc_output.log"}
+RESERVED_FILE_NAMES = {"design.v", "tb.v", "a.out", "wave.vcd", ".proc_output.log",
+                       "design.vhd", "tb.vhd", "test_tb.py", "results.xml", "bf_dump.v", "cmds.f", "sim.vvp",
+                       "bf_guard.py"}
+# The workspace is first on a cocotb run's Python path: a data file named cocotb.py or
+# sitecustomize.py would run before the sandbox guard. Data files are for $readmemh etc.
+CODE_FILE_SUFFIXES = (".py", ".pyc", ".pth", ".so")
 
 
 # =============================================================================
@@ -110,6 +115,21 @@ class SimulateJsonRequest(BaseModel):
         examples=[{"sine_lut.hex": "80\n83\n86\n"}],
     )
 
+    design_language: Literal["verilog", "vhdl"] = Field(
+        default="verilog",
+        description="Language of design_v. Verilog includes the SystemVerilog subset Icarus supports.",
+    )
+    testbench_language: Literal["verilog", "vhdl", "python"] = Field(
+        default="verilog",
+        description="Language of testbench_v: Verilog, VHDL (needs a VHDL design) or a cocotb Python test module.",
+    )
+
+    @model_validator(mode="after")
+    def _languages_match(self) -> "SimulateJsonRequest":
+        if self.testbench_language == "vhdl" and self.design_language != "vhdl":
+            raise ValueError("A VHDL testbench needs a VHDL design (GHDL can't simulate Verilog).")
+        return self
+
     @field_validator("design_v", "testbench_v")
     @classmethod
     def _no_null_bytes(cls, v: str) -> str:
@@ -127,7 +147,7 @@ class SimulateJsonRequest(BaseModel):
         if len(v) > MAX_DATA_FILES:
             raise ValueError(f"At most {MAX_DATA_FILES} extra files.")
         for name, content in v.items():
-            if not DATA_FILE_NAME.fullmatch(name) or name in RESERVED_FILE_NAMES:
+            if not DATA_FILE_NAME.fullmatch(name) or name in RESERVED_FILE_NAMES or name.lower().endswith(CODE_FILE_SUFFIXES):
                 raise ValueError(f"Invalid file name: {name!r}")
             if "\x00" in content:
                 raise ValueError(f"{name} must not contain null bytes.")

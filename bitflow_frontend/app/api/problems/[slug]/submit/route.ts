@@ -1,9 +1,12 @@
 /**
  * POST /api/problems/[slug]/submit — Grade a solution on the server.
  *
- * Body: { designCode: string, testbenchCode?: string }
+ * Body: { designCode: string, testbenchCode?: string, language?: "vhdl", testbenchLanguage?: "python" }
  * Runs the design against the hidden tests (lib/grading.ts), records the
  * submission and, if accepted, awards XP once (lib/record-submission.ts).
+ * A VHDL design is converted to Verilog (GHDL) first and graded by the same tests.
+ * Testbench problems grade the student's testbench (Verilog or cocotb) against
+ * mutants of the given DUT; formal problems grade a property harness the same way.
  * Returns { submission: SubmissionResult }; on a wrong answer it also carries
  * failingWaveform — the design's own signals on the first failing test — and
  * counterexample — the shortest input sequence where it differs from the reference.
@@ -15,11 +18,11 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
 import {
-  counterexampleTable, designPolicyViolation, failingTestWaveform, findCounterexample, gradeDesign, gradeTestbench,
-  gradingTestbenches, testbenchPolicyViolation,
+  counterexampleTable, designPolicyViolation, failingTestWaveform, findCounterexample, formalPolicyViolation, gradeDesign,
+  gradeFormal, gradeTestbench, gradingTestbenches, testbenchPolicyViolation,
 } from "@/lib/grading";
 import { recordSubmission } from "@/lib/record-submission";
-import { metricsOnBackend } from "@/lib/backend";
+import { designAsVerilog, metricsOnBackend } from "@/lib/backend";
 import { claimDailyBonus, getDailyQuestion } from "@/lib/daily";
 import { reportError } from "@/lib/error-log";
 
@@ -58,21 +61,44 @@ export async function POST(
     return NextResponse.json({ error: `Problem not found: ${params.slug}` }, { status: 404 });
   }
 
-  // Testbench problems grade the student's tb.v against the given DUT and its bugs.
+  // Testbench problems grade the student's tb against the given DUT and its bugs;
+  // formal problems grade the student's property harness the same way.
   const isTestbench = question.problemType === "testbench";
-  if (isTestbench && !testbenchCode.trim()) {
+  const isFormal    = question.problemType === "formal";
+  const writesTb    = isTestbench || isFormal;
+  const language          = !writesTb && body?.language === "vhdl" ? "vhdl" : "verilog";
+  const testbenchLanguage = isTestbench && body?.testbenchLanguage === "python" ? "python" : "verilog";
+  if (writesTb && !testbenchCode.trim()) {
     return NextResponse.json({ error: "testbenchCode is required." }, { status: 400 });
   }
-  const violation = isTestbench
-    ? testbenchPolicyViolation(testbenchCode)
-    : designPolicyViolation(designCode, gradingTestbenches(question));
+
+  // A VHDL design is graded through its Verilog netlist; everything below uses gradedCode.
+  let gradedCode: string = designCode;
+  if (language === "vhdl") {
+    try {
+      const converted = await designAsVerilog(designCode, "vhdl");
+      if ("error" in converted) return NextResponse.json({ error: converted.error }, { status: 422 });
+      gradedCode = converted.verilog;
+    } catch (err) {
+      await reportError("[submit] VHDL conversion failed:", err);
+      return NextResponse.json({ error: "Simulation backend unavailable" }, { status: 502 });
+    }
+  }
+
+  const violation = isFormal
+    ? formalPolicyViolation(testbenchCode)
+    : isTestbench
+      ? (testbenchLanguage === "python" ? null : testbenchPolicyViolation(testbenchCode))   // the API vets cocotb code
+      : designPolicyViolation(gradedCode, gradingTestbenches(question));
   if (violation) {
     return NextResponse.json({ error: violation }, { status: 422 });
   }
 
   let grade;
   try {
-    grade = isTestbench ? await gradeTestbench(question, testbenchCode) : await gradeDesign(question, designCode);
+    grade = isFormal    ? await gradeFormal(question, testbenchCode)
+          : isTestbench ? await gradeTestbench(question, testbenchCode, testbenchLanguage)
+          :               await gradeDesign(question, gradedCode);
   } catch (err) {
     await reportError("[submit] grading failed:", err);
     return NextResponse.json(
@@ -82,11 +108,11 @@ export async function POST(
   }
 
   // Started now, awaited below: runs alongside the DB writes.
-  const failingWaveform = isTestbench ? Promise.resolve(null) : failingTestWaveform(question, designCode, grade);
-  const counterexample  = grade.accepted || isTestbench ? Promise.resolve(null) : findCounterexample(question, designCode);
+  const failingWaveform = writesTb ? Promise.resolve(null) : failingTestWaveform(question, gradedCode, grade);
+  const counterexample  = grade.accepted || writesTb ? Promise.resolve(null) : findCounterexample(question, gradedCode);
   // Optimization scores for the leaderboard (accepted designs only; never affects the verdict)
-  const metrics = grade.accepted && !isTestbench
-    ? metricsOnBackend(designCode)
+  const metrics = grade.accepted && !writesTb
+    ? metricsOnBackend(gradedCode)
         .then(({ status, data }) => (status === 200 && data?.ok ? { gates: data.gates as number, depth: data.depth as number, ffBits: data.ffBits as number } : null))
         .catch(() => null)
     : Promise.resolve(null);
@@ -96,8 +122,9 @@ export async function POST(
   const saved = await recordSubmission({
     userId:          user?.id ?? null,
     question,
-    designCode:      isTestbench ? question.starterCode : designCode,
+    designCode:      writesTb ? question.starterCode : designCode,
     testbenchCode,
+    language:        testbenchLanguage === "python" ? "python" : language,
     submissionType:  "SUBMIT",
     simStatus:       grade.accepted ? "SUCCESS" : "RUNTIME_ERROR",
     simStdout:       grade.stdout,
@@ -150,7 +177,7 @@ export async function POST(
       total:           grade.total,
       accepted:        grade.accepted,
       totalDurationMs: grade.totalDurationMs,
-      submittedCode:   isTestbench ? testbenchCode : designCode,
+      submittedCode:   writesTb ? testbenchCode : designCode,
       xpEarned:        (saved?.xpEarned ?? 0) + dailyBonusXp,   // what was actually awarded
       dailyBonusXp,
       errorMessage:    grade.errorMessage,

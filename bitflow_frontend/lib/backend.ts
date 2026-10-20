@@ -11,7 +11,11 @@ export interface SimulateBody {
   testbench_v: string;
   timeout?:    number;
   files?:      Record<string, string>;
+  design_language?:    "verilog" | "vhdl";
+  testbench_language?: "verilog" | "vhdl" | "python";
 }
+
+export type FormalMode = "bmc" | "prove" | "cover";
 
 // BACKEND_URL is read at runtime; NEXT_PUBLIC_* values are inlined at build time.
 export function backendUrl(): string {
@@ -46,6 +50,24 @@ export function boardOnBackend(design_v: string): Promise<{ status: number; data
 /** POST /equivalence: shortest input sequence (from reset) where two designs differ. */
 export function equivalenceOnBackend(gold_v: string, gate_v: string, max_cycles = 16): Promise<{ status: number; data: any }> {
   return postToBackend("/equivalence", { gold_v, gate_v, max_cycles });
+}
+
+/** POST /vhdl: VHDL design -> Verilog netlist (GHDL), for the Verilog-only grading and synthesis tools. */
+export function vhdlOnBackend(design_vhdl: string): Promise<{ status: number; data: any }> {
+  return postToBackend("/vhdl", { design_vhdl });
+}
+
+/** Verilog source of a design in either language, or the conversion error. */
+export async function designAsVerilog(code: string, language: string | undefined): Promise<{ verilog: string } | { error: string }> {
+  if (language !== "vhdl") return { verilog: code };
+  const { status, data } = await vhdlOnBackend(code);
+  if (status !== 200) return { error: data?.detail || data?.error || "VHDL conversion failed." };
+  return data?.ok ? { verilog: data.verilog } : { error: `VHDL error:\n${data?.error ?? "conversion failed"}` };
+}
+
+/** POST /formal: bounded check (bmc), induction proof (prove) or cover search of assert/assume/cover. */
+export function formalOnBackend(design_v: string, harness_v: string | null, mode: FormalMode, depth = 20): Promise<{ status: number; data: any }> {
+  return postToBackend("/formal", { design_v, harness_v, mode, depth });
 }
 
 /** POST /synthesize (Yosys) on the backend. */

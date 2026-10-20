@@ -7,10 +7,11 @@
  */
 
 import type { Testcase, TestcaseVerdict } from "@/lib/problem-types";
-import type { SimulateResponse } from "@/lib/types";
-import { equivalenceOnBackend, simulateOnBackend } from "@/lib/backend";
+import type { SimulateResponse, TestbenchLanguage } from "@/lib/types";
+import { equivalenceOnBackend, formalOnBackend, simulateOnBackend } from "@/lib/backend";
 import { parseVcd, type ParsedVcd, type VcdSignal } from "@/lib/vcd-parser";
 import { generateMutants, parseMutants, pickMutants, type Mutant } from "@/lib/mutants";
+import { getArenaProblemBySlug } from "@/lib/arena";
 
 export interface GradableQuestion {
   learningLevel:      string;
@@ -139,12 +140,15 @@ export function testcasePassed(success: boolean, stdout: string, expected: strin
     : !stdout.includes("FAIL") && !stdout.includes("TESTS FAILED");
 }
 
-async function simulate(design: string, testbench: string, files?: Record<string, string> | null): Promise<SimulateResponse> {
+async function simulate(
+  design: string, testbench: string, files?: Record<string, string> | null, testbenchLanguage: TestbenchLanguage = "verilog",
+): Promise<SimulateResponse> {
   const { status, data } = await simulateOnBackend({
     design_v:    design,
     testbench_v: testbench,
     timeout:     30,
     ...(files ? { files } : {}),
+    ...(testbenchLanguage !== "verilog" ? { testbench_language: testbenchLanguage } : {}),
   });
   if (status !== 200) {
     throw new Error(data?.detail || data?.error || `Simulation backend returned ${status}`);
@@ -178,7 +182,7 @@ function parseTestcases(json: string): Testcase[] {
 // The student writes tb.v for a given, correct DUT (Question.starterCode). It must
 // pass that DUT and fail ("catch") each stored mutant of it (Question.mutants).
 
-export interface TestbenchQuestion { starterCode: string; mutants?: string | null; dataFiles?: string | null }
+export interface TestbenchQuestion { starterCode: string; mutants?: string | null; dataFiles?: string | null; slug?: string }
 
 /** Max mutants kept per problem: enough variety, bounded grading cost. */
 export const MAX_MUTANTS = 8;
@@ -189,15 +193,16 @@ export function testbenchPolicyViolation(tb: string): string | null {
   return task ? `Testbenches here can't use $${task[1]}: check the design's outputs instead.` : null;
 }
 
-/** Grade a student testbench. Throws only on backend/infrastructure failure. */
-export async function gradeTestbench(q: TestbenchQuestion, tb: string): Promise<GradeResult> {
+/** Grade a student testbench (Verilog, or a cocotb Python module). Throws only on backend/infrastructure failure. */
+export async function gradeTestbench(q: TestbenchQuestion, tb: string, language: TestbenchLanguage = "verilog"): Promise<GradeResult> {
   const mutants = parseMutants(q.mutants);
   const files = parseDataFiles(q.dataFiles);
   if (mutants.length === 0) {
     return { verdicts: [], passed: 0, total: 0, accepted: false, totalDurationMs: 0, stdout: null, stderr: null, exitCode: null,
              errorMessage: "This problem isn't ready yet: its bugs haven't been generated (an admin needs to import the model testbench)." };
   }
-  const base = await simulate(q.starterCode, tb, files);
+  const simulate_ = (design: string) => simulate(design, tb, files, language);
+  const base = await simulate_(q.starterCode);
   if (!sentinelPassed(base.success, base.stdout ?? "")) {
     return {
       verdicts: [], passed: 0, total: mutants.length, accepted: false, totalDurationMs: base.duration_ms ?? 0,
@@ -208,7 +213,7 @@ export async function gradeTestbench(q: TestbenchQuestion, tb: string): Promise<
     };
   }
   const verdicts: TestcaseVerdict[] = await Promise.all(mutants.map(async (m) => {
-    const r = await simulate(m.code, tb, files);
+    const r = await simulate_(m.code);
     const caught = !sentinelPassed(r.success, r.stdout ?? "");
     return {
       testcaseId: m.id, description: `${caught ? "Caught" : "Missed"}: ${m.description}`, passed: caught,
@@ -249,10 +254,87 @@ async function verifyModelTestbench(q: TestbenchQuestion, tb: string): Promise<{
   return { ok: true, mutants };
 }
 
+// ── Formal problems ("prove it") ────────────────────────────────────────────
+// Same shape as testbench problems, but the student writes a property harness: a
+// top module that instantiates the given DUT and states assert/assume/cover. It
+// must pass a bounded check on the correct DUT and fail it on each stored mutant.
+
+/** Steps the solver searches when grading, unless the problem sets formalDepth (lib/arena/formal.ts). */
+export const FORMAL_DEPTH = 20;
+
+export function formalDepth(slug?: string): number {
+  return (slug && getArenaProblemBySlug(slug)?.formalDepth) || FORMAL_DEPTH;
+}
+
+/** A harness only states properties: no file access or includes (Yosys would read those files). */
+export function formalPolicyViolation(harness: string): string | null {
+  if (/`\s*include\b/.test(harness)) return "`include isn't allowed in a property harness.";
+  return testbenchPolicyViolation(harness);
+}
+
+async function formal(design: string, harness: string, depth: number) {
+  const { status, data } = await formalOnBackend(design, harness, "bmc", depth);
+  if (status !== 200) throw new Error(data?.detail || data?.error || `Formal backend returned ${status}`);
+  return data as { status: "passed" | "failed" | "error"; error?: string; failed?: { line: number } | null; log?: string };
+}
+
+/** Grade a student property harness. Throws only on backend/infrastructure failure. */
+export async function gradeFormal(q: TestbenchQuestion, harness: string): Promise<GradeResult> {
+  const mutants = parseMutants(q.mutants);
+  if (mutants.length === 0) {
+    return { verdicts: [], passed: 0, total: 0, accepted: false, totalDurationMs: 0, stdout: null, stderr: null, exitCode: null,
+             errorMessage: "This problem isn't ready yet: its bugs haven't been generated (an admin needs to import the model harness)." };
+  }
+  const t0 = Date.now();
+  const depth = formalDepth(q.slug);
+  const base = await formal(q.starterCode, harness, depth);
+  if (base.status !== "passed") {
+    return {
+      verdicts: [], passed: 0, total: mutants.length, accepted: false, totalDurationMs: Date.now() - t0,
+      stdout: base.log ?? null, stderr: base.error ?? null, exitCode: null,
+      errorMessage: base.status === "error"
+        ? `Your harness doesn't compile with the design:\n${base.error ?? ""}`.trim()
+        : `An assertion fails on the correct design (line ${base.failed?.line ?? "?"}). A property must hold for the given DUT and only fail on broken ones.`,
+    };
+  }
+  const verdicts: TestcaseVerdict[] = await Promise.all(mutants.map(async (m) => {
+    const t = Date.now();
+    const caught = (await formal(m.code, harness, depth)).status === "failed";
+    return { testcaseId: m.id, description: `${caught ? "Caught" : "Missed"}: ${m.description}`, passed: caught,
+             actualOutput: "", expectedOutput: "", durationMs: Date.now() - t };
+  }));
+  const passed = verdicts.filter((v) => v.passed).length;
+  return {
+    verdicts, passed, total: mutants.length, accepted: passed === mutants.length, totalDurationMs: Date.now() - t0,
+    stdout: base.log ?? null, stderr: null, exitCode: 0,
+    errorMessage: passed === mutants.length ? undefined : `Your properties caught ${passed} of ${mutants.length} bugs.`,
+  };
+}
+
+/** Model harness of a formal problem: must pass the DUT; returns the mutants it catches. */
+async function verifyModelHarness(q: TestbenchQuestion, harness: string): Promise<{ ok: true; mutants: Mutant[] } | { ok: false; error: string }> {
+  const violation = formalPolicyViolation(harness);
+  if (violation) return { ok: false, error: violation };
+  const depth = formalDepth(q.slug);
+  const base = await formal(q.starterCode, harness, depth);
+  if (base.status !== "passed") return { ok: false, error: `model harness ${base.status} on the correct design: ${base.error ?? `line ${base.failed?.line}`}`.slice(0, 500) };
+  const candidates = generateMutants(q.starterCode);
+  const killed: Mutant[] = [];
+  for (let i = 0; i < candidates.length; i += 4) {
+    const batch = candidates.slice(i, i + 4);
+    const runs = await Promise.all(batch.map((m) => formal(m.code, harness, depth)));
+    batch.forEach((m, j) => { if (runs[j].status === "failed") killed.push(m); });
+  }
+  const mutants = pickMutants(killed, MAX_MUTANTS);
+  if (mutants.length < 3) return { ok: false, error: `only ${killed.length} of ${candidates.length} mutants are caught by the model harness; need at least 3` };
+  return { ok: true, mutants };
+}
+
 export async function verifyReferenceSolution(
-  q: GradableQuestion & { problemType?: string; starterCode?: string; mutants?: string | null }, code: string,
+  q: GradableQuestion & { problemType?: string; starterCode?: string; mutants?: string | null; slug?: string }, code: string,
 ): Promise<{ ok: true; mutants?: Mutant[] } | { ok: false; error: string }> {
   if (q.problemType === "testbench") return verifyModelTestbench({ starterCode: q.starterCode ?? "", dataFiles: q.dataFiles }, code);
+  if (q.problemType === "formal") return verifyModelHarness({ starterCode: q.starterCode ?? "", slug: q.slug }, code);
   const violation = designPolicyViolation(code, gradingTestbenches(q));
   if (violation) return { ok: false, error: violation };
   const grade = await gradeDesign(q, code);

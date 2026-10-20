@@ -2,7 +2,7 @@
 /** components/ForkButton.tsx — "Open in my Sandbox" for a shared design (/s/[id]). */
 
 import { useRouter } from "next/navigation";
-import { DESIGN_STORAGE_KEY, TESTBENCH_STORAGE_KEY } from "@/hooks/useSimulation";
+import { DESIGN_LANGUAGE_KEY, DESIGN_STORAGE_KEY, TESTBENCH_LANGUAGE_KEY, TESTBENCH_STORAGE_KEY } from "@/hooks/useSimulation";
 
 export default function ForkButton({ designCode, testbenchCode }: { designCode: string; testbenchCode: string }) {
   const router = useRouter();
@@ -11,6 +11,8 @@ export default function ForkButton({ designCode, testbenchCode }: { designCode: 
     try {
       localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify(designCode));
       localStorage.setItem(TESTBENCH_STORAGE_KEY, JSON.stringify(testbenchCode));
+      localStorage.setItem(DESIGN_LANGUAGE_KEY, JSON.stringify("verilog"));      // shared designs are Verilog
+      localStorage.setItem(TESTBENCH_LANGUAGE_KEY, JSON.stringify("verilog"));
     } catch {
       window.alert("Your browser blocked saving to local storage, so the design can't be opened in the Sandbox.");
       return;

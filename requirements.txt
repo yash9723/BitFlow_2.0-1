@@ -18,6 +18,9 @@ cryptography>=42.0.0              # ES256 (JWT_PUBLIC_KEY mode)
 # ── Docker integration ────────────────────────────────────────────────────────
 # docker SDK removed — simulations now run natively via subprocess
 
+# ── Python testbenches ────────────────────────────────────────────────────────
+cocotb==2.1.0                     # exact pin: api/langs.py drives its VPI library directly
+
 # ── Multipart upload support ──────────────────────────────────────────────────
 python-multipart>=0.0.9           # required for UploadFile endpoints
 

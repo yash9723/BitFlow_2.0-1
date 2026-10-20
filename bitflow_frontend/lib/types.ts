@@ -16,6 +16,9 @@
  * JSON body sent to POST /simulate.
  * Matches SimulateJsonRequest in api/models.py.
  */
+export type DesignLanguage    = "verilog" | "vhdl";
+export type TestbenchLanguage = "verilog" | "vhdl" | "python";
+
 export interface SimulateRequest {
   /** Full source of design.v */
   design_v: string;
@@ -25,6 +28,12 @@ export interface SimulateRequest {
 
   /** Extra input files next to design.v, e.g. a $readmemh hex file. */
   files?: Record<string, string>;
+
+  /** Language of design_v (default verilog, which includes the SystemVerilog subset). */
+  design_language?: DesignLanguage;
+
+  /** Language of testbench_v: Verilog, VHDL (needs a VHDL design) or a cocotb Python module. */
+  testbench_language?: TestbenchLanguage;
 
   /**
    * Override timeout in seconds (1–120).

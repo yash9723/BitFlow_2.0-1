@@ -374,6 +374,41 @@ def _run_simulation_sync(
     )
 
 
+def _simulate_sync(
+    tmpdir: str,
+    workspace_id: str,
+    timeout: int,
+    lint: bool,
+    design_language: str,
+    testbench_language: str,
+) -> SandboxResult:
+    """Pick the flow: GHDL (VHDL testbench), cocotb (Python testbench) or Icarus.
+    A VHDL design with any other testbench is first converted to Verilog."""
+    from api import langs   # langs imports this module
+
+    if design_language == "vhdl":
+        os.replace(os.path.join(tmpdir, "design.v"), os.path.join(tmpdir, "design.vhd"))
+    if testbench_language != "verilog":
+        tb_name = "tb.vhd" if testbench_language == "vhdl" else "test_tb.py"
+        os.replace(os.path.join(tmpdir, "tb.v"), os.path.join(tmpdir, tb_name))
+    if testbench_language == "vhdl":
+        return langs.run_vhdl_sync(tmpdir, workspace_id, timeout)
+
+    note = ""
+    if design_language == "vhdl":
+        t0 = time.monotonic()
+        error = langs.vhdl_to_verilog(tmpdir)
+        if error:
+            return langs._result(SandboxExitCode.COMPILE_ERROR,
+                                 ["--- Converting VHDL to Verilog (GHDL) ---", error, "[ERROR] Compilation failed."],
+                                 t0, workspace_id)
+        note = "[OK] VHDL design converted to Verilog (GHDL)\n"
+    result = (langs.run_cocotb_sync(tmpdir, workspace_id, timeout) if testbench_language == "python"
+              else _run_simulation_sync(tmpdir, workspace_id, timeout, lint and design_language == "verilog"))
+    result.stdout = note + result.stdout
+    return result
+
+
 # =============================================================================
 # Async wrapper — called by route handlers
 # =============================================================================
@@ -383,6 +418,8 @@ async def run_simulation(
     workspace_id: str,
     timeout: int,
     lint: bool = False,
+    design_language: str = "verilog",
+    testbench_language: str = "verilog",
 ) -> SandboxResult:
     """
     Async entry-point for the route handlers.
@@ -401,10 +438,12 @@ async def run_simulation(
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(
         None,
-        _run_simulation_sync,
+        _simulate_sync,
         tmpdir,
         workspace_id,
         timeout,
         lint,
+        design_language,
+        testbench_language,
     )
     return result

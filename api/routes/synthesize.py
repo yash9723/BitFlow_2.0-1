@@ -406,8 +406,8 @@ fpga_router = APIRouter(prefix="/fpga", tags=["Synthesis"])
 
 # Capacities of one common board per family, to show how much of a real part a design fills.
 FPGA_TARGETS = {
-    "ice40": {"script": "synth_ice40", "device": "iCE40 HX1K (iCEstick)",
-              "capacity": {"luts": 1280, "ffs": 1280, "bram": 16, "dsp": 0}},
+    "ice40": {"script": "synth_ice40 -json out.json", "device": "iCE40 HX8K (CT256 breakout)",
+              "capacity": {"luts": 7680, "ffs": 7680, "bram": 32, "dsp": 0}},
     "xc7":   {"script": "synth_xilinx -family xc7 -flatten", "device": "Artix-7 XC7A35T (Arty A7)",
               "capacity": {"luts": 20800, "ffs": 41600, "bram": 50, "dsp": 90}},
 }
@@ -437,6 +437,49 @@ def fpga_resources(cells: dict[str, int], family: str) -> dict:
     }
 
 
+PNR_TIMEOUT_SECONDS = 30
+_BEL = re.compile(r"X(\d+)/Y(\d+)/(\w+?)\d*$")
+
+
+def pnr_summary(report: dict, placed: dict) -> dict:
+    """Fmax per clock, utilisation and per-tile cell counts from nextpnr's report and placed netlist."""
+    fmax = [{"clock": name.split("$")[0], "mhz": round(v["achieved"], 1)}
+            for name, v in (report.get("fmax") or {}).items() if v.get("achieved")]
+    util = {k: v for k, v in (report.get("utilization") or {}).items() if v.get("used")}
+    tiles: dict[tuple[int, int, str], int] = {}
+    for module in placed.get("modules", {}).values():
+        if not module.get("attributes", {}).get("top"):
+            continue
+        for cell in module.get("cells", {}).values():
+            m = _BEL.match(cell.get("attributes", {}).get("NEXTPNR_BEL", ""))
+            if m:
+                kind = {"lc": "logic", "io": "io", "ram": "ram", "gb": "clock"}.get(m.group(3), "other")
+                key = (int(m.group(1)), int(m.group(2)), kind)
+                tiles[key] = tiles.get(key, 0) + 1
+    return {"ok": True, "fmax": sorted(fmax, key=lambda f: f["mhz"]), "utilization": util,
+            "grid": {"width": 34, "height": 34},
+            "tiles": [[x, y, kind, n] for (x, y, kind), n in sorted(tiles.items())]}
+
+
+def _place_and_route(tmpdir: str) -> dict:
+    """nextpnr-ice40 on the synthesized out.json. Unconstrained pins; default 12 MHz target, never fatal."""
+    try:
+        rc, out = _run_limited(
+            ["nextpnr-ice40", "--hx8k", "--package", "ct256", "--json", "out.json", "--pcf-allow-unconstrained",
+             "--timing-allow-fail", "--report", "report.json", "--write", "placed.json", "--seed", "1", "-q"],
+            cwd=tmpdir, timeout=PNR_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"Place and route took longer than {PNR_TIMEOUT_SECONDS}s."}
+    except FileNotFoundError:
+        return {"ok": False, "error": "Place and route is unavailable (nextpnr-ice40 is not installed)."}
+    if rc != 0:
+        errors = [l for l in out.splitlines() if l.startswith("ERROR")]
+        return {"ok": False, "error": "\n".join(errors[-5:]) or f"nextpnr exited with code {rc}"}
+    return pnr_summary(json.loads(_read(os.path.join(tmpdir, "report.json")) or "{}"),
+                       json.loads(_read(os.path.join(tmpdir, "placed.json")) or "{}"))
+
+
 def _fpga_sync(design_v: str, family: str) -> dict:
     target = FPGA_TARGETS[family]
     script = f"read_verilog -sv design.v\nhierarchy -auto-top\n{target['script']}\ntee -q -o stat.json stat -json\n"
@@ -444,7 +487,9 @@ def _fpga_sync(design_v: str, family: str) -> dict:
     def finish(tmpdir: str) -> dict:
         cells = json.loads(_read(os.path.join(tmpdir, "stat.json")) or "{}").get("design", {}).get("num_cells_by_type", {})
         return {"ok": True, "family": family, "device": target["device"], "capacity": target["capacity"],
-                "resources": fpga_resources(cells, family), "cells": cells}
+                "resources": fpga_resources(cells, family), "cells": cells,
+                # Placement and timing need a chip database; nextpnr has one for iCE40 only.
+                "pnr": _place_and_route(tmpdir) if family == "ice40" else None}
     return _run_script(design_v, script, finish)
 
 

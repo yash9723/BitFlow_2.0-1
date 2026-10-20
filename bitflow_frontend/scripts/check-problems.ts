@@ -97,6 +97,13 @@ const errors: string[] = [];
 const fail = (slug: string, msg: string) => errors.push(`${slug}: ${msg}`);
 
 for (const p of problems) {
+  if (p.problemType === "formal") {
+    // The skeleton is a property harness for the solver (Yosys), not a simulation testbench;
+    // the model harness and its mutants are checked by verifyReferenceSolution on import.
+    const dut = simulate(p.starterCode, "module bf_check_tb; endmodule", p.files);
+    if (!dut.compiled) fail(p.slug, `DUT does not compile: ${dut.log.trim().split("\n")[0]}`);
+    continue;
+  }
   const pub = simulate(p.starterCode, p.publicTestbench, p.files);
   if (!pub.compiled) fail(p.slug, `starter + public testbench does not compile: ${pub.log.trim().split("\n")[0]}`);
 
@@ -116,6 +123,7 @@ for (const p of problems) {
 
 // Sandbox templates: each design + testbench pair must compile, finish and report no failures.
 for (const [key, t] of Object.entries(TEMPLATES)) {
+  if (t.designLanguage === "vhdl" || t.testbenchLanguage === "python") continue;   // need GHDL / cocotb: covered by the API tests
   const r = simulate(t.design, t.testbench);
   if (!r.compiled) fail(`template ${key}`, `does not compile: ${r.log.trim().split("\n")[0]}`);
   else if (!r.success || /\bFAIL/.test(r.stdout)) fail(`template ${key}`, r.log.trim().split("\n").slice(-3).join(" | "));
