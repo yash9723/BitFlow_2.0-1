@@ -41,6 +41,7 @@ jobs:
       - run: npm run check-mutants
       - run: npm run check-waveform-diff
       - run: npm run check-vhdl-starter
+      - run: npm run check-bitstream
 
   web:
     name: Frontend type-check + build

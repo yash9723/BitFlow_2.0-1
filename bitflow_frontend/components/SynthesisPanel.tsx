@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
+import BitstreamTab from "./BitstreamTab";
 
 interface Fsm {
   module:      string;
@@ -44,7 +45,7 @@ interface Props {
   language?:  "verilog" | "vhdl";
 }
 
-type Tab = "summary" | "schematic" | "fsm" | "fpga";
+type Tab = "summary" | "schematic" | "fsm" | "fpga" | "bitstream";
 
 type Family = "ice40" | "xc7";
 type TileKind = "logic" | "io" | "ram" | "clock" | "other";
@@ -158,7 +159,7 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
   if (!isOpen) return null;
 
   const fsms = result?.fsms ?? [];
-  const tabs: [Tab, string][] = [["summary", "Summary"], ["schematic", "Schematic"], ["fsm", `FSM${fsms.length ? ` (${fsms.length})` : ""}`], ["fpga", "FPGA"]];
+  const tabs: [Tab, string][] = [["summary", "Summary"], ["schematic", "Schematic"], ["fsm", `FSM${fsms.length ? ` (${fsms.length})` : ""}`], ["fpga", "FPGA"], ["bitstream", "Bitstream"]];
 
   return (
     <div className="fixed inset-0 z-50 bg-void/80 flex items-center justify-center p-2 sm:p-4" onClick={onClose}
@@ -318,6 +319,8 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
               </div>
             );
           })()}
+
+          {tab === "bitstream" && <BitstreamTab designCode={designCode} language={language ?? "verilog"} />}
 
           {result?.ok && tab === "schematic" && (
             result.schematicSvg

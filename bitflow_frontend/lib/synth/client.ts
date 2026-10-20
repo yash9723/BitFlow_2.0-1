@@ -5,6 +5,8 @@
  * the browser can't: no WebAssembly / module workers, the Yosys download fails,
  * or a run takes too long. VHDL needs the server's GHDL, so it always goes there.
  */
+import type { BoardId } from "./boards";
+import type { BitstreamResult } from "./fpga";
 import type { SynthKind } from "./run";
 
 const FIRST_RUN_MS = 120_000;   // includes downloading Yosys (~6 MB)
@@ -88,4 +90,48 @@ export async function synthesizeDesign(kind: SynthKind, designCode: string, lang
     return onServer(kind, designCode, language);
   }
   return withDiagrams(result);
+}
+
+// ── Bitstreams for real boards (lib/synth/fpga-worker.ts) ──────────────────
+// Browser only: the server has no chip databases for these boards.
+
+const BITSTREAM_FIRST_MS = 240_000;   // first build downloads the tools and a chip database
+const BITSTREAM_MS       = 90_000;
+
+let fpga: { board: BoardId; worker: Worker; built: boolean } | null = null;
+const fpgaPending = new Map<number, (msg: { result?: BitstreamResult; failed?: string }) => void>();
+
+function stopFpga() {
+  fpga?.worker.terminate();
+  fpga = null;
+  fpgaPending.forEach((done) => done({ failed: "worker stopped" }));
+  fpgaPending.clear();
+}
+
+/** Has a bitstream been built for this board in this tab (tools already downloaded)? */
+export const bitstreamToolsLoaded = (board: BoardId) => fpga?.board === board && fpga.built;
+
+/** Synthesize, place, route and pack for a real board. Never throws. */
+export function buildBitstreamInBrowser(board: BoardId, design: string): Promise<BitstreamResult> {
+  if (!canRunHere()) return Promise.resolve({ ok: false, error: "This browser can't run the FPGA tools (WebAssembly workers are unavailable)." });
+  if (fpga && fpga.board !== board) stopFpga();         // one chip database per worker
+  if (!fpga) {
+    const worker = new Worker(new URL("./fpga-worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (e) => { fpgaPending.get(e.data.id)?.(e.data); fpgaPending.delete(e.data.id); };
+    worker.onerror   = () => stopFpga();
+    fpga = { board, worker, built: false };
+  }
+  const current = fpga;
+  return new Promise((resolve) => {
+    const id = ++seq;
+    const timer = setTimeout(() => { stopFpga(); resolve({ ok: false, error: "The build took too long. Try again, or try a smaller design." }); },
+      current.built ? BITSTREAM_MS : BITSTREAM_FIRST_MS);
+    fpgaPending.set(id, (msg) => {
+      clearTimeout(timer);
+      if (msg.failed !== undefined) return resolve({ ok: false, error: `Couldn't load the FPGA tools (${msg.failed}). Check your connection and try again.` });
+      current.built = true;
+      resolve(msg.result!);
+    });
+    current.worker.postMessage({ id, board, design });
+  });
 }
