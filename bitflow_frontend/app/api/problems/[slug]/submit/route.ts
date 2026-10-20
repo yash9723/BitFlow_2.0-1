@@ -19,7 +19,7 @@ import { getSessionUser } from "@/lib/auth-utils";
 import { lockedBehind } from "@/lib/unlock";
 import { rateLimit } from "@/lib/rate-limit";
 import {
-  counterexampleTable, designPolicyViolation, failingTestWaveform, findCounterexample, formalPolicyViolation, gradeDesign,
+  counterexampleTable, designPolicyViolation, measureFmax, timingTarget, failingTestWaveform, findCounterexample, formalPolicyViolation, gradeDesign,
   gradeFormal, gradeTestbench, gradingTestbenches, testbenchPolicyViolation,
 } from "@/lib/grading";
 import { recordSubmission } from "@/lib/record-submission";
@@ -112,9 +112,28 @@ export async function POST(
     );
   }
 
+  // Timing problems (lib/arena/timing.ts): a correct design must also reach the target clock.
+  const timing = writesTb ? null : timingTarget(question.slug);
+  let fmaxMhz: number | null = null;
+  let tooSlow = false;
+  if (timing && grade.accepted) {
+    const t = await measureFmax(gradedCode, timing.wrapper)
+      .catch((err): { error: string } => ({ error: err instanceof Error ? err.message : String(err) }));
+    if ("mhz" in t) fmaxMhz = t.mhz;
+    if (!("mhz" in t) || t.mhz < timing.targetMhz) {
+      tooSlow = true;
+      grade = {
+        ...grade, accepted: false,
+        errorMessage: "mhz" in t
+          ? `Every result is correct, but the design reaches ${t.mhz} MHz on the iCE40-HX8K and the target is ${timing.targetMhz} MHz. Shorten the longest path between registers.`
+          : `Every result is correct, but the timing check couldn't run: ${t.error}`,
+      };
+    }
+  }
+
   // Started now, awaited below: runs alongside the DB writes.
   const failingWaveform = writesTb ? Promise.resolve(null) : failingTestWaveform(question, gradedCode, grade);
-  const counterexample  = grade.accepted || writesTb ? Promise.resolve(null) : findCounterexample(question, gradedCode);
+  const counterexample  = grade.accepted || writesTb || tooSlow ? Promise.resolve(null) : findCounterexample(question, gradedCode);
   // Optimization scores for the leaderboard (accepted designs only; never affects the verdict)
   const metrics = grade.accepted && !writesTb
     ? metricsOnBackend(gradedCode)
@@ -159,6 +178,10 @@ export async function POST(
       data:  { gateCount: scores.gates, logicDepth: scores.depth, ffBits: scores.ffBits },
     }).catch((err) => reportError("[submit] failed to store metrics:", err));
   }
+  if (saved && fmaxMhz !== null) {
+    await prisma.submission.update({ where: { id: saved.id }, data: { fmaxMhz } })
+      .catch((err) => reportError("[submit] failed to store fmax:", err));
+  }
   const cx = await counterexample;
   if (saved && cx) {
     await prisma.submission.update({ where: { id: saved.id }, data: { counterexample: counterexampleTable(cx) } })
@@ -189,6 +212,7 @@ export async function POST(
       failingWaveform: await failingWaveform,
       counterexample:  cx,
       metrics:         scores,
+      timing:          timing ? { fmaxMhz, targetMhz: timing.targetMhz } : null,
     },
   });
 }

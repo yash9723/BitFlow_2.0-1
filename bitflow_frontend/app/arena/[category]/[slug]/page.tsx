@@ -12,6 +12,7 @@ import { ArenaSolverClient }            from "@/components/ArenaSolverClient";
 import Link                             from "next/link";
 import { getSessionUser }               from "@/lib/auth-utils";
 import { lockedBehind }                 from "@/lib/unlock";
+import { getArenaProblemBySlug }         from "@/lib/arena";
 
 interface PageProps {
   params: Promise<{ category: string; slug: string }>;
@@ -70,6 +71,7 @@ export default async function ArenaPage({ params }: PageProps) {
     publicTestbench:  problem.publicTestbench,
     hiddenTestcases:  [],   // graded server-side; never sent to the browser
     xpReward:         problem.xpReward,
+    timing:           getArenaProblemBySlug(problem.slug)?.timing,
     problemType:      (["testbench", "formal"] as const).find((t) => t === (problem as { problemType?: string }).problemType) ?? "design" as const,
     estimatedMin:     30,
   };

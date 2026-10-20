@@ -163,6 +163,7 @@ export function ArenaSolverClient({ problem }: Props) {
             {hook.submission && !hook.submission.accepted && (
               <ExplainFailureButton onClick={() => { setTutorOpen(true); setAiAsk({ id: Date.now(), prompt: "My last submission failed. Help me understand why, without giving me the answer." }); }} />
             )}
+            {hook.submission?.timing && <TimingResult {...hook.submission.timing} />}
             {hook.submission?.counterexample && <CounterexampleView data={hook.submission.counterexample} />}
             {hook.submission?.failingWaveform && <FailingWaveformView data={hook.submission.failingWaveform} />}
             <details className="group">
@@ -179,9 +180,11 @@ export function ArenaSolverClient({ problem }: Props) {
             </details>
             {!writesTb && (
               <details className="group">
-                <summary className="font-mono text-[11px] font-semibold text-pale cursor-pointer select-none">Smallest-design leaderboard</summary>
+                <summary className="font-mono text-[11px] font-semibold text-pale cursor-pointer select-none">
+                  {problem.timing ? "Fastest-design leaderboard" : "Smallest-design leaderboard"}
+                </summary>
                 <div className="mt-2">
-                  <OptimizationBoard slug={problem.slug} refreshKey={hook.submission} />
+                  <OptimizationBoard slug={problem.slug} refreshKey={hook.submission} fastest={!!problem.timing} />
                 </div>
               </details>
             )}
@@ -297,6 +300,17 @@ export function ArenaSolverClient({ problem }: Props) {
   );
 }
 /** Testbench problems: which of the hidden bugs the student's testbench caught. */
+/** Timing problems: how fast the submitted design runs after place and route. */
+function TimingResult({ fmaxMhz, targetMhz }: { fmaxMhz: number | null; targetMhz: number }) {
+  const fast = fmaxMhz !== null && fmaxMhz >= targetMhz;
+  return (
+    <div className={`rounded border p-3 font-mono text-[11px] ${fast ? "border-phosphor/40 bg-phosphor/5 text-phosphor" : "border-warn/40 bg-warn/5 text-warn"}`}>
+      {fmaxMhz === null ? "Clock speed couldn't be measured." : <>Max clock after place and route: <b>{fmaxMhz} MHz</b></>}
+      <span className="text-dim"> (target {targetMhz} MHz on an iCE40-HX8K)</span>
+    </div>
+  );
+}
+
 function BugHuntResult({ result, formal = false }: { formal?: boolean; result: { accepted: boolean; passed: number; total: number; verdicts: { testcaseId: string; description: string; passed: boolean }[]; errorMessage?: string } }) {
   return (
     <div className={`rounded border p-3 space-y-2 ${result.accepted ? "border-phosphor/40 bg-phosphor/5" : "border-warn/40 bg-warn/5"}`}>

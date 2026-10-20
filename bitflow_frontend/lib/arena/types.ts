@@ -56,6 +56,9 @@ export interface ArenaProblem {
   problemType?: "design" | "testbench" | "formal";
   /** Formal problems: clock cycles the solver searches when checking and grading (default 20). */
   formalDepth?: number;
+  /** Timing problems (lib/arena/timing.ts): Fmax the design must reach on an iCE40-HX8K,
+   *  measured inside `wrapper`, a top module that registers every input and output. */
+  timing?: { targetMhz: number; wrapper: string };
 
   // Rewards
   xpReward:     number;
@@ -117,4 +120,6 @@ export interface ArenaSubmissionResult {
   counterexample?: import("@/lib/grading").Counterexample | null;
   /** Optimization scores of an accepted design. */
   metrics?: { gates: number; depth: number; ffBits: number } | null;
+  /** Timing problems: Fmax after place and route, and the target it had to reach. */
+  timing?: { fmaxMhz: number | null; targetMhz: number } | null;
 }

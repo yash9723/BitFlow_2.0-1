@@ -168,6 +168,7 @@ model Submission {
   gateCount       Int?
   logicDepth      Int?
   ffBits          Int?
+  fmaxMhz         Float?   // timing problems (lib/arena/timing.ts): place-and-route Fmax on an iCE40-HX8K
 
   // Wrong SUBMITs: shortest differing input sequence vs. the reference, as a text
   // table (lib/grading.ts counterexampleTable). Shown to the AI tutor.

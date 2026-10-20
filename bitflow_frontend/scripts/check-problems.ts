@@ -29,6 +29,7 @@ interface CheckProblem {
   slug: string; learningLevel: string; expectedOutputMode: string; problemType: string;
   starterCode: string; publicTestbench: string; hidden: HiddenTest[];
   files: Record<string, string>;   // extra input files, e.g. a $readmemh hex file
+  timing: boolean;                 // lib/arena/timing.ts: the starter is correct, only too slow
 }
 interface RunResult { compiled: boolean; success: boolean; stdout: string; log: string }
 
@@ -84,6 +85,7 @@ const problems: CheckProblem[] = [
 ].map((p: any) => ({
   slug: p.slug,
   problemType: p.problemType ?? "design",
+  timing: !!p.timing,
   learningLevel: p.learningLevel,
   expectedOutputMode: p.expectedOutputMode ?? "stdout_compare",
   starterCode: p.starterCode,
@@ -118,7 +120,10 @@ for (const p of problems) {
     if (compiling.length < 5) fail(p.slug, `only ${compiling.length} compiling mutants of the DUT (need 5)`);
     continue;
   }
-  if (accepted(p, p.starterCode).ok) fail(p.slug, "starter code already passes the hidden tests");
+  if (p.timing) {
+    // A correct but slow starter is the point; the speed check is private/timing/verify.ts (needs nextpnr).
+    if (!accepted(p, p.starterCode).ok) fail(p.slug, "timing problem's starter should pass the hidden tests (only its speed is wrong)");
+  } else if (accepted(p, p.starterCode).ok) fail(p.slug, "starter code already passes the hidden tests");
 }
 
 // Sandbox templates: each design + testbench pair must compile, finish and report no failures.

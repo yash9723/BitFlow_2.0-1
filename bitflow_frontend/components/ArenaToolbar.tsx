@@ -29,7 +29,8 @@ function VerdictBadge({ sub }: { sub: ArenaSubmissionResult | null }) {
   const cls = sub.accepted
     ? "border-phosphor/40 bg-phosphor/10 text-phosphor"
     : "border-danger/40  bg-danger/10  text-danger";
-  const label = sub.accepted ? "✓ Accepted" : "✗ Wrong Answer";
+  const tooSlow = !sub.accepted && !!sub.timing && sub.passed === sub.total;   // timing problems: right answers, slow clock
+  const label = sub.accepted ? "✓ Accepted" : tooSlow ? "✗ Too Slow" : "✗ Wrong Answer";
   return (
     <div className={`font-mono text-[10px] border px-2 py-1 rounded ${cls}`}>
       {label}

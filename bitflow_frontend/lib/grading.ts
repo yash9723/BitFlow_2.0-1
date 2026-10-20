@@ -8,7 +8,7 @@
 
 import type { Testcase, TestcaseVerdict } from "@/lib/problem-types";
 import type { SimulateResponse, TestbenchLanguage } from "@/lib/types";
-import { equivalenceOnBackend, formalOnBackend, simulateOnBackend } from "@/lib/backend";
+import { equivalenceOnBackend, formalOnBackend, fpgaOnBackend, simulateOnBackend } from "@/lib/backend";
 import { parseVcd, type ParsedVcd, type VcdSignal } from "@/lib/vcd-parser";
 import { generateMutants, parseMutants, pickMutants, type Mutant } from "@/lib/mutants";
 import { getArenaProblemBySlug } from "@/lib/arena";
@@ -266,6 +266,24 @@ export const FORMAL_DEPTH = 20;
 
 export function formalDepth(slug?: string): number {
   return (slug && getArenaProblemBySlug(slug)?.formalDepth) || FORMAL_DEPTH;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timing problems (lib/arena/timing.ts): an accepted design must also reach a
+// clock frequency after place and route on an iCE40-HX8K.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function timingTarget(slug?: string) {
+  return (slug && getArenaProblemBySlug(slug)?.timing) || null;
+}
+
+/** Fmax (MHz, slowest clock) of the design inside the problem's register wrapper, or why it couldn't be measured. */
+export async function measureFmax(design: string, wrapper: string): Promise<{ mhz: number } | { error: string }> {
+  const { status, data } = await fpgaOnBackend(`${design}\n\n${wrapper}`, "ice40");
+  if (status !== 200 || !data?.ok) return { error: data?.error || data?.detail || `FPGA backend returned ${status}` };
+  if (!data.pnr?.ok) return { error: data.pnr?.error || "Place and route failed." };
+  const fmax: { mhz: number }[] = data.pnr.fmax ?? [];
+  return fmax.length ? { mhz: Math.min(...fmax.map((f) => f.mhz)) } : { error: "No clocked path found: is clk connected?" };
 }
 
 /** A harness only states properties: no file access or includes (Yosys would read those files). */
