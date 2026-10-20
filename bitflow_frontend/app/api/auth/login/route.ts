@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession, hashPassword, verifyPassword } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
 
     // Max 10 attempts per minute per account: stops password guessing without
     // letting one client lock everyone out (client IPs aren't always known).
-    const { success } = rateLimit(request, {
+    const { success } = await rateLimit(request, {
       limit: 10, windowMs: 60_000, prefix: "login", key: `account:${normalizedUsername.toLowerCase()}`,
     });
     if (!success) {
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (err: any) {
-    console.error("Login error:", err);
+    await reportError("Login error:", err);
     const errorMessage = err?.message || "Internal Server Error";
     return NextResponse.json(
       { error: errorMessage },

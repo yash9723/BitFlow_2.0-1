@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { DAILY_BONUS_XP, currentStreak, getDailyQuestion, todayKey } from "@/lib/daily";
 import { problemHref } from "@/lib/problem-href";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +46,7 @@ export async function GET() {
       },
     });
   } catch (err) {
-    console.error("[daily] error:", err);
+    await reportError("[daily] error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

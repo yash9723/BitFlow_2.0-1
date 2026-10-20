@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function GET() {
       where:   RANKED,
       orderBy: [{ totalXp: "desc" }, { updatedAt: "asc" }],
       take:    LIMIT,
-      select:  { userId: true, totalXp: true, user: { select: { username: true } } },
+      select:  { userId: true, totalXp: true, user: { select: { username: true, publicProfile: true } } },
     });
 
     const solvedCounts = await prisma.userProgress.groupBy({
@@ -42,6 +43,7 @@ export async function GET() {
       return {
         rank,
         username: t.user.username,
+        profile:  t.user.publicProfile,   // links to /u/<username> only when opted in
         totalXp:  t.totalXp,
         solved:   solvedBy.get(t.userId) ?? 0,
         isMe:     t.userId === me?.id,
@@ -68,7 +70,7 @@ export async function GET() {
 
     return NextResponse.json({ entries, me: mine });
   } catch (err) {
-    console.error("[leaderboard] error:", err);
+    await reportError("[leaderboard] error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

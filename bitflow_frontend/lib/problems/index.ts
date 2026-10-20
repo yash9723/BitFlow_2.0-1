@@ -27,6 +27,7 @@ import type {
 import { BEGINNER_PROBLEMS }      from "@/lib/problems/beginner";
 import { INTERMEDIATE_PROBLEMS }  from "@/lib/problems/intermediate";
 import { ADVANCED_PROBLEMS } from "@/lib/problems/advanced";
+import { RISCV_PROBLEMS }    from "@/lib/problems/riscv";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // All problems flat list — used for O(1) slug/id lookups
@@ -36,6 +37,7 @@ const ALL_PROBLEMS: Problem[] = [
   ...BEGINNER_PROBLEMS,
   ...INTERMEDIATE_PROBLEMS,
   ...ADVANCED_PROBLEMS,
+  ...RISCV_PROBLEMS,
   // TODO: ...ARENA_PROBLEMS,
 ];
 
@@ -200,6 +202,14 @@ const ADVANCED_MODULE_DEFS: Omit<PathModule, "problems">[] = [
      description:   "Design a complete system from scratch, with multiple modules and FSMs.",
       icon:          "🏆",
   },
+  {
+    id:            "mod_riscv",
+    title:         "Build a RISC-V CPU",
+    description:   "Six steps from an ALU to a single-cycle RV32I processor that runs loops, memory and function calls.",
+    icon:          "🧠",
+    prerequisites: [],
+    xpToUnlock:    500,
+  },
 ];
 
 export const LEARNING_PATH: LearningPath = {
@@ -229,7 +239,7 @@ export const LEARNING_PATH: LearningPath = {
       difficulty:  "advanced",
       accentColor: "#ffb84d",   // amber
       xpToUnlock:  500,
-      modules:     groupIntoModules(ADVANCED_PROBLEMS, ADVANCED_MODULE_DEFS),
+      modules:     groupIntoModules([...ADVANCED_PROBLEMS, ...RISCV_PROBLEMS], ADVANCED_MODULE_DEFS),
     },
     {
       id:          "lvl_arena",

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export async function GET() {
 
     return NextResponse.json({ totalUsers, totalSubmissions, users: recentUsers });
   } catch (err) {
-    console.error("[GET /api/admin/users] error:", err);
+    await reportError("[GET /api/admin/users] error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

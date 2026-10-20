@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { recordSubmission } from "@/lib/record-submission";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ submission }, { status: 201 });
 
   } catch (err) {
-    console.error("[submissions POST] error:", err);
+    await reportError("[submissions POST] error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }
@@ -155,7 +156,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ submissions });
 
   } catch (err) {
-    console.error("[submissions GET] error:", err);
+    await reportError("[submissions GET] error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

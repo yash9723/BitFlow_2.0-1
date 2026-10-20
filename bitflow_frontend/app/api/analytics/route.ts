@@ -36,7 +36,7 @@ function referrerHost(raw: unknown, ownHost: string | null): string {
 export async function POST(request: Request) {
   const h = request.headers;
   if (h.get("dnt") === "1" || h.get("sec-gpc") === "1" || BOT_UA.test(h.get("user-agent") ?? "")) return none();
-  if (!rateLimit(request, { limit: 120, anonymousLimit: 2000, windowMs: 60_000, prefix: "pageview" }).success) return none();
+  if (!(await rateLimit(request, { limit: 120, anonymousLimit: 2000, windowMs: 60_000, prefix: "pageview" })).success) return none();
 
   let body: { path?: unknown; referrer?: unknown };
   try {

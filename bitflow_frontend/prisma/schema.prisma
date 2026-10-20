@@ -18,6 +18,7 @@ model User {
   password    String
   role        String         @default("STUDENT") // "STUDENT" | "ADMIN"
   recoveryCodeHash String?   // one-time password-reset code (scrypt, like passwords); null = none
+  publicProfile    Boolean   @default(false) // opt-in: /u/<username> shows stats, badges, certificates
   createdAt   DateTime       @default(now())
 
   // Relations
@@ -28,6 +29,7 @@ model User {
   ownedClasses     Classroom[]   @relation("OwnedClasses")
   classMemberships ClassMember[]
   sharedDesigns    SharedDesign[]
+  certificates     Certificate[]
 }
 
 // ============================================================================
@@ -290,4 +292,49 @@ model PageView {
 
   @@unique([day, path, referrer])
   @@index([day])
+}
+
+// ============================================================================
+// RATE LIMITS — fixed-window counters shared by every server instance
+// (serverless functions don't share memory). See lib/rate-limit.ts.
+// ============================================================================
+
+model RateLimit {
+  key     String   @id // "<prefix>:<user:id | ip:addr | anonymous>"
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
+}
+
+// ============================================================================
+// ERROR LOG — server and browser errors for the admin page (kept 30 days).
+// No request bodies or user data: where it happened and what was thrown.
+// ============================================================================
+
+model ErrorLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  source    String // "server" | "client"
+  location  String // API route label or page path
+  message   String
+  stack     String?
+
+  @@index([createdAt])
+}
+
+// ============================================================================
+// CERTIFICATES — claimed by the learner after solving every problem in a
+// track (lib/tracks.ts); public at /c/<id> so they can be shared and verified.
+// ============================================================================
+
+model Certificate {
+  id       String   @id // short random id used in the public URL
+  userId   String
+  track    String   // lib/tracks.ts TRACKS[].id
+  issuedAt DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, track])
 }

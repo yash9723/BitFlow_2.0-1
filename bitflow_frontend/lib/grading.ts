@@ -9,7 +9,7 @@
 import type { Testcase, TestcaseVerdict } from "@/lib/problem-types";
 import type { SimulateResponse } from "@/lib/types";
 import { equivalenceOnBackend, simulateOnBackend } from "@/lib/backend";
-import { parseVcd, type ParsedVcd } from "@/lib/vcd-parser";
+import { parseVcd, type ParsedVcd, type VcdSignal } from "@/lib/vcd-parser";
 import { generateMutants, parseMutants, pickMutants, type Mutant } from "@/lib/mutants";
 
 export interface GradableQuestion {
@@ -346,33 +346,103 @@ export interface FailingWaveform {
   /** Hidden testcase it was captured on (null for single-testbench problems). */
   testcaseId: string | null;
   waveform:   ParsedVcd;
+  /**
+   * When a reference solution is stored: each output appears as "<out> (yours)"
+   * and "<out> (expected)", and these are the time ranges where they differ.
+   */
+  mismatches?: { from: number; to: number }[];
 }
 
-/** DUT-only waveform for the first failing test, or null if unavailable. */
+/** Waveform of `design`'s DUT instance on `testbench`, or null. */
+async function dutWaveform(design: string, testbench: string, files: Record<string, string> | null): Promise<ParsedVcd | null> {
+  const scope = dutScope(design, testbench);
+  if (!scope) return null;
+  const r = await simulate(
+    design,
+    `${testbench}\nmodule __bf_dump;\n  initial begin $dumpfile("wave.vcd"); $dumpvars(0, ${scope}); end\nendmodule\n`,
+    files,
+  );
+  const b64 = r.waveform?.vcd_base64;
+  return b64 ? parseVcd(Buffer.from(b64, "base64").toString("utf8"), scope) : null;
+}
+
+/** Output port names of the module the testbench instantiates (ANSI and non-ANSI headers). */
+export function outputPorts(design: string, testbench: string): string[] {
+  for (const [, mod, body] of design.matchAll(/\bmodule\s+([A-Za-z_]\w*)([\s\S]*?)\bendmodule\b/g)) {
+    if (!new RegExp(`\\b${mod}\\b`).test(testbench)) continue;
+    const names = new Set<string>();
+    for (const [, list] of body.matchAll(/\boutput\b\s*(?:reg|wire|logic)?\s*(?:signed\s*)?(?:\[[^\]]*\]\s*)?([A-Za-z_]\w*(?:\s*,\s*(?!input\b|output\b|inout\b)[A-Za-z_]\w*)*)/g)) {
+      list.split(",").forEach((n) => names.add(n.trim()));
+    }
+    return [...names];
+  }
+  return [];
+}
+
+/** Time ranges where `got` differs from `want` (an x in `want` is a don't-care), merged. */
+export function mismatchRanges(
+  pairs: { got: VcdSignal; want: VcdSignal }[], maxTime: number,
+): { from: number; to: number }[] {
+  const times = [...new Set(pairs.flatMap(({ got, want }) => [...got.changes, ...want.changes].map((c) => c.time)))].sort((a, b) => a - b);
+  const ranges: { from: number; to: number }[] = [];
+  times.forEach((t, i) => {
+    const bad = pairs.some(({ got, want }) => {
+      const w = valueAt(want.changes, t), g = valueAt(got.changes, t);
+      if (w === undefined) return false;
+      if (g === undefined || w.length !== g.length) return true;
+      return [...w].some((bit, k) => bit !== "x" && bit !== g[k]);
+    });
+    if (!bad) return;
+    const to = times[i + 1] ?? maxTime;
+    const last = ranges[ranges.length - 1];
+    if (last && last.to === t) last.to = to;
+    else ranges.push({ from: t, to });
+  });
+  return ranges;
+}
+
+/**
+ * DUT-only waveform for the first failing test, or null if unavailable. With a
+ * stored reference solution, the expected outputs are run on the same test and
+ * shown next to the learner's (outputs only — the reference's internals and
+ * source never leave the server).
+ */
 export async function failingTestWaveform(
-  q: GradableQuestion, designCode: string, grade: GradeResult,
+  q: GradableQuestion & { referenceSolution?: string | null }, designCode: string, grade: GradeResult,
 ): Promise<FailingWaveform | null> {
   if (grade.accepted) return null;
   const cases  = parseTestcases(q.hiddenTestcases);
   const failed = grade.verdicts.findIndex((v) => !v.passed);
   const testbench = cases.length ? cases[failed]?.testbench : q.hiddenTestbench || q.publicTestbench;
   if (!testbench) return null;
-
-  const scope = dutScope(designCode, testbench);
-  if (!scope) return null;
+  const files = parseDataFiles(q.dataFiles);
+  const testcaseId = cases.length ? grade.verdicts[failed].testcaseId : null;
 
   try {
-    const r = await simulate(
-      designCode,
-      `${testbench}\nmodule __bf_dump;\n  initial begin $dumpfile("wave.vcd"); $dumpvars(0, ${scope}); end\nendmodule\n`,
-      parseDataFiles(q.dataFiles),
-    );
-    const b64 = r.waveform?.vcd_base64;
-    if (!b64) return null;
-    const waveform = parseVcd(Buffer.from(b64, "base64").toString("utf8"), scope);
-    const changes  = waveform.signals.reduce((n, s) => n + s.changes.length, 0);
+    const [waveform, reference] = await Promise.all([
+      dutWaveform(designCode, testbench, files),
+      q.referenceSolution ? dutWaveform(q.referenceSolution, testbench, files).catch(() => null) : null,
+    ]);
+    if (!waveform) return null;
+    const changes = waveform.signals.reduce((n, s) => n + s.changes.length, 0);
     if (waveform.signals.length === 0 || changes > MAX_WAVEFORM_CHANGES) return null;
-    return { testcaseId: cases.length ? grade.verdicts[failed].testcaseId : null, waveform };
+    if (!reference) return { testcaseId, waveform };
+
+    // Pair each output port: "<out> (yours)" then "<out> (expected)".
+    const outs = new Set(outputPorts(q.referenceSolution!, testbench));
+    const pairs: { got: VcdSignal; want: VcdSignal }[] = [];
+    const signals: VcdSignal[] = [];
+    for (const s of waveform.signals) {
+      const want = outs.has(s.name) ? reference.signals.find((r) => r.name === s.name && r.width === s.width) : undefined;
+      if (!want) { signals.push(s); continue; }
+      const got = { ...s, name: `${s.name} (yours)` };
+      const exp = { ...want, id: `expected:${want.id}`, name: `${s.name} (expected)` };
+      signals.push(got, exp);
+      pairs.push({ got, want: exp });
+    }
+    if (!pairs.length) return { testcaseId, waveform };
+    const maxTime = Math.max(waveform.maxTime, reference.maxTime);
+    return { testcaseId, waveform: { ...waveform, signals, maxTime }, mismatches: mismatchRanges(pairs, maxTime) };
   } catch (err) {
     console.warn("[grading] failing-test waveform unavailable:", err);
     return null;

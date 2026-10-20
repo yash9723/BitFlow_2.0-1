@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +55,7 @@ export async function GET() {
       },
     });
   } catch (err) {
-    console.error("Fetch progress error:", err);
+    await reportError("Fetch progress error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
-    console.error("Update progress error:", err);
+    await reportError("Update progress error:", err);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

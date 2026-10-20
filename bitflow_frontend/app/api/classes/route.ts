@@ -41,7 +41,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const me = await getSessionUser();
   if (!me) return NextResponse.json({ error: "Sign in to create a class." }, { status: 401 });
-  if (!rateLimit(request, { limit: 10, windowMs: 60 * 60_000, prefix: "class-create", key: `user:${me.id}` }).success) {
+  if (!(await rateLimit(request, { limit: 10, windowMs: 60 * 60_000, prefix: "class-create", key: `user:${me.id}` })).success) {
     return NextResponse.json({ error: "Too many classes created. Try again later." }, { status: 429 });
   }
 

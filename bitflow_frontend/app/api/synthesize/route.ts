@@ -14,6 +14,7 @@ import { boardOnBackend, fpgaOnBackend, metricsOnBackend, synthesizeOnBackend } 
 import { rateLimit } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth-utils";
 import { fsmSvg, schematicSvg, type FsmInfo } from "@/lib/hardware-diagrams";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ const MAX_SOURCE_CHARS = 512 * 1024;
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
-  const { success } = rateLimit(request, {
+  const { success } = await rateLimit(request, {
     limit: 15, anonymousLimit: 60, windowMs: 60_000, prefix: "synth",
     key: user ? `user:${user.id}` : undefined,
   });
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
     try {
       ({ status, data } = await (body.board === true ? boardOnBackend(designCode) : fpgaOnBackend(designCode, body.fpga)));
     } catch (err) {
-      console.error("[synthesize] backend unreachable:", err);
+      await reportError("[synthesize] backend unreachable:", err);
       return NextResponse.json({ error: "Synthesis backend unavailable." }, { status: 502 });
     }
     if (status !== 200) {
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
   try {
     ({ status, data } = await synthesizeOnBackend(designCode));
   } catch (err) {
-    console.error("[synthesize] backend unreachable:", err);
+    await reportError("[synthesize] backend unreachable:", err);
     return NextResponse.json({ error: "Synthesis backend unavailable." }, { status: 502 });
   }
   if (status !== 200) {

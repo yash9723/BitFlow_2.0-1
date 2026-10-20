@@ -39,6 +39,7 @@ jobs:
       - run: npm run check-contests
       - run: npm run check-diagnostics
       - run: npm run check-mutants
+      - run: npm run check-waveform-diff
 
   web:
     name: Frontend type-check + build

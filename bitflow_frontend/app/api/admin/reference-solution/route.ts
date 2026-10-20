@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { verifyReferenceSolution } from "@/lib/grading";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
   try {
     result = await verifyReferenceSolution(question, code);
   } catch (err) {
-    console.error("[admin/reference-solution] grading failed:", err);
+    await reportError("[admin/reference-solution] grading failed:", err);
     return NextResponse.json({ error: "Simulation backend unavailable." }, { status: 502 });
   }
   if (!result.ok) {

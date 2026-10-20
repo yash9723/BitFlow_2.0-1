@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
 
-  const { success } = rateLimit(request, { limit: 10, windowMs: 60_000, prefix: "recovery", key: `user:${user.id}` });
+  const { success } = await rateLimit(request, { limit: 10, windowMs: 60_000, prefix: "recovery", key: `user:${user.id}` });
   if (!success) return NextResponse.json({ error: "Too many attempts. Please wait a moment." }, { status: 429 });
 
   const { currentPassword } = await request.json().catch(() => ({}));

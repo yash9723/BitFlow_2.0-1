@@ -52,6 +52,7 @@ import {
 }                                    from "@/lib/ai-prompts";
 import type { AIMessage }            from "@/lib/ai-providers";
 import type { IDEContext }           from "@/lib/ai-prompts";
+import { reportError } from "@/lib/error-log";
 
 interface RequestBody {
   messages: AIMessage[];
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "Sign in to use the AI assistant." }, { status: 401 });
   }
-  const { success } = rateLimit(req, { limit: 20, windowMs: 60_000, prefix: "ai", key: `user:${user.id}` });
+  const { success } = await rateLimit(req, { limit: 20, windowMs: 60_000, prefix: "ai", key: `user:${user.id}` });
   if (!success) {
     return NextResponse.json(
       { error: "Too many AI requests. Please wait a moment and try again." },
@@ -157,7 +158,7 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Internal server error";
 
     // Log server-side (never leaks API keys — we only log the message string)
-    console.error("[BitFlow AI] /api/ai/chat error:", message);
+    await reportError("[BitFlow AI] /api/ai/chat error:", message);
 
     // Never forward raw provider errors (they can name the provider, model or
     // key format); the details are in the server log above.

@@ -21,6 +21,7 @@ import {
 import { recordSubmission } from "@/lib/record-submission";
 import { metricsOnBackend } from "@/lib/backend";
 import { claimDailyBonus, getDailyQuestion } from "@/lib/daily";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function POST(
   { params }: { params: { slug: string } }
 ) {
   const user = await getSessionUser();
-  const { success } = rateLimit(request, {
+  const { success } = await rateLimit(request, {
     limit: 10, anonymousLimit: 60, windowMs: 60_000, prefix: "submit",
     key: user ? `user:${user.id}` : undefined,
   });
@@ -73,7 +74,7 @@ export async function POST(
   try {
     grade = isTestbench ? await gradeTestbench(question, testbenchCode) : await gradeDesign(question, designCode);
   } catch (err) {
-    console.error("[submit] grading failed:", err);
+    await reportError("[submit] grading failed:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Simulation backend unavailable" },
       { status: 502 }
@@ -113,9 +114,9 @@ export async function POST(
     waveformVcd: null,
     xpEarned:        xpReward,
     accepted:    grade.accepted,
-  }).catch((err) => {
+  }).catch(async (err) => {
     // Grading succeeded; don't hide the verdict because the history write failed.
-    console.error("[submit] failed to record submission:", err);
+    await reportError("[submit] failed to record submission:", err);
     return null;
   });
 
@@ -124,12 +125,12 @@ export async function POST(
     await prisma.submission.update({
       where: { id: saved.id },
       data:  { gateCount: scores.gates, logicDepth: scores.depth, ffBits: scores.ffBits },
-    }).catch((err) => console.error("[submit] failed to store metrics:", err));
+    }).catch((err) => reportError("[submit] failed to store metrics:", err));
   }
   const cx = await counterexample;
   if (saved && cx) {
     await prisma.submission.update({ where: { id: saved.id }, data: { counterexample: counterexampleTable(cx) } })
-      .catch((err) => console.error("[submit] failed to store counterexample:", err));
+      .catch((err) => reportError("[submit] failed to store counterexample:", err));
   }
 
   // Daily challenge: one-time bonus for solving today's problem today.

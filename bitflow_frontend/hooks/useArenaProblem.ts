@@ -9,10 +9,10 @@
  * useProblem; hidden testcases never reach the browser.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { ArenaProblem, ArenaSubmissionResult } from "@/lib/arena/types";
 import type { SimulateResponse } from "@/lib/types";
-import { runSimulation, submitSolution } from "@/lib/api";
+import { runSimulation, submitSolution, checkHealth } from "@/lib/api";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -66,6 +66,9 @@ export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
   const [testbenchCode, setTestbenchCode] = useState(problem.testbenchSkeleton);
   const [runState,      setRunState]      = useState<ArenaRunState>("idle");
   const [runResult,     setRunResult]     = useState<SimulateResponse | null>(null);
+
+  // Wake the simulator (it sleeps when idle) while the learner reads the problem.
+  useEffect(() => { checkHealth(); }, []);
   const [submission,    setSubmission]    = useState<ArenaSubmissionResult | null>(null);
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   const [submittingIndex, setSubmittingIndex] = useState(0);

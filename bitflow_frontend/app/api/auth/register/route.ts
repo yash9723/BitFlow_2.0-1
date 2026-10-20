@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createSession, hashPassword, passwordProblem, usernameProblem } from "@/lib/auth-utils";
 import { botProblem, newFormToken } from "@/lib/bot-check";
 import { rateLimit } from "@/lib/rate-limit";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export function GET() {
 
 export async function POST(request: Request) {
   // 5/min per client IP; unidentified clients share a roomier bucket (class sign-ups).
-  const { success } = rateLimit(request, { limit: 5, anonymousLimit: 30, windowMs: 60_000, prefix: "register" });
+  const { success } = await rateLimit(request, { limit: 5, anonymousLimit: 30, windowMs: 60_000, prefix: "register" });
   if (!success) {
     return NextResponse.json(
       { error: "Too many registration attempts. Please wait a moment and try again." },
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ user });
   } catch (err: any) {
-    console.error("Registration error:", err);
+    await reportError("Registration error:", err);
     return NextResponse.json(
       { error: "Registration failed. Please try again." },
       { status: 500 }

@@ -80,6 +80,8 @@ interface WaveformPanelProps {
   parsedVcd : ParsedVcd;
   /** The run it came from — enables the VCD download button. */
   result?   : SimulateResponse;
+  /** Time ranges to shade red (e.g. where "yours" differs from "expected"). */
+  highlights?: { from: number; to: number }[];
 }
 
 /** Captured on every mouse-move; drives the label-column value badges. */
@@ -415,7 +417,7 @@ const SignalLabel = React.memo(function SignalLabel({
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps) {
+export default function WaveformPanel({ parsedVcd, result, highlights }: WaveformPanelProps) {
   const { signals, maxTime, timescale } = parsedVcd;
 
   // ── Refs ──────────────────────────────────────────────────────────────────
@@ -1018,6 +1020,22 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
                 <rect x={0} y={0} width={chartW} height={svgH}  fill="#0d0e11" />
                 <rect x={0} y={0} width={chartW} height={AXIS_H} fill="#13141a" />
 
+                {/* ── Mismatch bands (yours ≠ expected) ─────────────────── */}
+                {highlights?.map((h, i) => (
+                  <rect key={`hl-${i}`} x={h.from * pxPerUnit} y={AXIS_H}
+                        width={Math.max((h.to - h.from) * pxPerUnit, 2)} height={svgH - AXIS_H}
+                        fill="#ff4f4f" opacity={0.14} />
+                ))}
+                {highlights?.[0] && (
+                  <g>
+                    <line x1={highlights[0].from * pxPerUnit} x2={highlights[0].from * pxPerUnit} y1={AXIS_H} y2={svgH}
+                          stroke="#ff4f4f" strokeWidth={1.5} strokeDasharray="3 3" />
+                    <text x={highlights[0].from * pxPerUnit + 4} y={AXIS_H - 6} fontSize={9} fill="#ff4f4f" fontFamily="monospace">
+                      first difference
+                    </text>
+                  </g>
+                )}
+
                 {/* ── Grid infrastructure ───────────────────────────────── */}
                 {gridElements.tickLines}
                 {gridElements.rowDividers}
@@ -1071,14 +1089,23 @@ export default function WaveformPanel({ parsedVcd, result }: WaveformPanelProps)
   );
 }
 /** The learner's own signals on the first failing hidden test (from the submit response). */
-export function FailingWaveformView({ data }: { data: { testcaseId: string | null; waveform: ParsedVcd } }) {
+export function FailingWaveformView({ data }: {
+  data: { testcaseId: string | null; waveform: ParsedVcd; mismatches?: { from: number; to: number }[] };
+}) {
+  const test = data.testcaseId ? `failing test ${data.testcaseId}` : "the failing test";
+  const diff = data.mismatches;
   return (
     <div className="space-y-1">
       <p className="font-mono text-[9px] text-dim">
-        Your design on {data.testcaseId ? `failing test ${data.testcaseId}` : "the failing test"}: only signals inside your module are shown.
+        {diff
+          ? <>Your design on {test}. Each output is shown twice: &ldquo;yours&rdquo; and &ldquo;expected&rdquo; (a correct design on the same test).{" "}
+              {diff.length
+                ? <span className="text-danger">Red bands mark where they differ; the first difference is at t={diff[0].from}.</span>
+                : "They match on this test, so the failure comes from the test's own checks (such as timing or printed output)."}</>
+          : <>Your design on {test}: only signals inside your module are shown.</>}
       </p>
-      <div className="h-64 border border-rim/60 rounded overflow-hidden">
-        <WaveformPanel parsedVcd={data.waveform} />
+      <div className={`h-64 border rounded overflow-hidden ${diff?.length ? "border-danger/40" : "border-rim/60"}`}>
+        <WaveformPanel parsedVcd={data.waveform} highlights={diff} />
       </div>
     </div>
   );

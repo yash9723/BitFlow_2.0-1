@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-type Entry = { rank: number; username: string; totalXp: number; solved: number; isMe: boolean };
+type Entry = { rank: number; username: string; profile: boolean; totalXp: number; solved: number; isMe: boolean };
 type Mine = { username: string; totalXp: number; solved: number; rank: number | null } | null;
 type Daily = {
   date: string;
@@ -113,7 +113,9 @@ export default function LeaderboardPage() {
                       #{e.rank}
                     </td>
                     <td className="px-2 py-2.5 text-pale truncate max-w-0 w-full">
-                      {e.username}
+                      {e.profile
+                        ? <Link href={`/u/${encodeURIComponent(e.username)}`} className="hover:text-phosphor hover:underline">{e.username}</Link>
+                        : e.username}
                       {e.isMe && <span className="ml-2 text-[10px] text-phosphor uppercase tracking-wider">you</span>}
                     </td>
                     <td className="px-2 py-2.5 text-right text-ghost">{e.solved}</td>

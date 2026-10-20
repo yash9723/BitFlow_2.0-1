@@ -165,6 +165,14 @@ const ADVANCED_MODULE_DEFS = [
      xpToUnlock:    1200,
      description:   "Design a complete system from scratch, with multiple modules and FSMs.",
   },
+  {
+    id:            "mod_riscv",
+    title:         "Build a RISC-V CPU",
+    description:   "Six steps from an ALU to a single-cycle RV32I processor that runs loops, memory and function calls.",
+    icon:          "🧠",
+    prerequisites: [],
+    xpToUnlock:    500,
+  },
 ];
 
 // Helper to group flat problems into modules

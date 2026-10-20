@@ -29,6 +29,8 @@ export default function PrivacyPage() {
         <li><strong>Classes:</strong> if you join a class, its teachers see your username and your progress on the class&apos;s assignments.</li>
         <li><strong>Share links:</strong> a design you share is readable by anyone who has the link; ask us if you want one taken down.</li>
         <li><strong>Public leaderboard:</strong> your username, XP and number of solved problems.</li>
+        <li><strong>Public profile (off by default):</strong> if you switch it on, anyone with the link can see your stats, badges, activity and recently solved problems. Switch it off any time.</li>
+        <li><strong>Certificates:</strong> when you claim one, its page (your username, the track and the date) is public at its link so others can verify it.</li>
       </ul>
 
       <h2>Cookies and local storage</h2>
@@ -56,8 +58,9 @@ export default function PrivacyPage() {
 
       <h2>Server logs and security</h2>
       <p>
-        Our servers keep short-lived technical logs (time, request path, errors) to keep the service running, and
-        keep IP addresses in memory only briefly, for rate limiting. Traffic is encrypted with HTTPS and passwords
+        Our servers keep technical logs to keep the service running: errors (time, page, error message) for 30 days,
+        and short-lived request counters for rate limiting, keyed by account or IP address and deleted within the
+        hour after they expire. Traffic is encrypted with HTTPS and passwords
         are hashed with scrypt.
       </p>
 

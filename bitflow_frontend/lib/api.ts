@@ -13,6 +13,7 @@
 
 import axios, { AxiosError } from "axios";
 import type { SimulateRequest, SimulateResponse } from "./types";
+import { trackWake } from "./sim-status";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Axios instance
@@ -112,10 +113,7 @@ export async function runSimulation(
   retries = 6
 ): Promise<SimulateResponse> {
   try {
-    const { data } = await apiClient.post<SimulateResponse>(
-      "",
-      payload
-    );
+    const { data } = await trackWake(apiClient.post<SimulateResponse>("", payload));
     return data;
   } catch (err) {
     // Retry only real outages (connection dropped, server restarting: 502/503/504).
@@ -146,11 +144,11 @@ export async function submitSolution<T>(
   testbenchCode: string
 ): Promise<T> {
   try {
-    const { data } = await axios.post<{ submission: T }>(
+    const { data } = await trackWake(axios.post<{ submission: T }>(
       `/api/problems/${encodeURIComponent(slug)}/submit`,
       { designCode, testbenchCode },
       { timeout: 300_000 } // several hidden testcases, each up to 30 s
-    );
+    ));
     return data.submission;
   } catch (err) {
     throw normaliseError(err);
@@ -160,13 +158,13 @@ export async function submitSolution<T>(
 /**
  * GET /health
  *
- * Quick liveness check — useful for showing a "backend offline" banner
- * before the user hits Run.
+ * Called when an editor page opens: wakes the simulator if it is asleep, so
+ * it is usually ready by the first Run (lib/sim-status.ts shows the wait).
  * Returns true if the backend responds, false otherwise (never throws).
  */
 export async function checkHealth(): Promise<boolean> {
   try {
-    await axios.get("/api/simulate/health", { timeout: 3_000 });
+    await trackWake(axios.get("/api/simulate/health", { timeout: 120_000 }));
     return true;
   } catch {
     return false;

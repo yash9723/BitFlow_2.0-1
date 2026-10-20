@@ -60,6 +60,7 @@ export type ProblemCategory =
   | "arithmetic"       // ALUs, multipliers, dividers
   | "interface"        // UART, SPI, I2C protocols (future)
   | "pipeline"         // Pipelined datapaths (advanced)
+  | "riscv"            // RISC-V CPU project track (lib/problems/riscv.ts)
   | "verification";    // Testbench writing and assertion-based verification
 
 // ─────────────────────────────────────────────────────────────────────────────

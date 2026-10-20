@@ -14,12 +14,13 @@ import { NextResponse } from "next/server";
 import { simulateOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
 import { getSessionUser } from "@/lib/auth-utils";
+import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
-  const { success } = rateLimit(request, {
+  const { success } = await rateLimit(request, {
     limit: 30, anonymousLimit: 120, windowMs: 60_000, prefix: "simulate",
     key: user ? `user:${user.id}` : undefined,
   });
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     const { status, data } = await simulateOnBackend(body);
     return NextResponse.json(data, { status });
   } catch (err: any) {
-    console.error("[Simulate Proxy] Error:", err);
+    await reportError("[Simulate Proxy] Error:", err);
     return NextResponse.json(
       { error: err?.message || "Failed to reach simulation backend" },
       { status: 502 }
