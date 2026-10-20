@@ -22,6 +22,7 @@ import { LEARNING_PATH } from "../lib/problems/index";
 import { ALL_ARENA_PROBLEMS } from "../lib/arena/index";
 import { sentinelPassed, testcasePassed, usesStdoutCompare } from "../lib/grading";
 import { TEMPLATES } from "../lib/templates";
+import { combineDesign, dataFiles } from "../lib/project-files";
 import { generateMutants } from "../lib/mutants";
 
 interface HiddenTest { name: string; testbench: string; expected: string | null }
@@ -129,7 +130,9 @@ for (const p of problems) {
 // Sandbox templates: each design + testbench pair must compile, finish and report no failures.
 for (const [key, t] of Object.entries(TEMPLATES)) {
   if (t.designLanguage === "vhdl" || t.testbenchLanguage === "python") continue;   // need GHDL / cocotb: covered by the API tests
-  const r = simulate(t.design, t.testbench);
+  // Multi-file templates are combined the way the Sandbox sends them (lib/project-files.ts).
+  const files = t.files ?? [];
+  const r = simulate(combineDesign(t.design, files).code, t.testbench, dataFiles(files) ?? {});
   if (!r.compiled) fail(`template ${key}`, `does not compile: ${r.log.trim().split("\n")[0]}`);
   else if (!r.success || /\bFAIL/.test(r.stdout)) fail(`template ${key}`, r.log.trim().split("\n").slice(-3).join(" | "));
 }

@@ -32,6 +32,8 @@ export interface ZipExportOptions {
   designCode:    string;
   testbenchCode: string;
   result:        SimulateResponse;
+  /** More design files of a multi-file project (lib/project-files.ts). */
+  files?:        { name: string; content: string }[];
 }
 
 /**
@@ -43,7 +45,7 @@ export interface ZipExportOptions {
  * @param options — editor content + last simulation result
  */
 export async function exportProjectZip(options: ZipExportOptions): Promise<void> {
-  const { designCode, testbenchCode, result } = options;
+  const { designCode, testbenchCode, result, files = [] } = options;
 
   // ── Lazy-load JSZip ────────────────────────────────────────────────────────
   // Dynamic import keeps it out of the initial bundle.
@@ -56,6 +58,7 @@ export async function exportProjectZip(options: ZipExportOptions): Promise<void>
 
   // ── tb.v ──────────────────────────────────────────────────────────────────
   zip.file("tb.v", testbenchCode, { date: new Date() });
+  for (const f of files) zip.file(f.name, f.content, { date: new Date() });
 
   // ── wave.vcd — only when the simulation produced a waveform ───────────────
   if (result.waveform.available && result.waveform.vcd_base64) {

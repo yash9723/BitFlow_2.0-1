@@ -258,6 +258,7 @@ model SharedDesign {
   title         String
   designCode    String
   testbenchCode String
+  files         String?  // JSON [{name, content}]: more design files (lib/project-files.ts)
   createdAt     DateTime @default(now())
 
   owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)

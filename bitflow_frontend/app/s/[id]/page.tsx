@@ -13,13 +13,13 @@ export const dynamic = "force-dynamic";
 async function getShared(id: string) {
   return prisma.sharedDesign.findUnique({
     where:  { id },
-    select: { title: true, designCode: true, testbenchCode: true, createdAt: true, owner: { select: { username: true } } },
+    select: { title: true, designCode: true, testbenchCode: true, files: true, createdAt: true, owner: { select: { username: true } } },
   });
 }
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const s = await getShared(params.id);
-  return { title: s ? `${s.title} · BitFlow` : "Design not found · BitFlow" };
+  return { title: s ? s.title : "Design not found" };   // the root layout adds " · BitFlow"
 }
 
 function Code({ name, code }: { name: string; code: string }) {
@@ -33,9 +33,20 @@ function Code({ name, code }: { name: string; code: string }) {
   );
 }
 
+/** Extra design files of a multi-file project, if any. */
+function parseFiles(json: string | null): { name: string; content: string }[] {
+  try {
+    const v = JSON.parse(json || "[]");
+    return Array.isArray(v) ? v.filter((f) => typeof f?.name === "string" && typeof f?.content === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function SharedDesignPage({ params }: { params: { id: string } }) {
   const s = await getShared(params.id);
   if (!s) notFound();
+  const files = parseFiles(s.files);
 
   return (
     <div className="min-h-screen bg-void text-bright">
@@ -52,11 +63,12 @@ export default async function SharedDesignPage({ params }: { params: { id: strin
               by {s.owner.username} · {s.createdAt.toISOString().slice(0, 10)}
             </p>
           </div>
-          <ForkButton designCode={s.designCode} testbenchCode={s.testbenchCode} />
+          <ForkButton designCode={s.designCode} testbenchCode={s.testbenchCode} files={files} />
         </div>
         <div className="grid lg:grid-cols-2 gap-4">
           <Code name="design.v" code={s.designCode} />
           <Code name="tb.v" code={s.testbenchCode} />
+          {files.map((f) => <Code key={f.name} name={f.name} code={f.content} />)}
         </div>
       </main>
     </div>

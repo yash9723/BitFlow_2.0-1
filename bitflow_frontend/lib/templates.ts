@@ -28,6 +28,8 @@ export interface VerilogTemplate {
   design: string;
   /** Full contents of tb.v. */
   testbench: string;
+  /** More design files, shown as tabs next to design.v (lib/project-files.ts). */
+  files?: { name: string; content: string }[];
   /** Languages of the two editors; Verilog (incl. SystemVerilog) when omitted. */
   designLanguage?:    "verilog" | "vhdl";
   testbenchLanguage?: "verilog" | "vhdl" | "python";
@@ -590,6 +592,180 @@ endmodule
 `,
   },
 
+  // ── Multi-file project ─────────────────────────────────────────────────────
+  uartEchoFiles: {
+    label    : "Project in several files: UART echo",
+    category : "sequential",
+    design   : `\`timescale 1ns / 1ps
+
+// A project in several files: the UART echo, split into modules.
+//   design.v   the top level: connects the receiver to the transmitter
+//   uart_rx.v  serial line in  -> bytes
+//   uart_tx.v  bytes           -> serial line out
+// Every .v tab is compiled together; add your own with the + button.
+module uart_echo #(parameter CLKS_PER_BIT = 16) (
+    input  wire       clk,
+    input  wire       rst,
+    input  wire       rx,
+    output wire       tx,
+    output reg  [4:0] led
+);
+    wire [7:0] byte_in;
+    wire       byte_valid;
+
+    uart_rx #(.CLKS_PER_BIT(CLKS_PER_BIT)) receiver (
+        .clk(clk), .rst(rst), .rx(rx), .data(byte_in), .valid(byte_valid)
+    );
+
+    uart_tx #(.CLKS_PER_BIT(CLKS_PER_BIT)) transmitter (
+        .clk(clk), .rst(rst), .data(byte_in), .start(byte_valid), .tx(tx), .busy()
+    );
+
+    always @(posedge clk) if (byte_valid) led <= byte_in[4:0];
+endmodule
+`,
+    files    : [
+      { name: "uart_rx.v", content: `// UART receiver, 8N1: samples the middle of each bit and pulses \`valid\`
+// for one clock with the byte in \`data\`.
+module uart_rx #(parameter CLKS_PER_BIT = 16) (
+    input  wire       clk,
+    input  wire       rst,
+    input  wire       rx,
+    output reg  [7:0] data,
+    output reg        valid
+);
+    reg [1:0] sync;                        // two flip-flops against metastability
+    always @(posedge clk) sync <= {sync[0], rx};
+    wire line = sync[1];
+
+    reg       busy;
+    reg [7:0] count;                       // clocks until the next sample
+    reg [3:0] bit_n;                       // 0 = start bit, 1-8 = data, 9 = stop
+    reg [7:0] shift;
+
+    always @(posedge clk) begin
+        valid <= 1'b0;
+        if (rst) begin
+            busy <= 1'b0;
+        end else if (!busy) begin
+            if (!line) begin               // line fell: a start bit begins
+                busy  <= 1'b1;
+                count <= CLKS_PER_BIT / 2;
+                bit_n <= 4'd0;
+            end
+        end else if (count != 0) begin
+            count <= count - 8'd1;
+        end else begin
+            count <= CLKS_PER_BIT - 1;
+            if (bit_n == 4'd0) begin
+                if (line) busy  <= 1'b0;   // high again already: only a glitch
+                else      bit_n <= 4'd1;
+            end else if (bit_n <= 4'd8) begin
+                shift <= {line, shift[7:1]};    // least significant bit first
+                bit_n <= bit_n + 4'd1;
+            end else begin                 // stop bit
+                busy <= 1'b0;
+                if (line) begin
+                    data  <= shift;
+                    valid <= 1'b1;
+                end
+            end
+        end
+    end
+endmodule
+` },
+      { name: "uart_tx.v", content: `// UART transmitter, 8N1: on \`start\` sends \`data\` (start bit, 8 bits LSB
+// first, stop bit), one bit every CLKS_PER_BIT clocks. \`start\` is ignored
+// while \`busy\`.
+module uart_tx #(parameter CLKS_PER_BIT = 16) (
+    input  wire       clk,
+    input  wire       rst,
+    input  wire [7:0] data,
+    input  wire       start,
+    output wire       tx,
+    output wire       busy
+);
+    // The frame is kept inverted, so registers that power up at 0 mean
+    // "idle": the line rests high.
+    reg [9:0] frame_n;                     // ~{stop, data, start}
+    reg [3:0] left;                        // bits still to send
+    reg [7:0] count;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            frame_n <= 10'd0;
+            left    <= 4'd0;
+        end else if (left == 4'd0) begin
+            if (start) begin
+                frame_n <= ~{1'b1, data, 1'b0};
+                left    <= 4'd10;
+                count   <= CLKS_PER_BIT - 1;
+            end
+        end else if (count != 0) begin
+            count <= count - 8'd1;
+        end else begin
+            frame_n <= {1'b0, frame_n[9:1]};    // next bit; idle shifts in behind
+            left    <= left - 4'd1;
+            count   <= CLKS_PER_BIT - 1;
+        end
+    end
+
+    assign tx   = ~frame_n[0];
+    assign busy = left != 4'd0;
+endmodule
+` },
+    ],
+    testbench: `\`timescale 1ns / 1ps
+
+module tb_uart_echo;
+    localparam CPB = 16;
+    reg clk = 0, rst = 1, rx = 1;
+    wire tx;
+    wire [4:0] led;
+    uart_echo #(.CLKS_PER_BIT(CPB)) dut (.clk(clk), .rst(rst), .rx(rx), .tx(tx), .led(led));
+    always #5 clk = ~clk;
+
+    // Send one byte on rx: start bit, 8 data bits (LSB first), stop bit.
+    task send(input [7:0] b);
+        integer i;
+        begin
+            rx = 0; repeat (CPB) @(posedge clk);
+            for (i = 0; i < 8; i = i + 1) begin rx = b[i]; repeat (CPB) @(posedge clk); end
+            rx = 1; repeat (CPB) @(posedge clk);
+        end
+    endtask
+
+    // Receive one byte from tx, sampling each bit in its middle.
+    reg [7:0] got;
+    integer j;
+    task receive;
+        begin
+            @(negedge tx);
+            repeat (CPB / 2) @(posedge clk);
+            for (j = 0; j < 8; j = j + 1) begin repeat (CPB) @(posedge clk); got[j] = tx; end
+            repeat (CPB) @(posedge clk);
+        end
+    endtask
+
+    integer k, errors = 0;
+    reg [8*5-1:0] msg = "Hello";
+    initial begin
+        $dumpfile("dump.vcd");
+        $dumpvars(0, tb_uart_echo);
+        repeat (4) @(posedge clk);
+        rst = 0;
+        for (k = 4; k >= 0; k = k - 1) begin
+            fork send(msg[8*k +: 8]); receive; join
+            if (got === msg[8*k +: 8]) $display("echoed '%c'", got);
+            else begin $display("FAIL: sent %h, got %h", msg[8*k +: 8], got); errors = errors + 1; end
+        end
+        if (errors == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule
+`,
+  },
+
   // ── SystemVerilog FSM ──────────────────────────────────────────────────────
   svTrafficLight: {
     label: "SystemVerilog: enum FSM",
@@ -843,6 +1019,7 @@ export const TEMPLATE_ORDER: string[] = [
   "fsmSkeleton",
   "boardDemo",
   "uartEcho",
+  "uartEchoFiles",
   "svTrafficLight",
   "vhdlAlu",
   "cocotbAdder",

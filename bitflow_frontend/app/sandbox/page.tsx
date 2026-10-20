@@ -87,6 +87,7 @@ import { useSimulation }              from "@/hooks/useSimulation";
 import { useSplitter }                from "@/hooks/useSplitter";
 import { useLocalStorage }            from "@/hooks/useLocalStorage";
 import { exportProjectZip }           from "@/lib/export-zip";
+import { CODE_FILE, fileNameProblem }  from "@/lib/project-files";
 import { exportSnapshotPng }          from "@/lib/export-image";
 import { saveSubmission, loadSubmission, submissionAge } from "@/lib/submission-storage";
 
@@ -277,6 +278,33 @@ function EditorTab({
   );
 }
 
+/** Tabs for the design files of a Verilog project: design.v first, then any added files. */
+function FileTabs({ files, active, onSelect, onAdd, onRemove, errors, disabled }: {
+  files: string[]; active: string; onSelect: (name: string) => void; onAdd: () => void;
+  onRemove: (name: string) => void; errors: (name: string) => boolean; disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-stretch shrink-0 bg-surface border-b border-rim select-none overflow-x-auto" style={{ height: 36 }}
+         role="tablist" aria-label="Design files">
+      {files.map((name) => (
+        <div key={name} role="tab" aria-selected={name === active} tabIndex={0}
+             className={`flex items-center gap-1.5 px-3 border-r border-rim/60 font-mono text-[12px] cursor-pointer whitespace-nowrap ${name === active ? "bg-void text-pale shadow-[inset_0_-2px_0_#00e87a]" : "text-dim hover:text-ghost"}`}
+             onClick={() => onSelect(name)} onKeyDown={(e) => { if (e.key === "Enter") onSelect(name); }}>
+          {errors(name) && <span className="w-1.5 h-1.5 rounded-full bg-danger" aria-label="has errors" />}
+          {name}
+          {name !== "design.v" && !disabled && (
+            <button className="ml-1 text-dim hover:text-danger" aria-label={`Delete ${name}`} title={`Delete ${name}`}
+                    onClick={(e) => { e.stopPropagation(); onRemove(name); }}>×</button>
+          )}
+        </div>
+      ))}
+      <button onClick={onAdd} disabled={disabled} title="Add a design file (another module, or a data file for $readmemh)"
+              aria-label="Add a design file" className="px-3 font-mono text-[14px] text-dim hover:text-phosphor disabled:opacity-40">+</button>
+      <span className="ml-auto self-center pr-4 font-mono text-[10px] text-dim tracking-wider">DUT</span>
+    </div>
+  );
+}
+
 const DESIGN_FILES:    Record<DesignLanguage, [string, string]>    = { verilog: ["design.v", "systemverilog"], vhdl: ["design.vhd", "vhdl"] };
 const TESTBENCH_FILES: Record<TestbenchLanguage, [string, string]> = {
   verilog: ["tb.v", "systemverilog"], vhdl: ["tb.vhd", "vhdl"], python: ["test_tb.py", "python"],
@@ -321,6 +349,9 @@ function SandboxContent() {
     setDesignLanguage,
     setTestbenchLanguage,
     loadProject,
+    extraFiles,
+    setExtraFiles,
+    projectDesign,
     runState,
     isRunning,
     result,
@@ -332,6 +363,27 @@ function SandboxContent() {
   const [proveOpen, setProveOpen] = useState(false);
   const [designFile, designMonaco] = DESIGN_FILES[designLanguage];
   const [tbFile, tbMonaco] = TESTBENCH_FILES[testbenchLanguage];
+
+  // ── Design files: design.v plus extra tabs (Verilog projects, lib/project-files.ts) ──
+  const [activeFile, setActiveFile] = useState("design.v");
+  const openFile = extraFiles.find((f) => f.name === activeFile) ?? null;   // null: design.v
+  const addFile = useCallback(() => {
+    const name = window.prompt("New file name, e.g. alu.v, regs.sv, or rom.hex for $readmemh:")?.trim();
+    if (!name) return;
+    const problem = fileNameProblem(name, extraFiles);
+    if (problem) { window.alert(problem); return; }
+    const module = name.replace(/\.[^.]+$/, "").replace(/\W/g, "_");
+    setExtraFiles([...extraFiles, { name, content: CODE_FILE.test(name) ? `module ${module} (\n);\n\nendmodule\n` : "" }]);
+    setActiveFile(name);
+  }, [extraFiles, setExtraFiles]);
+  const removeFile = useCallback((name: string) => {
+    if (!window.confirm(`Delete ${name} from this project?`)) return;
+    setExtraFiles(extraFiles.filter((f) => f.name !== name));
+    setActiveFile("design.v");
+  }, [extraFiles, setExtraFiles]);
+  const editOpenFile = useCallback((content: string) => {
+    setExtraFiles(extraFiles.map((f) => (f.name === activeFile ? { ...f, content } : f)));
+  }, [extraFiles, setExtraFiles, activeFile]);
 
   // ── AI assistant ──────────────────────────────────────────────────────────
 
@@ -354,7 +406,7 @@ function SandboxContent() {
     try {
       const res = await fetch("/api/share", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designCode, testbenchCode }),
+        body: JSON.stringify({ designCode, testbenchCode, files: extraFiles }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Sharing failed (${res.status}).`);
@@ -364,7 +416,7 @@ function SandboxContent() {
     } catch (err) {
       window.alert((err as Error).message || "Sharing failed.");
     }
-  }, [designCode, testbenchCode, designLanguage, testbenchLanguage]);
+  }, [designCode, testbenchCode, extraFiles, designLanguage, testbenchLanguage]);
   const toggleAI = useCallback(() => setIsAIOpen((v) => !v), []);
 
   // ── Export state ──────────────────────────────────────────────────────────
@@ -418,13 +470,13 @@ function SandboxContent() {
     if (!result || isExporting) return;
     setIsExporting(true);
     try {
-      await exportProjectZip({ designCode, testbenchCode, result });
+      await exportProjectZip({ designCode, testbenchCode, result, files: extraFiles });
     } catch (err) {
       console.error("[BitFlow] ZIP export failed:", err);
     } finally {
       setIsExporting(false);
     }
-  }, [result, designCode, testbenchCode, isExporting]);
+  }, [result, designCode, testbenchCode, extraFiles, isExporting]);
 
   const handleExportImage = useCallback(async () => {
     if (!result || !exportCardRef.current || isExporting) return;
@@ -659,7 +711,7 @@ function SandboxContent() {
       <div className="flex-none flex items-center justify-between px-4 h-8 bg-surface/60 border-b border-rim/60">
         <div className="flex items-center gap-3">
           <TemplateMenu
-            currentDesign={designCode}
+            currentDesign={projectDesign}
             currentTestbench={testbenchCode}
             onLoad={loadProject}
             disabled={isRunning}
@@ -752,14 +804,19 @@ function SandboxContent() {
             className="flex flex-col overflow-hidden min-w-0"
             style={{ width: `${leftFrac * 100}%` }}
           >
-            <EditorTab filename={designFile} sublabel="DUT" />
+            {designLanguage === "verilog"
+              ? <FileTabs files={["design.v", ...extraFiles.map((f) => f.name)]} active={openFile?.name ?? "design.v"}
+                          onSelect={setActiveFile} onAdd={addFile} onRemove={removeFile} disabled={isRunning}
+                          errors={(name) => (diagnostics.files[name] ?? []).some((d) => d.severity === "error")} />
+              : <EditorTab filename={designFile} sublabel="DUT" />}
             <div className="flex-1 min-h-0">
               <Editor
-                value={designCode}
-                onChange={setDesignCode}
-                language={designMonaco}
+                key={openFile?.name ?? "design.v"}
+                value={openFile ? openFile.content : designCode}
+                onChange={openFile ? editOpenFile : setDesignCode}
+                language={openFile ? (CODE_FILE.test(openFile.name) ? "systemverilog" : "plaintext") : designMonaco}
                 readOnly={isRunning}
-                diagnostics={diagnostics.design}
+                diagnostics={diagnostics.files[openFile?.name ?? "design.v"] ?? []}
               />
             </div>
           </div>
@@ -859,9 +916,9 @@ function SandboxContent() {
        * State (chat history) lives in useAI inside AIAssistantPanel so it
        * survives open/close cycles.
        */}
-      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} language={designLanguage} />
-      <BoardPanel isOpen={boardOpen} onClose={() => setBoardOpen(false)} designCode={designCode} language={designLanguage} />
-      <FormalPanel isOpen={proveOpen} onClose={() => setProveOpen(false)} designCode={designCode} language={designLanguage}
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={projectDesign} language={designLanguage} />
+      <BoardPanel isOpen={boardOpen} onClose={() => setBoardOpen(false)} designCode={projectDesign} language={designLanguage} />
+      <FormalPanel isOpen={proveOpen} onClose={() => setProveOpen(false)} designCode={projectDesign} language={designLanguage}
                    testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""}
                    onLoadExample={() => {
                      if (window.confirm("Replace both editors with the formal example (a BCD counter with properties)?")) {

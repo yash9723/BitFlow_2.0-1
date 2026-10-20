@@ -20,6 +20,7 @@ import { runSimulation, checkHealth } from "@/lib/api";
 import { parseVcd } from "@/lib/vcd-parser";
 import type { DesignLanguage, RunState, SimulateResponse, ParsedVcd, TestbenchLanguage } from "@/lib/types";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { combineDesign, dataFiles, relabelOutput, type ProjectFile } from "@/lib/project-files";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default editor content — shown on first load
@@ -31,6 +32,8 @@ export const TESTBENCH_STORAGE_KEY = "bitflow_testbench_v";
 /** Selected languages; each language keeps its own editor contents under its own key. */
 export const DESIGN_LANGUAGE_KEY    = "bitflow_design_lang";
 export const TESTBENCH_LANGUAGE_KEY = "bitflow_tb_lang";
+/** Design files after design.v (Verilog projects; lib/project-files.ts). */
+export const EXTRA_FILES_KEY = "bitflow_extra_files";
 
 export const DEFAULT_DESIGN = `\`timescale 1ns / 1ps
 
@@ -193,6 +196,7 @@ async def holds_when_disabled(dut):
 export interface SandboxProject {
   design:             string;
   testbench:          string;
+  files?:             ProjectFile[];
   designLanguage?:    DesignLanguage;
   testbenchLanguage?: TestbenchLanguage;
 }
@@ -211,6 +215,11 @@ export interface UseSimulationReturn {
   setTestbenchLanguage: (l: TestbenchLanguage) => void;
   /** Replace both editors (and switch languages), e.g. from a template. */
   loadProject:          (p: SandboxProject) => void;
+
+  /** Design files after design.v (Verilog only), and what tools get: design.v with them appended. */
+  extraFiles:           ProjectFile[];
+  setExtraFiles:        (files: ProjectFile[]) => void;
+  projectDesign:        string;
 
   // Run lifecycle
   runState:    RunState;
@@ -272,7 +281,14 @@ export function useSimulation(): UseSimulationReturn {
     setTbLang(tl);
     design[dl][1](p.design);
     testbench[tl][1](p.testbench);
+    setExtraFiles(p.files ?? []);
   };
+
+  // Extra files are Verilog-only; a VHDL project is a single file.
+  const [storedExtraFiles, setExtraFiles] = useLocalStorage<ProjectFile[]>(EXTRA_FILES_KEY, []);
+  const extraFiles = designLanguage === "verilog" && Array.isArray(storedExtraFiles) ? storedExtraFiles : [];
+  const project = combineDesign(designCode, extraFiles);
+  const projectDesign = project.multi ? project.code : designCode;
 
   const [runState,      setRunState]      = useState<RunState>("idle");
   const [result,        setResult]        = useState<SimulateResponse | null>(null);
@@ -298,14 +314,21 @@ export function useSimulation(): UseSimulationReturn {
     setParsedVcd(null); // clear previous waveform while new run is in progress
 
     try {
-      const response = await runSimulation({
-        design_v:    designCode,
+      const files = dataFiles(extraFiles);
+      const raw = await runSimulation({
+        design_v:    projectDesign,
+        ...(files ? { files } : {}),
         testbench_v: testbenchCode,
         timeout:     30,
         lint:        true,
         design_language:    designLanguage,
         testbench_language: testbenchLanguage,
       });
+
+      // Messages about the combined design.v point at the file they came from.
+      const response = project.multi
+        ? { ...raw, stdout: relabelOutput(raw.stdout, project.locate) ?? raw.stdout, stderr: relabelOutput(raw.stderr, project.locate) ?? raw.stderr }
+        : raw;
 
       // The response is always a valid SimulateResponse — even compile errors
       // come back as HTTP 200 with status !== "success". Only network failures
@@ -335,7 +358,7 @@ export function useSimulation(): UseSimulationReturn {
       setErrorMsg(message);
       setRunState("error");
     }
-  }, [runState, designCode, testbenchCode, designLanguage, testbenchLanguage]);
+  }, [runState, projectDesign, extraFiles, testbenchCode, designLanguage, testbenchLanguage]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Reset the terminal panel to its idle state. */
   const clearResult = useCallback(() => {
@@ -355,6 +378,9 @@ export function useSimulation(): UseSimulationReturn {
     setDesignLanguage,
     setTestbenchLanguage,
     loadProject,
+    extraFiles,
+    setExtraFiles,
+    projectDesign,
     runState,
     isRunning: runState === "running",
     result,
