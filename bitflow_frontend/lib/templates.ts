@@ -448,6 +448,148 @@ endmodule
 `,
   },
 
+  // ── UART echo ──────────────────────────────────────────────────────────────
+  uartEcho: {
+    label    : "Board demo: UART echo (serial terminal)",
+    category : "sequential",
+    design   : `\`timescale 1ns / 1ps
+
+// UART echo: every byte that arrives on rx is sent straight back on tx.
+// Click "Board" and type in its terminal: the design echoes what you type.
+//   8 data bits, no parity, 1 stop bit; one bit lasts CLKS_PER_BIT clocks
+//   (on a real 12 MHz board, 104 clocks per bit gives 115200 baud).
+//   led shows the low 5 bits of the last byte received.
+module uart_echo #(parameter CLKS_PER_BIT = 16) (
+    input  wire       clk,
+    input  wire       rst,
+    input  wire       rx,
+    output wire       tx,
+    output reg  [4:0] led
+);
+    // ── Receiver ─────────────────────────────────────────────────────────────
+    reg [1:0] rx_sync;                     // two flip-flops against metastability
+    always @(posedge clk) rx_sync <= {rx_sync[0], rx};
+    wire rxd = rx_sync[1];
+
+    reg       rx_busy;
+    reg [7:0] rx_count;                    // clocks until the next sample
+    reg [3:0] rx_bit;                      // 0 = start bit, 1-8 = data, 9 = stop
+    reg [7:0] rx_shift;
+    reg [7:0] rx_byte;
+    reg       rx_done;                     // one-clock pulse per byte received
+
+    always @(posedge clk) begin
+        rx_done <= 1'b0;
+        if (rst) begin
+            rx_busy <= 1'b0;
+        end else if (!rx_busy) begin
+            if (!rxd) begin                // line fell: a start bit begins
+                rx_busy  <= 1'b1;
+                rx_count <= CLKS_PER_BIT / 2;    // sample in the middle of each bit
+                rx_bit   <= 4'd0;
+            end
+        end else if (rx_count != 0) begin
+            rx_count <= rx_count - 8'd1;
+        end else begin
+            rx_count <= CLKS_PER_BIT - 1;
+            if (rx_bit == 4'd0) begin
+                if (rxd) rx_busy <= 1'b0;  // high again already: only a glitch
+                else     rx_bit  <= 4'd1;
+            end else if (rx_bit <= 4'd8) begin
+                rx_shift <= {rxd, rx_shift[7:1]};   // least significant bit first
+                rx_bit   <= rx_bit + 4'd1;
+            end else begin                 // stop bit
+                rx_busy <= 1'b0;
+                if (rxd) begin
+                    rx_byte <= rx_shift;
+                    rx_done <= 1'b1;
+                end
+            end
+        end
+    end
+
+    always @(posedge clk) if (rx_done) led <= rx_byte[4:0];
+
+    // ── Transmitter ──────────────────────────────────────────────────────────
+    // The frame is kept inverted, so registers that power up at 0 mean
+    // "idle": the line rests high.
+    reg [9:0] tx_frame_n;                  // ~{stop, data, start}
+    reg [3:0] tx_left;                     // bits still to send
+    reg [7:0] tx_count;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            tx_frame_n <= 10'd0;
+            tx_left    <= 4'd0;
+        end else if (tx_left == 4'd0) begin
+            if (rx_done) begin
+                tx_frame_n <= ~{1'b1, rx_byte, 1'b0};
+                tx_left    <= 4'd10;
+                tx_count   <= CLKS_PER_BIT - 1;
+            end
+        end else if (tx_count != 0) begin
+            tx_count <= tx_count - 8'd1;
+        end else begin
+            tx_frame_n <= {1'b0, tx_frame_n[9:1]};  // next bit; idle shifts in behind
+            tx_left    <= tx_left - 4'd1;
+            tx_count   <= CLKS_PER_BIT - 1;
+        end
+    end
+
+    assign tx = ~tx_frame_n[0];
+endmodule
+`,
+    testbench: `\`timescale 1ns / 1ps
+
+module tb_uart_echo;
+    localparam CPB = 16;
+    reg clk = 0, rst = 1, rx = 1;
+    wire tx;
+    wire [4:0] led;
+    uart_echo #(.CLKS_PER_BIT(CPB)) dut (.clk(clk), .rst(rst), .rx(rx), .tx(tx), .led(led));
+    always #5 clk = ~clk;
+
+    // Send one byte on rx: start bit, 8 data bits (LSB first), stop bit.
+    task send(input [7:0] b);
+        integer i;
+        begin
+            rx = 0; repeat (CPB) @(posedge clk);
+            for (i = 0; i < 8; i = i + 1) begin rx = b[i]; repeat (CPB) @(posedge clk); end
+            rx = 1; repeat (CPB) @(posedge clk);
+        end
+    endtask
+
+    // Receive one byte from tx, sampling each bit in its middle.
+    reg [7:0] got;
+    integer j;
+    task receive;
+        begin
+            @(negedge tx);
+            repeat (CPB / 2) @(posedge clk);
+            for (j = 0; j < 8; j = j + 1) begin repeat (CPB) @(posedge clk); got[j] = tx; end
+            repeat (CPB) @(posedge clk);
+        end
+    endtask
+
+    integer k, errors = 0;
+    reg [8*5-1:0] msg = "Hello";
+    initial begin
+        $dumpfile("dump.vcd");
+        $dumpvars(0, tb_uart_echo);
+        repeat (4) @(posedge clk);
+        rst = 0;
+        for (k = 4; k >= 0; k = k - 1) begin
+            fork send(msg[8*k +: 8]); receive; join
+            if (got === msg[8*k +: 8]) $display("echoed '%c'", got);
+            else begin $display("FAIL: sent %h, got %h", msg[8*k +: 8], got); errors = errors + 1; end
+        end
+        if (errors == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule
+`,
+  },
+
   // ── SystemVerilog FSM ──────────────────────────────────────────────────────
   svTrafficLight: {
     label: "SystemVerilog: enum FSM",
@@ -700,6 +842,7 @@ export const TEMPLATE_ORDER: string[] = [
   "counter4bit",
   "fsmSkeleton",
   "boardDemo",
+  "uartEcho",
   "svTrafficLight",
   "vhdlAlu",
   "cocotbAdder",

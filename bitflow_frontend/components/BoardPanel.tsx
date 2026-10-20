@@ -12,12 +12,15 @@
  *   4-bit hex* / digit* outputs     → a 7-segment digit showing the value 0–F
  *   3-bit rgb* outputs     → an RGB LED, bit 2 = red, bit 1 = green, bit 0 = blue
  *   other outputs          → LEDs
+ *   1-bit rx input / tx output → a serial terminal (UART 8N1, lib/uart.ts)
+ * A logic analyzer shows the 1-bit signals over the last 128 cycles.
  * Keys: Space = Step, P = Run/Pause, Esc = close.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GateSim, toNumber, type BoardNetlist } from "@/lib/gate-sim";
 import { synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
+import { UartReceiver, UartTransmitter } from "@/lib/uart";
 
 const CLOCK  = /^(clk|clock)$/i;
 const RESET  = /^(rst|reset|rst_n|reset_n|rstn|resetn|areset|arst|arst_n|aresetn)$/i;
@@ -29,8 +32,13 @@ const RATES  = [1, 2, 5, 10, 50, 100, 1000, 10000];
 /** Cap on clock cycles simulated per animation frame; past it the board runs slower than asked. */
 const MAX_PER_FRAME = 2000;
 
+/** Logic analyzer depth (cycles) and how many 1-bit signals it shows. */
+const TRACE_DEPTH = 128;
+const TRACE_ROWS  = 8;
+
 const activeLow = (name: string) => RESET.test(name) && /n$/i.test(name);
-const idle      = (name: string) => (activeLow(name) ? 1 : 0);
+const isRx      = (name: string) => /^rx$/i.test(name);
+const idle      = (name: string) => (activeLow(name) || isRx(name) ? 1 : 0);   // a serial line rests high
 type Port = { name: string; width: number };
 const isSeg   = (p: Port) => SEVEN.test(p.name) && (p.width === 7 || p.width === 8);
 const isHex   = (p: Port) => HEX.test(p.name) && p.width === 4;
@@ -105,6 +113,29 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+/** One row per 1-bit signal, oldest cycle on the left. */
+function LogicAnalyzer({ names, trace }: { names: string[]; trace: { rows: Record<string, Uint8Array>; head: number; filled: number } }) {
+  const STEP = 4, H = 12;
+  const order = Array.from({ length: trace.filled }, (_, i) => (trace.head - trace.filled + i + TRACE_DEPTH) % TRACE_DEPTH);
+  return (
+    <div className="overflow-x-auto">
+      {names.map((name) => {
+        const row = trace.rows[name];
+        if (!row) return null;
+        const points = order.flatMap((k, i) => { const y = row[k] ? 1 : H - 1; return [`${i * STEP},${y}`, `${(i + 1) * STEP},${y}`]; }).join(" ");
+        return (
+          <div key={name} className="flex items-center gap-2">
+            <span className="w-16 shrink-0 font-mono text-[10px] text-ghost truncate" title={name}>{name}</span>
+            <svg width={TRACE_DEPTH * STEP} height={H} aria-label={`${name} over the last ${trace.filled} cycles`}>
+              <polyline points={points} fill="none" className="stroke-phosphor" strokeWidth={1.5} />
+            </svg>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Panel ───────────────────────────────────────────────────────────────────
 
 export default function BoardPanel({ isOpen, onClose, designCode, language = "verilog" }: Props) {
@@ -117,20 +148,29 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
   const [running, setRunning] = useState(false);
   const [segLow,  setSegLow]  = useState(false);
   const [, redraw]            = useState(0);
+  const [term,    setTerm]    = useState("");          // text the design sent on tx
+  const [typed,   setTyped]   = useState("");
+  const [bitCycles, setBitCycles] = useState(16);      // UART cycles per bit
+  const serial = useRef({ toDesign: new UartTransmitter(16), fromDesign: new UartReceiver(16), rxLevel: 1 });
+  const trace  = useRef<{ rows: Record<string, Uint8Array>; head: number; filled: number }>({ rows: {}, head: 0, filled: 0 });
 
   const ports = useMemo(() => {
     const all   = Object.entries(sim?.ports ?? {}).map(([name, p]) => ({ name, width: p.bits.length, dir: p.direction }));
     const ins   = all.filter((p) => p.dir === "input");
     const outs  = all.filter((p) => p.dir !== "input");
-    const clock = ins.find((p) => CLOCK.test(p.name) && p.width === 1)?.name ?? null;
-    const rest  = ins.filter((p) => p.name !== clock);
+    const clock  = ins.find((p) => CLOCK.test(p.name) && p.width === 1)?.name ?? null;
+    const uartRx = ins.find((p) => isRx(p.name) && p.width === 1)?.name ?? null;
+    const uartTx = outs.find((p) => /^tx$/i.test(p.name) && p.width === 1)?.name ?? null;
+    const rest   = ins.filter((p) => p.name !== clock && p.name !== uartRx);
+    const lights = outs.filter((p) => p.name !== uartTx);
     return {
-      clock,
+      clock, uartRx, uartTx,
       buttons:  rest.filter((p) => RESET.test(p.name) || BUTTON.test(p.name)),
       switches: rest.filter((p) => !RESET.test(p.name) && !BUTTON.test(p.name)),
-      digits:   outs.filter((p) => isSeg(p) || isHex(p)),
-      rgbs:     outs.filter(isRgb),
-      leds:     outs.filter((p) => !isSeg(p) && !isHex(p) && !isRgb(p)),
+      digits:   lights.filter((p) => isSeg(p) || isHex(p)),
+      rgbs:     lights.filter(isRgb),
+      leds:     lights.filter((p) => !isSeg(p) && !isHex(p) && !isRgb(p)),
+      traced:   all.filter((p) => p.width === 1 && p.name !== clock).map((p) => p.name).slice(0, TRACE_ROWS),
     };
   }, [sim]);
 
@@ -151,8 +191,11 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
     }
     setInputs(start);
     setCycles(0);
+    setTerm("");
+    serial.current = { toDesign: new UartTransmitter(bitCycles), fromDesign: new UartReceiver(bitCycles), rxLevel: 1 };
+    trace.current = { rows: {}, head: 0, filled: 0 };
     setSim(s);
-  }, []);
+  }, [bitCycles]);
 
   const load = useCallback(async () => {
     setLoading(true); setRunning(false); setError(null); setSim(null);
@@ -177,13 +220,35 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
     act(() => sim.set(name, bits));
   }, [sim, act]);
 
-  /** n full clock cycles. */
+  /** n full clock cycles: the serial line and the analyzer see every one of them. */
   const pulse = useCallback((n: number) => {
     if (!sim || !ports.clock) return;
-    const clk = ports.clock;
-    act(() => { for (let i = 0; i < n; i++) { sim.set(clk, [1]); sim.set(clk, [0]); } });
+    const { clock: clk, uartRx, uartTx, traced } = ports;
+    const io = serial.current, t = trace.current;
+    for (const name of traced) t.rows[name] ??= new Uint8Array(TRACE_DEPTH);
+    let received = "";
+    act(() => {
+      for (let i = 0; i < n; i++) {
+        if (uartRx) {
+          const level = io.toDesign.next();
+          if (level !== io.rxLevel) { io.rxLevel = level; sim.set(uartRx, [level]); }
+        }
+        sim.set(clk, [1]); sim.set(clk, [0]);
+        if (uartTx) {
+          const r = io.fromDesign.sample(sim.get(uartTx)[0]);
+          if (r !== null) received += r === "error" ? "�" : String.fromCharCode(r);
+        }
+        for (const name of traced) t.rows[name][t.head] = sim.get(name)[0];
+        t.head = (t.head + 1) % TRACE_DEPTH;
+        t.filled = Math.min(t.filled + 1, TRACE_DEPTH);
+      }
+    });
+    if (received) setTerm((s) => (s + received.replace(/\r/g, "")).slice(-4000));
     setCycles((c) => c + n);
-  }, [sim, ports.clock, act]);
+  }, [sim, ports, act]);
+
+  // The cycles-per-bit setting applies to the next frame either way.
+  useEffect(() => { serial.current.toDesign.cyclesPerBit = bitCycles; serial.current.fromDesign.cyclesPerBit = bitCycles; }, [bitCycles]);
 
   useEffect(() => {
     if (isOpen) load();
@@ -368,12 +433,50 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
                 </Group>
               </div>
 
+              {(ports.uartRx || ports.uartTx) && (
+                <Group title="Serial terminal (UART 8N1)">
+                  <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] text-dim">
+                    <label className="flex items-center gap-1">
+                      cycles per bit
+                      <input type="number" min={2} max={10000} value={bitCycles} aria-label="UART cycles per bit"
+                             onChange={(e) => setBitCycles(Math.max(2, Number(e.target.value) || 16))}
+                             className="w-16 bg-pit border border-rim rounded px-1 py-0.5 text-pale" />
+                    </label>
+                    <span>match the design&apos;s CLKS_PER_BIT; run the clock fast (1–10 kHz) to send and receive</span>
+                    <button onClick={() => setTerm("")} className="ml-auto text-info hover:underline">Clear</button>
+                  </div>
+                  {ports.uartTx && (
+                    <pre aria-label="Received on tx" aria-live="polite"
+                         className="h-28 overflow-auto bg-void border border-rim rounded p-2 font-mono text-[11px] text-phosphor whitespace-pre-wrap">
+                      {term || <span className="text-dim">Bytes the design sends on {ports.uartTx} appear here.</span>}
+                    </pre>
+                  )}
+                  {ports.uartRx && (
+                    <form className="flex gap-2" onSubmit={(e) => {
+                      e.preventDefault();
+                      serial.current.toDesign.send(new TextEncoder().encode(typed + "\n"));
+                      setTyped("");
+                    }}>
+                      <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={`Type, then Enter to send on ${ports.uartRx}`}
+                             aria-label="Send on rx" className="flex-1 bg-pit border border-rim rounded px-2 py-1 font-mono text-[11px] text-pale" />
+                      <button className="px-3 py-1 rounded border border-info/50 text-info font-mono text-[10px]">Send</button>
+                    </form>
+                  )}
+                </Group>
+              )}
+
+              {ports.traced.length > 0 && trace.current.filled > 0 && (
+                <Group title={`Logic analyzer (last ${trace.current.filled} cycles)`}>
+                  <LogicAnalyzer names={ports.traced} trace={trace.current} />
+                </Group>
+              )}
+
               <details className="font-mono text-[9px] text-dim">
                 <summary className="cursor-pointer hover:text-ghost">How ports map to the board</summary>
                 <p className="mt-1 leading-relaxed">
                   clk = clock (Space steps, P runs). rst/reset and btn*/key* = buttons; other inputs = switches.
                   7/8-bit seg*/hex* outputs = raw 7-segment digit (seg[0]=a … seg[6]=g, seg[7]=dp); 4-bit hex*/digit* = digit showing 0–F;
-                  3-bit rgb* = RGB LED (bit 2 red, 1 green, 0 blue); other outputs = LEDs. Registers start at 0.
+                  3-bit rgb* = RGB LED (bit 2 red, 1 green, 0 blue); 1-bit rx/tx = serial terminal; other outputs = LEDs. Registers start at 0.
                 </p>
               </details>
             </>

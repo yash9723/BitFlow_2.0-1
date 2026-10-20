@@ -3,7 +3,11 @@
  * Hand-written netlists in the shape POST /board returns.
  */
 import assert from "node:assert/strict";
+import { pathToFileURL } from "node:url";
 import { GateSim, toNumber, type BoardNetlist } from "../lib/gate-sim";
+import { synthesize } from "../lib/synth/run";
+import { TEMPLATES } from "../lib/templates";
+import { UartReceiver, UartTransmitter } from "../lib/uart";
 
 // 2-bit counter with synchronous reset, plus t: a register that toggles on
 // every falling edge of q[0] (a ripple stage clocked by the counter itself).
@@ -107,3 +111,45 @@ assert.throws(() => {
 }, /never settles/);
 
 console.log("gate-sim: all checks passed");
+
+// ── UART framing (lib/uart.ts): transmitter straight into receiver ──────────
+const sendAndReceive = (text: string, cpb: number, line: (bit: number) => number) => {
+  const txr = new UartTransmitter(cpb), rxr = new UartReceiver(cpb);
+  let out = "";
+  for (let i = 0; i < text.length * 11 * cpb + 4 * cpb; i++) {
+    if (i === cpb) txr.send(new TextEncoder().encode(text));   // the line idles first, as on the board
+    const r = rxr.sample(line(txr.next()));
+    if (r !== null) out += r === "error" ? "!" : String.fromCharCode(r);
+  }
+  return out;
+};
+assert.equal(sendAndReceive("Hi, board!", 16, (b) => b), "Hi, board!", "loopback at 16 cycles/bit");
+assert.equal(sendAndReceive("ok", 5, (b) => b), "ok", "odd cycles/bit");
+assert.equal(sendAndReceive("A", 16, () => 0), "", "a line stuck low is never idle, so nothing is received");
+// 0xFF with a stop bit that is low: a framing error.
+const rxr = new UartReceiver(4);
+const line = [1, 1, ...Array(4).fill(0), ...Array(32).fill(1), ...Array(4).fill(0), ...Array(8).fill(1)];
+assert.deepEqual(line.map((b) => rxr.sample(b)).filter((r) => r !== null), ["error"], "framing error reported");
+console.log("uart: all checks passed");
+
+// ── The UART echo template, synthesized to gates and run on the board ──────
+async function echoOnBoard() {
+  if (!process.env.YOWASP_YOSYS) return console.log("uart echo on the board: skipped (set YOWASP_YOSYS)");
+  const { runYosys } = await import(pathToFileURL(process.env.YOWASP_YOSYS).href);
+  const net = await synthesize(runYosys, "board", TEMPLATES.uartEcho.design);
+  assert.ok(net.ok, "echo template synthesizes for the board");
+  const board = new GateSim(net as unknown as BoardNetlist);
+  const toDesign = new UartTransmitter(16), fromDesign = new UartReceiver(16);
+  toDesign.send(new TextEncoder().encode("Hello"));
+  let echoed = "";
+  for (let i = 0; i < 5 * 11 * 16 + 400; i++) {
+    board.set("rx", [toDesign.next()]);
+    board.set("clk", [1]); board.set("clk", [0]);
+    const r = fromDesign.sample(board.get("tx")[0]);
+    if (r !== null) echoed += r === "error" ? "!" : String.fromCharCode(r);
+  }
+  assert.equal(echoed, "Hello", "the board echoes what it receives");
+  assert.equal(toNumber(board.get("led")), "o".charCodeAt(0) & 31, "led shows the last byte's low bits");
+  console.log("uart echo on the board: ok");
+}
+echoOnBoard().catch((e) => { console.error(e); process.exit(1); });
