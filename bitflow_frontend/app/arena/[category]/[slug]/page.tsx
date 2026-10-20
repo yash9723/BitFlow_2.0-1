@@ -9,6 +9,9 @@ import { Suspense }                     from "react";
 import { notFound }                     from "next/navigation";
 import { getArenaProblemBySlugFromDb }  from "@/lib/db-loader";
 import { ArenaSolverClient }            from "@/components/ArenaSolverClient";
+import Link                             from "next/link";
+import { getSessionUser }               from "@/lib/auth-utils";
+import { lockedBehind }                 from "@/lib/unlock";
 
 interface PageProps {
   params: Promise<{ category: string; slug: string }>;
@@ -31,6 +34,24 @@ export default async function ArenaPage({ params }: PageProps) {
 
   if (!problem) {
     notFound();
+  }
+
+  // A find-the-bug problem is one edit from its original's answer (lib/unlock.ts).
+  const lock = await lockedBehind(problem as { unlockAfter?: string | null }, (await getSessionUser())?.id);
+  if (lock) {
+    return (
+      <main className="min-h-screen bg-void flex items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-3 font-mono">
+          <div className="text-2xl">🔒</div>
+          <h1 className="text-bright text-lg">{problem.title}</h1>
+          <p className="text-ghost text-sm">
+            This one opens after you solve <Link href={lock.href} className="text-info hover:underline">{lock.title}</Link>:
+            it starts from that problem&apos;s answer with one line broken.
+          </p>
+          <Link href="/arena" className="inline-block text-dim text-xs hover:text-ghost">← Back to the Arena</Link>
+        </div>
+      </main>
+    );
   }
 
   // Map DbProblem → shape expected by ArenaSolverClient / useArenaProblem

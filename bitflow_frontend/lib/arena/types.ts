@@ -82,7 +82,8 @@ export type ArenaCategory =
   | "Protocol"
   | "Pipeline"
   | "Verification"
-  | "Formal";
+  | "Formal"
+  | "Debug";        // find the bug (lib/debug-problems.ts)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Submission result — parallel shape to Learning Path SubmissionResult

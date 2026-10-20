@@ -140,7 +140,7 @@ export function testcasePassed(success: boolean, stdout: string, expected: strin
     : !stdout.includes("FAIL") && !stdout.includes("TESTS FAILED");
 }
 
-async function simulate(
+export async function simulate(
   design: string, testbench: string, files?: Record<string, string> | null, testbenchLanguage: TestbenchLanguage = "verilog",
 ): Promise<SimulateResponse> {
   const { status, data } = await simulateOnBackend({
@@ -151,12 +151,14 @@ async function simulate(
     ...(testbenchLanguage !== "verilog" ? { testbench_language: testbenchLanguage } : {}),
   });
   if (status !== 200) {
-    throw new Error(data?.detail || data?.error || `Simulation backend returned ${status}`);
+    const detail = data?.detail || data?.error;
+    throw new Error(typeof detail === "string" ? detail
+      : `Simulation backend returned ${status}${detail ? `: ${JSON.stringify(detail).slice(0, 300)}` : ""}`);   // e.g. a validation error list
   }
   return data as SimulateResponse;
 }
 
-function parseDataFiles(json: string | null | undefined): Record<string, string> | null {
+export function parseDataFiles(json: string | null | undefined): Record<string, string> | null {
   try {
     const v = JSON.parse(json || "null");
     return v && typeof v === "object" ? v : null;

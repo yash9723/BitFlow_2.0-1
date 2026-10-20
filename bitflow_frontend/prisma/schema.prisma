@@ -64,6 +64,7 @@ model Question {
   referenceSolution   String?  // Verified correct design (testbench problems: model testbench); never sent to clients
   problemType         String   @default("design") // "design" | "testbench" (student writes tb.v for a given DUT)
   mutants             String?  // testbench problems: JSON Mutant[] (lib/mutants.ts) the model testbench catches; never sent to clients
+  unlockAfter         String?  // slug that must be solved first: a "find the bug" problem is one edit from that problem's answer (lib/unlock.ts)
   publicTestcases     String   // JSON stringified Testcase[]
 
   // Evaluation

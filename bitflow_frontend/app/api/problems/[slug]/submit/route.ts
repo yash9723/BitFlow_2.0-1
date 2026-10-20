@@ -16,6 +16,7 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
+import { lockedBehind } from "@/lib/unlock";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   counterexampleTable, designPolicyViolation, failingTestWaveform, findCounterexample, formalPolicyViolation, gradeDesign,
@@ -59,6 +60,10 @@ export async function POST(
   const question = await prisma.question.findUnique({ where: { slug: params.slug } });
   if (!question) {
     return NextResponse.json({ error: `Problem not found: ${params.slug}` }, { status: 404 });
+  }
+  const lock = await lockedBehind(question, user?.id);
+  if (lock) {
+    return NextResponse.json({ error: `Solve "${lock.title}" first.`, locked: lock }, { status: 403 });
   }
 
   // Testbench problems grade the student's tb against the given DUT and its bugs;

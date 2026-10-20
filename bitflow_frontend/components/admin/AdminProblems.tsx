@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ReferenceSolutionsAdmin from "@/components/ReferenceSolutionsAdmin";
 import { problemHref } from "@/lib/problem-href";
 import NewProblemForm from "./NewProblemForm";
+import DebugProblemsAdmin from "./DebugProblemsAdmin";
 import { Card, Failed, Loading, Stat, getJson, pct } from "./ui";
 
 interface Row {
@@ -121,6 +122,10 @@ export default function AdminProblems() {
 
       <Card title="Reference solutions" subtitle="Upload a verified answer (or a model testbench / harness, which generates the bugs to catch)">
         <ReferenceSolutionsAdmin />
+      </Card>
+
+      <Card title="Fix-the-bug problems" subtitle="Arena problems made from reference solutions with one line broken">
+        <DebugProblemsAdmin onChanged={load} />
       </Card>
     </div>
   );

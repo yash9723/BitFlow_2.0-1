@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { prisma }       from "@/lib/prisma";
 import { reportError } from "@/lib/error-log";
 import { getSessionUser } from "@/lib/auth-utils";
+import { lockedBehind } from "@/lib/unlock";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +31,15 @@ export async function GET(
       );
     }
 
+    // A find-the-bug problem is one edit from its parent's answer: nothing until that's solved.
+    const lock = await lockedBehind(question, (await getSessionUser())?.id);
+    if (lock) {
+      return NextResponse.json({ error: `Solve "${lock.title}" first.`, locked: lock }, { status: 403 });
+    }
+
     // Hidden tests and the reference solution never leave the server.
     const {
-      hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, mutants: _mut, ...publicQuestion
+      hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, mutants: _mut, unlockAfter: _ua, ...publicQuestion
     } = question;
     // Parse all JSON-stringified fields back to arrays/objects
     const parsed = {
