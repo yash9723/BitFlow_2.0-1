@@ -30,7 +30,7 @@ const DIFF_COLOUR: Record<string, string> = {
 // Re-implements only what ProblemStatement.tsx already does, no new deps.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderMarkdown(md: string): React.ReactNode {
+export function renderMarkdown(md: string): React.ReactNode {
   const lines = md.split("\n");
   const out: React.ReactNode[] = [];
   let i = 0;

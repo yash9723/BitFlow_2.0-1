@@ -20,6 +20,7 @@ import type { Problem, SubmissionResult, Hint } from "@/lib/problem-types";
 import type { ProgressRecord } from "@/lib/problem-types";
 import SubmissionHistory from "./SubmissionHistory";
 import OptimizationBoard from "./OptimizationBoard";
+import Discussion from "./Discussion";
 import { CounterexampleView, FailingWaveformView } from "./WaveformPanel";
 
 interface ProblemStatementProps {
@@ -268,6 +269,12 @@ export default function ProblemStatement({
         {history && (
           <Section title="Smallest Design">
             <OptimizationBoard slug={history.slug} refreshKey={submission} />
+          </Section>
+        )}
+
+        {history && (
+          <Section title="Editorial & Discussion">
+            <Discussion slug={history.slug} refreshKey={submission} />
           </Section>
         )}
 

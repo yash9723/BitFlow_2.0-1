@@ -8,6 +8,7 @@ import { ArenaProblemStatement } from "@/components/ArenaProblemStatement";
 import { ExplainFailureButton } from "@/components/ProblemStatement";
 import SubmissionHistory from "@/components/SubmissionHistory";
 import OptimizationBoard from "@/components/OptimizationBoard";
+import Discussion from "@/components/Discussion";
 import { ArenaToolbar } from "@/components/ArenaToolbar";
 import ScrollUnlock from "@/components/ScrollUnlock";
 import dynamic from "next/dynamic";
@@ -188,6 +189,12 @@ export function ArenaSolverClient({ problem }: Props) {
                 </div>
               </details>
             )}
+            <details className="group">
+              <summary className="font-mono text-[11px] font-semibold text-pale cursor-pointer select-none">Editorial &amp; discussion</summary>
+              <div className="mt-2">
+                <Discussion slug={problem.slug} refreshKey={hook.submission} />
+              </div>
+            </details>
           </ArenaProblemStatement>
         </div>
 

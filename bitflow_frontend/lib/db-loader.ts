@@ -52,7 +52,7 @@ function safeParseJson<T>(value: string | null | undefined, fallback: T): T {
 // hidden tests and the reference solution are dropped: grading reads them
 // directly in app/api/problems/[slug]/submit.
 function parseQuestion(q: Record<string, unknown>): DbProblem {
-  const { hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, mutants: _mut, ...pub } = q;
+  const { hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, mutants: _mut, editorial: _ed, ...pub } = q;
   return {
     ...(pub as unknown as DbProblem),
     tags:            safeParseJson(q.tags as string,            []),

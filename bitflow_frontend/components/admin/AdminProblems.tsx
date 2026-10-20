@@ -6,6 +6,7 @@ import ReferenceSolutionsAdmin from "@/components/ReferenceSolutionsAdmin";
 import { problemHref } from "@/lib/problem-href";
 import NewProblemForm from "./NewProblemForm";
 import DebugProblemsAdmin from "./DebugProblemsAdmin";
+import ModerationAdmin from "./ModerationAdmin";
 import { Card, Failed, Loading, Stat, getJson, pct } from "./ui";
 
 interface Row {
@@ -122,6 +123,10 @@ export default function AdminProblems() {
 
       <Card title="Reference solutions" subtitle="Upload a verified answer (or a model testbench / harness, which generates the bugs to catch)">
         <ReferenceSolutionsAdmin />
+      </Card>
+
+      <Card title="Moderation" subtitle="Comments people reported (3 reports hide a comment until you decide), and problem editorials">
+        <ModerationAdmin />
       </Card>
 
       <Card title="Fix-the-bug problems" subtitle="Arena problems made from reference solutions with one line broken">

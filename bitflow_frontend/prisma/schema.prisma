@@ -30,6 +30,7 @@ model User {
   classMemberships ClassMember[]
   sharedDesigns    SharedDesign[]
   certificates     Certificate[]
+  comments         Comment[]
 }
 
 // ============================================================================
@@ -53,6 +54,7 @@ model Question {
   examples            String   // JSON stringified ProblemExample[]
   hints               String   // JSON stringified Hint[]
   solutionExplanation String?  // Markdown
+  editorial           String?  // Markdown by an admin; shown only to solvers (lib/discussion.ts)
 
   // Code
   starterCode         String
@@ -82,6 +84,7 @@ model Question {
   // Relations
   progress            UserProgress[]
   submissions         Submission[]
+  comments            Comment[]
 }
 
 // ============================================================================
@@ -341,4 +344,35 @@ model Certificate {
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, track])
+}
+
+// ============================================================================
+// DISCUSSION (lib/discussion.ts): solvers only; hidden by an admin or after 3 reports
+// ============================================================================
+
+model Comment {
+  id         String   @id @default(uuid())
+  questionId String
+  userId     String
+  body       String   // plain text, at most 2000 characters
+  hidden     Boolean  @default(false)
+  reports    Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  question   Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reportedBy CommentReport[]
+
+  @@index([questionId, createdAt])
+  @@index([reports])
+}
+
+model CommentReport {
+  commentId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
 }
