@@ -343,6 +343,15 @@ endmodule"""
         result = _run_real("module a; endmodule", spin, timeout=2)
         assert result.status == "timeout"
 
+    def test_any_dumpfile_name_gives_a_waveform(self, client):
+        # Tutorials use $dumpfile("dump.vcd"); the waveform must still come back
+        tb = ('module tb; reg x = 0; wire y; inv dut(.x(x), .y(y));\n'
+              '  initial begin $dumpfile("dump.vcd"); $dumpvars(0, tb); #5 x = 1; #5 $finish; end\nendmodule\n')
+        r = client.post("/simulate", json={"design_v": "module inv(input x, output y); assign y = ~x; endmodule",
+                                           "testbench_v": tb}).json()
+        assert r["success"] and r["waveform"]["available"], r["stdout"]
+        assert "No VCD file produced" not in r["stdout"]
+
 
 # ===========================================================================
 # TestSimulateJson

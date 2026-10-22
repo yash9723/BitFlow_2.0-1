@@ -8,6 +8,7 @@
  * Server-side only (uses prisma directly).
  */
 
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,20 +123,29 @@ export async function getProblemsByModuleGrouped(
 /**
  * Get all Arena problems (learningLevel = "Arena")
  */
-export async function getArenaProblems(): Promise<DbProblem[]> {
-  return getProblemsByLevel("Arena");
+/**
+ * The Arena hub's list: only the columns it shows. Full rows carry hidden testbenches,
+ * reference solutions and mutants, which made the hub slow to load.
+ */
+export function getArenaHubRows() {
+  return prisma.question.findMany({
+    where:   { learningLevel: "Arena" },
+    orderBy: { orderIndex: "asc" },
+    select:  { slug: true, title: true, difficulty: true, category: true, xpReward: true, statement: true, unlockAfter: true },
+  });
 }
 
 /**
  * Get a single Arena problem by slug.
  */
-export async function getArenaProblemBySlugFromDb(slug: string): Promise<DbProblem | null> {
+export const getArenaProblemBySlugFromDb = cache(async (slug: string): Promise<DbProblem | null> => {
+  // cache(): generateMetadata and the page both ask for it; one query per request
   const q = await prisma.question.findUnique({
     where: { slug },
   });
   if (!q || q.learningLevel !== "Arena") return null;
   return parseQuestion(q as unknown as Record<string, unknown>);
-}
+});
 
 /**
  * Get total problem count by level.

@@ -47,7 +47,7 @@ const THEMES = {
   dark:  { bg: "#0d0e11", axis: "#1a1b22", grid: "#22232d", text: "#b0b3cc", dim: "#80839d", bit: "#00e87a", bus: "#4db8ff", bad: "#ff4f4f", a: "#ffb84d", b: "#ff6bcb" },
   light: { bg: "#ffffff", axis: "#f3f4f6", grid: "#e5e7eb", text: "#111827", dim: "#6b7280", bit: "#047857", bus: "#1d4ed8", bad: "#dc2626", a: "#b45309", b: "#be185d" },
 };
-const LABEL_W = 130, ROW_H = 24, AXIS_H = 20, CHAR_W = 5.6;
+const LABEL_W = 130, ROW_H = 24, AXIS_H = 20, CHAR_W = 5.6, DENSE_PX = 3;
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -83,29 +83,51 @@ export function waveformSvg(vcd: ParsedVcd, view: WaveView = {}, opts: WaveSvgOp
     out.push(`<text x="6" y="${yM + 3}" font-size="10" fill="${T.text}" ${font}>${esc(name.length > 20 ? `${name.slice(0, 19)}…` : name)}</text>`);
     if (s.width > 1 && radix !== "hex") out.push(`<text x="${LABEL_W - 6}" y="${yM + 3}" font-size="8" text-anchor="end" fill="${T.dim}" ${font}>${radix}</text>`);
 
+    // A few paths per row however many changes there are: changes in the same pixel column
+    // share one vertical stroke, and bus segments narrower than DENSE_PX merge into a busy band.
     const ch = s.changes;
+    const level = (v: string) => (/[xz]/i.test(v) ? yM : v === "1" ? yH : yL);
+    if (s.width === 1) {
+      if (!ch.length) return;
+      let d = `M${x(ch[0].time)},${level(ch[0].value)}`, bad = "";
+      let col = -1, lo = 0, hi = 0, last = level(ch[0].value);
+      const flush = () => { if (col >= 0) d += lo === hi ? ` H${col} V${last}` : ` H${col} V${lo} V${hi} V${last}`; };
+      for (let j = 0; j < ch.length; j++) {
+        const x1 = x(ch[j].time), y = level(ch[j].value);
+        if (/[xz]/i.test(ch[j].value)) bad += ` M${x1},${yM} H${x(j + 1 < ch.length ? ch[j + 1].time : end)}`;
+        if (j === 0) continue;
+        const px = Math.round(x1);
+        if (px !== col) { flush(); col = px; lo = hi = last; }
+        if (y < lo) lo = y;
+        if (y > hi) hi = y;
+        last = y;
+      }
+      flush();
+      d += ` H${x(end)}`;
+      out.push(`<path d="${d}" fill="none" stroke="${T.bit}" stroke-width="1.4"/>`);
+      if (bad) out.push(`<path d="${bad}" fill="none" stroke="${T.bad}" stroke-width="1.4"/>`);
+      return;
+    }
+    let shapes = "", unknown = "", dense = "", runStart = -1, runEnd = -1;
+    const flushRun = () => { if (runStart >= 0) dense += ` M${runStart},${yH} H${runEnd} V${yL} H${runStart} Z`; runStart = -1; };
     for (let j = 0; j < ch.length; j++) {
       const x1 = x(ch[j].time), x2 = x(j + 1 < ch.length ? ch[j + 1].time : end), v = ch[j].value;
-      if (x2 <= x1 && j + 1 < ch.length) continue;
-      const unknown = /[xz]/i.test(v);
-      if (s.width === 1) {
-        const y = unknown ? yM : v === "1" ? yH : yL;
-        out.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${unknown ? T.bad : T.bit}" stroke-width="1.4"/>`);
-        if (j > 0) {
-          const pv = ch[j - 1].value, py = /[xz]/i.test(pv) ? yM : pv === "1" ? yH : yL;
-          if (py !== y) out.push(`<line x1="${x1}" y1="${py}" x2="${x1}" y2="${y}" stroke="${T.bit}" stroke-width="1.4"/>`);
-        }
-      } else {
-        const c = unknown ? T.bad : T.bus, k = Math.min(3, (x2 - x1) / 2);
-        out.push(`<path d="M${x1},${yM} L${r1(x1 + k)},${yH} H${r1(x2 - k)} L${x2},${yM} L${r1(x2 - k)},${yL} H${r1(x1 + k)} Z" fill="${c}" fill-opacity="0.08" stroke="${c}" stroke-width="1"/>`);
-        const label = formatWithRadix(v, s.width, radix), room = x2 - x1 - 8;
-        if (room >= CHAR_W * 2) {
-          const fit = Math.floor(room / CHAR_W);
-          const txt = label.length > fit ? `${label.slice(0, Math.max(1, fit - 1))}…` : label;
-          out.push(`<text x="${r1((x1 + x2) / 2)}" y="${yM + 3}" font-size="9" text-anchor="middle" fill="${c}" ${font}>${esc(txt)}</text>`);
-        }
+      if (x2 - x1 < DENSE_PX) { if (runStart < 0) runStart = x1; runEnd = x2; continue; }
+      flushRun();
+      const bad = /[xz]/i.test(v), c = bad ? T.bad : T.bus, k = Math.min(3, (x2 - x1) / 2);
+      const shape = ` M${x1},${yM} L${r1(x1 + k)},${yH} H${r1(x2 - k)} L${x2},${yM} L${r1(x2 - k)},${yL} H${r1(x1 + k)} Z`;
+      if (bad) unknown += shape; else shapes += shape;
+      const label = formatWithRadix(v, s.width, radix), room = x2 - x1 - 8;
+      if (room >= CHAR_W * 2) {
+        const fit = Math.floor(room / CHAR_W);
+        const txt = label.length > fit ? `${label.slice(0, Math.max(1, fit - 1))}…` : label;
+        out.push(`<text x="${r1((x1 + x2) / 2)}" y="${yM + 3}" font-size="9" text-anchor="middle" fill="${c}" ${font}>${esc(txt)}</text>`);
       }
     }
+    flushRun();
+    if (dense) out.push(`<path d="${dense}" fill="${T.bus}" fill-opacity="0.3" stroke="${T.bus}" stroke-width="1"/>`);
+    if (shapes) out.push(`<path d="${shapes}" fill="${T.bus}" fill-opacity="0.08" stroke="${T.bus}" stroke-width="1"/>`);
+    if (unknown) out.push(`<path d="${unknown}" fill="${T.bad}" fill-opacity="0.08" stroke="${T.bad}" stroke-width="1"/>`);
   });
 
   const m = view.markers;

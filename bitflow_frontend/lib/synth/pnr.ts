@@ -35,9 +35,9 @@ export function pnrSummary(report: any, placed: any, grid: { width: number; heig
   const utilization = Object.fromEntries(Object.entries<any>(report?.utilization ?? {}).filter(([, v]) => v?.used));
   const tiles = new Map<string, [number, number, TileKind, number]>();
   const cells: [string, TileKind, number, number][] = [];
-  for (const module of Object.values<any>(placed?.modules ?? {})) {
-    if (!module?.attributes?.top) continue;
-    for (const [name, cell] of Object.entries<any>(module.cells ?? {})) {
+  for (const mod of Object.values<any>(placed?.modules ?? {})) {
+    if (!mod?.attributes?.top) continue;
+    for (const [name, cell] of Object.entries<any>(mod.cells ?? {})) {
       const m = BEL.exec(cell?.attributes?.NEXTPNR_BEL ?? "");
       if (!m) continue;
       const kind = KINDS[m[3]] ?? "other";

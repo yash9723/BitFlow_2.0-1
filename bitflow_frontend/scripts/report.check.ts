@@ -74,4 +74,10 @@ const capped = waveformSvg(vcd, {}, { maxSignals: 2 });
 assert.equal(capped.shown, 2);
 assert.equal(capped.total, 5);
 assert.equal(capped.height, 20 + 2 * 24 + 4);
+// Thousands of value changes stay a bounded number of elements (one per change froze the page)
+const many = parseVcd("$timescale 1ns $end\n$var reg 1 ! clk $end\n$var reg 8 \" n $end\n$enddefinitions $end\n" +
+  Array.from({ length: 20000 }, (_, i) => `#${i}\n${i % 2}!\nb${(i % 256).toString(2)} "`).join("\n"));
+const big = waveformSvg(many);
+const elements = (big.svg.match(/<(path|line|text)/g) ?? []).length;
+assert.ok(elements < 200, `bounded element count (${elements})`);
 console.log("report: all checks passed");

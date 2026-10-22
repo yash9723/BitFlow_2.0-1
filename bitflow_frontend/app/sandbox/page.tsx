@@ -373,8 +373,8 @@ function SandboxContent() {
     if (!name) return;
     const problem = fileNameProblem(name, extraFiles);
     if (problem) { window.alert(problem); return; }
-    const module = name.replace(/\.[^.]+$/, "").replace(/\W/g, "_");
-    setExtraFiles([...extraFiles, { name, content: CODE_FILE.test(name) ? `module ${module} (\n);\n\nendmodule\n` : "" }]);
+    const moduleName = name.replace(/\.[^.]+$/, "").replace(/\W/g, "_");
+    setExtraFiles([...extraFiles, { name, content: CODE_FILE.test(name) ? `module ${moduleName} (\n);\n\nendmodule\n` : "" }]);
     setActiveFile(name);
   }, [extraFiles, setExtraFiles]);
   const removeFile = useCallback((name: string) => {
@@ -610,7 +610,7 @@ function SandboxContent() {
     setEditorFrac((f) =>
       Math.max(MIN_EDITOR_FRAC, Math.min(MAX_EDITOR_FRAC, f + dy / available)),
     );
-  }, []);
+  }, [setEditorFrac]);
 
   /**
    * handleHDelta: converts dx → fraction change relative to container width.
@@ -623,7 +623,7 @@ function SandboxContent() {
     setLeftFrac((f) =>
       Math.max(MIN_LEFT_FRAC, Math.min(MAX_LEFT_FRAC, f + dx / w)),
     );
-  }, []);
+  }, [setLeftFrac]);
 
   // useSplitter instances — each returns { handleMouseDown, isDragging }
   const vSplitter  = useSplitter({ axis: "y", onDelta: handleVDelta });
@@ -641,7 +641,7 @@ function SandboxContent() {
     setWaveformFrac((f) =>
       Math.max(MIN_WAVEFORM_FRAC, Math.min(MAX_WAVEFORM_FRAC, f + dy / available)),
     );
-  }, []);
+  }, [setWaveformFrac]);
 
   const wfSplitter = useSplitter({ axis: "y", onDelta: handleWFDelta });
 

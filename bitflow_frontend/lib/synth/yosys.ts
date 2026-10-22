@@ -155,8 +155,8 @@ export function summarize(stat: Json, netlist: Json) {
   const design = stat?.design ?? {};
   const cells: Record<string, number> = design.num_cells_by_type ?? {};
   let ffBits = 0, count = 0;
-  for (const module of Object.values<Json>(netlist?.modules ?? {})) {
-    for (const cell of Object.values<Json>(module.cells ?? {})) {
+  for (const mod of Object.values<Json>(netlist?.modules ?? {})) {
+    for (const cell of Object.values<Json>(mod.cells ?? {})) {
       count++;
       const type: string = cell.type ?? "";
       if (type.includes("dff") || type.includes("dlatch")) {

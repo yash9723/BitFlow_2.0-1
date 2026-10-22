@@ -73,6 +73,7 @@ const AXIS_H    = 26;    // px — time axis band above row 0
 const MARKER_COLOR = { a: "#ffb547", b: "#5ab0ff" } as const;   // pinned markers A / B
 const SIG_PAD   = 8;     // px — top/bottom inset for waveform within row
 const CROSS_W   = 5;     // px — half-width of bus transition chevrons
+const DENSE_PX  = 4;     // px — bus segments narrower than this merge into one shaded "busy" band
 const PAD_RIGHT = 32;    // px — breathing room after the last timestamp
 
 const MIN_ZOOM  = 0.15;  // 15% of fit-to-width — compact overview
@@ -153,15 +154,23 @@ function render1bit(
     );
   }
 
-  // Build the step-function path
+  // Build the step-function path. Changes that land in the same pixel column become one
+  // vertical stroke, so a clock over thousands of cycles stays a short path.
   const startY = changes[0].time === 0 ? toY(changes[0].value) : yX;
   let d = `M 0 ${startY}`;
+  let col = -1, lo = startY, hi = startY, last = startY;
+  const flush = () => { if (col >= 0) d += lo === hi ? ` H ${col} V ${last}` : ` H ${col} V ${lo} V ${hi} V ${last}`; };
 
   for (let j = 0; j < changes.length; j++) {
     const { time, value } = changes[j];
     if (j === 0 && time === 0) continue;   // already at correct y
-    d += ` H ${xOf(time)} V ${toY(value)}`;
+    const x = Math.round(xOf(time)), y = toY(value);
+    if (x !== col) { flush(); col = x; lo = hi = last; }   // the column starts at the previous level
+    if (y < lo) lo = y;
+    if (y > hi) hi = y;
+    last = y;
   }
+  flush();
   d += ` H ${chartW}`;
 
   return (
@@ -214,52 +223,58 @@ function renderBus(
     );
   }
 
-  const regions = sig.changes.map((change, idx) => ({
-    x1    : xOf(change.time),
-    x2    : idx + 1 < sig.changes.length ? xOf(sig.changes[idx + 1].time) : chartW,
-    value : change.value,
-  }));
+  // Segments narrower than DENSE_PX merge into a shaded "busy" band; the others are drawn as
+  // one path per colour, with labels only where they fit. Thousands of value changes stay a
+  // handful of SVG nodes (one <polygon> per change froze the page on long simulations).
+  let shapes = "", unknown = "", dense = "";
+  let runStart = -1, runEnd = -1;
+  const labels: React.ReactElement[] = [];
+  const flushRun = () => {
+    if (runStart >= 0) dense += ` M ${runStart} ${yH} H ${runEnd} V ${yL} H ${runStart} Z`;
+    runStart = -1;
+  };
+  const ch = sig.changes;
+  for (let idx = 0; idx < ch.length; idx++) {
+    const x1 = xOf(ch[idx].time);
+    const x2 = idx + 1 < ch.length ? xOf(ch[idx + 1].time) : chartW;
+    if (x2 - x1 < DENSE_PX) {
+      if (runStart < 0) runStart = x1;
+      runEnd = x2;
+      continue;
+    }
+    flushRun();
+    const label     = formatWithRadix(ch[idx].value, sig.width, radix);
+    const isUnknown = label === "x" || label === "z" || label === "X";
+    // First/last regions have flat ends; middle regions have chevrons
+    const lx = x1 === 0      ? 0      : x1 + CROSS_W;
+    const rx = x2 === chartW ? chartW : x2 - CROSS_W;
+    const poly = ` M ${x1} ${yM} L ${lx} ${yH} L ${rx} ${yH} L ${x2} ${yM} L ${rx} ${yL} L ${lx} ${yL} Z`;
+    if (isUnknown) unknown += poly; else shapes += poly;
+    const w = rx - lx;
+    if (w > 16) {
+      labels.push(
+        <text
+          key={idx}
+          x={(lx + rx) / 2} y={yM + 4}
+          textAnchor="middle"
+          fontSize={w > 32 ? 10 : 8}
+          fill={isUnknown ? "#4a4d60" : "#4db8ff"}
+          fontFamily="monospace"
+          style={{ userSelect: "none" }}
+        >
+          {label}
+        </text>,
+      );
+    }
+  }
+  flushRun();
 
   return (
     <g key={sig.id}>
-      {regions.map((reg, idx) => {
-        const { x1, x2, value } = reg;
-        // ← FIX: use formatWithRadix instead of hardcoded binToHex
-        const label     = formatWithRadix(value, sig.width, radix);
-        const isUnknown = label === "x" || label === "z" || label === "X";
-
-        // First/last regions have flat ends; middle regions have chevrons
-        const lx = x1 === 0     ? 0      : x1 + CROSS_W;
-        const rx = x2 === chartW ? chartW : x2 - CROSS_W;
-
-        const pts = [
-          `${x1},${yM}`, `${lx},${yH}`, `${rx},${yH}`,
-          `${x2},${yM}`, `${rx},${yL}`, `${lx},${yL}`,
-        ].join(" ");
-
-        const fill   = isUnknown ? "rgba(74,77,96,0.15)"  : "rgba(77,184,255,0.08)";
-        const stroke = isUnknown ? "#4a4d60"               : "#4db8ff";
-        const color  = isUnknown ? "#4a4d60"               : "#4db8ff";
-        const w      = rx - lx;
-
-        return (
-          <g key={idx}>
-            <polygon points={pts} fill={fill} stroke={stroke} strokeWidth={1} />
-            {w > 16 && (
-              <text
-                x={(lx + rx) / 2} y={yM + 4}
-                textAnchor="middle"
-                fontSize={w > 32 ? 10 : 8}
-                fill={color}
-                fontFamily="monospace"
-                style={{ userSelect: "none" }}
-              >
-                {label}
-              </text>
-            )}
-          </g>
-        );
-      })}
+      {dense   && <path d={dense}   fill="rgba(77,184,255,0.28)" stroke="#4db8ff" strokeWidth={1} />}
+      {shapes  && <path d={shapes}  fill="rgba(77,184,255,0.08)" stroke="#4db8ff" strokeWidth={1} />}
+      {unknown && <path d={unknown} fill="rgba(74,77,96,0.15)"   stroke="#4a4d60" strokeWidth={1} />}
+      {labels}
     </g>
   );
 }
@@ -280,12 +295,24 @@ function renderLine(
   const yBot = top + PLOT_H - SIG_PAD;
   const yOf  = (v: number) => (max === min ? (yTop + yBot) / 2 : yBot - ((v - min) / (max - min)) * (yBot - yTop));
 
-  let d = "";
-  points.forEach((p, i) => {
-    if (p.v === null) return;
-    const x2 = i + 1 < points.length ? points[i + 1].t * pxPerUnit : chartW;
-    d += (i > 0 && points[i - 1].v !== null ? ` V ${yOf(p.v)}` : ` M ${p.t * pxPerUnit} ${yOf(p.v)}`) + ` H ${x2}`;
-  });
+  // Points in the same pixel column become one vertical span (min to max), so the path stays
+  // short however many changes there are; x/z values leave a gap.
+  let d = "", penDown = false;
+  for (let i = 0; i < points.length;) {
+    const x = Math.round(points[i].t * pxPerUnit);
+    let j = i, lo = Infinity, hi = -Infinity;
+    for (; j < points.length && Math.round(points[j].t * pxPerUnit) === x; j++) {
+      const v = points[j].v;
+      if (v !== null) { const y = yOf(v); if (y < lo) lo = y; if (y > hi) hi = y; }
+    }
+    const lastV = points[j - 1].v;
+    const x2 = j < points.length ? points[j].t * pxPerUnit : chartW;
+    if (lo <= hi) {
+      d += penDown ? ` V ${lo} V ${hi}` : ` M ${x} ${lo} V ${hi}`;
+      if (lastV !== null) { d += ` V ${yOf(lastV)} H ${x2}`; penDown = true; } else penDown = false;
+    } else penDown = false;
+    i = j;
+  }
 
   const label = (y: number, v: number) => (
     <text x={4} y={y} fontSize={9} fill="#4a4d60" fontFamily="monospace" style={{ userSelect: "none" }}>{v}</text>

@@ -88,9 +88,3 @@ export default async function ArenaPage({ params }: PageProps) {
     </Suspense>
   );
 }
-
-// Generate static params for known arena problems at build time (optional)
-// export async function generateStaticParams() {
-//   const problems = await getArenaProblems();
-//   return problems.map(p => ({ category: p.category.toLowerCase(), slug: p.slug }));
-// }

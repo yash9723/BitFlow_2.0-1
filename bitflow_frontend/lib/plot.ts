@@ -22,7 +22,10 @@ export interface Series {
 export function series(sig: VcdSignal, signed: boolean): Series {
   const points = sig.changes.map((c) => ({ t: c.time, v: busValue(c.value, sig.width, signed) }));
   const known = points.map((p) => p.v).filter((v): v is number => v !== null);
-  return { points, min: known.length ? Math.min(...known) : 0, max: known.length ? Math.max(...known) : 0 };
+  // A loop, not Math.min(...known): spreading a long signal's values overflows the call stack
+  let min = known.length ? known[0] : 0, max = min;
+  for (const v of known) { if (v < min) min = v; if (v > max) max = v; }
+  return { points, min, max };
 }
 
 /** The value of `changes` at time t (the last change at or before it), or null before the first. */

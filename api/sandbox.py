@@ -352,6 +352,12 @@ def _run_simulation_sync(
             combined_stdout.append("[OK] Simulation finished successfully.")
             exit_code = 0  # success
 
+        # Testbenches often pick their own name ($dumpfile("dump.vcd")): use the newest .vcd they wrote
+        if not os.path.exists(vcd_file):
+            dumps = [os.path.join(tmpdir, f) for f in os.listdir(tmpdir) if f.endswith(".vcd")]
+            if dumps:
+                os.replace(max(dumps, key=os.path.getmtime), vcd_file)
+
         # Report VCD
         if os.path.exists(vcd_file):
             vcd_size = os.path.getsize(vcd_file)
