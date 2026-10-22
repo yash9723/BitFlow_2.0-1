@@ -10,6 +10,7 @@ import { BOARDS, type BoardId } from "@/lib/synth/boards";
 import { bitstreamToolsLoaded, buildBitstreamInBrowser } from "@/lib/synth/client";
 import type { BitstreamResult } from "@/lib/synth/fpga";
 import { downloadBlob as download } from "@/lib/api";
+import Floorplan from "./Floorplan";
 
 export default function BitstreamTab({ designCode, language }: { designCode: string; language: "verilog" | "vhdl" }) {
   const [board, setBoard] = useState<BoardId>("icestick");
@@ -92,6 +93,12 @@ export default function BitstreamTab({ designCode, language }: { designCode: str
             <pre className="bg-void border border-rim rounded px-2 py-1 text-pale">iceprog {result.top}.bin</pre>
             <p>On Windows, first give the board&apos;s &quot;Interface 0&quot; the WinUSB driver with Zadig. A UART at 115200 baud from the 12 MHz clock needs 104 clock cycles per bit.</p>
           </div>
+          {result.pnr && (
+            <div className="space-y-1 max-w-xl">
+              <div className="text-[9px] text-dim uppercase tracking-wider">Where it sits on the chip</div>
+              <Floorplan pnr={result.pnr} />
+            </div>
+          )}
         </div>
       )}
     </div>

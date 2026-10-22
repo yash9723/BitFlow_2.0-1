@@ -6,6 +6,7 @@
  * Versions match the server (Yosys 0.52, nextpnr 0.7).
  */
 import { BOARDS, pinout, type Assignment, type BoardId, type PortInfo } from "./boards";
+import { type PnrSummary, pnrSummary } from "./pnr";
 import type { RunYosys } from "./run";
 
 export interface FpgaTools { runYosys: RunYosys; runNextpnrIce40: RunYosys; runIcepack: RunYosys }
@@ -13,7 +14,9 @@ export interface FpgaTools { runYosys: RunYosys; runNextpnrIce40: RunYosys; runI
 export type BitstreamResult =
   | { ok: false; error: string; assignments?: Assignment[] }
   | { ok: true; top: string; bin: Uint8Array; pcf: string; assignments: Assignment[]; notes: string[];
-      fmaxMhz: number | null; utilization: Record<string, { used: number; available: number }> };
+      fmaxMhz: number | null; utilization: Record<string, { used: number; available: number }>;
+      /** Placement and critical paths for the floorplan (components/Floorplan.tsx). */
+      pnr: PnrSummary };
 
 const CLOCK_MHZ = 12;   // both boards' oscillator
 
@@ -49,7 +52,7 @@ export async function buildBitstream(tools: FpgaTools, boardId: BoardId, design:
 
   const pnr = await tool(tools.runNextpnrIce40,
     [...board.nextpnr, "--json", "top.json", "--pcf", "top.pcf", "--freq", String(CLOCK_MHZ),
-     "--asc", "top.asc", "--report", "report.json", "--timing-allow-fail", "--seed", "1", "-q"],
+     "--asc", "top.asc", "--report", "report.json", "--write", "placed.json", "--timing-allow-fail", "--seed", "1", "-q"],
     { "top.json": decode(synth.files["top.json"]), "top.pcf": pins.pcf }, (l) => l.startsWith("ERROR"));
   if (!pnr.ok) return pnr;
 
@@ -59,10 +62,9 @@ export async function buildBitstream(tools: FpgaTools, boardId: BoardId, design:
   if (!(bin instanceof Uint8Array)) return { ok: false, error: "icepack produced no bitstream." };
 
   const report = JSON.parse(decode(pnr.files["report.json"]) || "{}");
-  const fmax = Object.values<any>(report.fmax ?? {}).map((v) => v.achieved).filter(Boolean);
-  const utilization = Object.fromEntries(Object.entries<any>(report.utilization ?? {}).filter(([, v]) => v.used));
+  const summary = pnrSummary(report, JSON.parse(decode(pnr.files["placed.json"]) || "{}"), board.grid);
   return {
-    ok: true, top, bin, pcf: pins.pcf, assignments: pins.assignments, notes: pins.notes, utilization,
-    fmaxMhz: fmax.length ? Math.round(Math.min(...fmax) * 10) / 10 : null,
+    ok: true, top, bin, pcf: pins.pcf, assignments: pins.assignments, notes: pins.notes,
+    utilization: summary.utilization, fmaxMhz: summary.fmax[0]?.mhz ?? null, pnr: summary,
   };
 }

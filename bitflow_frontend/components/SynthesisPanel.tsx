@@ -11,6 +11,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
 import BitstreamTab from "./BitstreamTab";
+import Floorplan from "./Floorplan";
+import type { CriticalPath, PnrSummary } from "@/lib/synth/pnr";
 
 interface Fsm {
   module:      string;
@@ -48,13 +50,14 @@ interface Props {
 type Tab = "summary" | "schematic" | "fsm" | "fpga" | "bitstream";
 
 type Family = "ice40" | "xc7";
-type TileKind = "logic" | "io" | "ram" | "clock" | "other";
 interface PnrResult {
   ok: boolean; error?: string;
   fmax?:        { clock: string; mhz: number }[];
   utilization?: Record<string, { available: number; used: number }>;
   grid?:        { width: number; height: number };
-  tiles?:       [number, number, TileKind, number][];
+  tiles?:       PnrSummary["tiles"];
+  cells?:       PnrSummary["cells"];
+  critical?:    CriticalPath[];
 }
 interface FpgaResult {
   ok: boolean; error?: string; device?: string;
@@ -63,31 +66,8 @@ interface FpgaResult {
   pnr?:       PnrResult | null;
 }
 
-const TILE_COLORS: Record<TileKind, string> = { logic: "#00e87a", io: "#4db8ff", ram: "#ffb84d", clock: "#ff6b6b", other: "#b0b3cc" };
 const UTIL_NAMES: Record<string, string> = { ICESTORM_LC: "Logic cells", SB_IO: "I/O pins", ICESTORM_RAM: "Block RAM", SB_GB: "Global buffers", ICESTORM_PLL: "PLLs" };
 
-/** Where nextpnr put the design on the chip: one square per tile, brighter = more cells used. */
-function Floorplan({ grid, tiles }: { grid: { width: number; height: number }; tiles: NonNullable<PnrResult["tiles"]> }) {
-  const s = 10;
-  return (
-    <div className="space-y-1">
-      <svg viewBox={`0 0 ${grid.width * s} ${grid.height * s}`} className="w-full max-w-[340px] bg-void/60 border border-rim/50 rounded"
-           role="img" aria-label={`Floorplan: ${tiles.length} tiles used`}>
-        {tiles.map(([x, y, kind, n]) => (
-          <rect key={`${x}-${y}-${kind}`} x={x * s + 1} y={(grid.height - 1 - y) * s + 1} width={s - 2} height={s - 2}
-                fill={TILE_COLORS[kind]} opacity={kind === "logic" ? 0.3 + 0.7 * Math.min(n, 8) / 8 : 0.9}>
-            <title>{`X${x} Y${y}: ${n} ${kind === "logic" ? "logic cell" : kind}${n === 1 ? "" : "s"}`}</title>
-          </rect>
-        ))}
-      </svg>
-      <div className="flex flex-wrap gap-3 text-[9px] text-dim">
-        {(["logic", "io", "ram", "clock"] as TileKind[]).map((k) => (
-          <span key={k} className="flex items-center gap-1"><span className="inline-block w-2 h-2" style={{ background: TILE_COLORS[k] }} />{k === "io" ? "I/O" : k}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
 const FAMILIES: [Family, string][] = [["ice40", "Lattice iCE40"], ["xc7", "Xilinx 7-series"]];
 
 const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -309,7 +289,11 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
                                 between flip-flops (fewer levels, pipelining) raises it.
                               </p>
                             </div>
-                            {r.pnr.grid && r.pnr.tiles && <Floorplan grid={r.pnr.grid} tiles={r.pnr.tiles} />}
+                            {r.pnr.grid && r.pnr.tiles && (
+                              <div className="flex-1 min-w-[280px] max-w-[560px]">
+                                <Floorplan pnr={{ grid: r.pnr.grid, tiles: r.pnr.tiles, cells: r.pnr.cells, critical: r.pnr.critical }} />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

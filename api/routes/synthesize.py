@@ -439,26 +439,52 @@ def fpga_resources(cells: dict[str, int], family: str) -> dict:
 
 PNR_TIMEOUT_SECONDS = 30
 _BEL = re.compile(r"X(\d+)/Y(\d+)/(\w+?)\d*$")
+MAX_PNR_CELLS = 4000          # placed cells sent for the floorplan's hover and module colouring
+MAX_CRITICAL_PATHS = 3
+MAX_PATH_HOPS = 200
 
 
 def pnr_summary(report: dict, placed: dict) -> dict:
-    """Fmax per clock, utilisation and per-tile cell counts from nextpnr's report and placed netlist."""
+    """
+    From nextpnr's report and placed netlist: Fmax per clock, utilisation, per-tile
+    cell counts, the placed cells ([name, kind, x, y], capped) and the slowest
+    critical paths with every hop's tile and delay. lib/synth/pnr.ts is the
+    browser's copy of this (keep them in step).
+    """
     fmax = [{"clock": name.split("$")[0], "mhz": round(v["achieved"], 1)}
             for name, v in (report.get("fmax") or {}).items() if v.get("achieved")]
     util = {k: v for k, v in (report.get("utilization") or {}).items() if v.get("used")}
     tiles: dict[tuple[int, int, str], int] = {}
+    cells: list[list] = []
     for module in placed.get("modules", {}).values():
         if not module.get("attributes", {}).get("top"):
             continue
-        for cell in module.get("cells", {}).values():
+        for name, cell in module.get("cells", {}).items():
             m = _BEL.match(cell.get("attributes", {}).get("NEXTPNR_BEL", ""))
             if m:
                 kind = {"lc": "logic", "io": "io", "ram": "ram", "gb": "clock"}.get(m.group(3), "other")
                 key = (int(m.group(1)), int(m.group(2)), kind)
                 tiles[key] = tiles.get(key, 0) + 1
+                if len(cells) < MAX_PNR_CELLS:
+                    cells.append([name, kind, key[0], key[1]])
+    critical = []
+    for p in (report.get("critical_paths") or []):
+        steps = p.get("path") or []
+        hops = []
+        for s in steps[:MAX_PATH_HOPS]:
+            src, dst = s.get("from") or {}, s.get("to") or {}
+            if not hops and src.get("loc"):
+                hops.append({"x": src["loc"][0], "y": src["loc"][1], "type": "start", "delay": 0, "cell": src.get("cell", "")})
+            if dst.get("loc"):
+                hops.append({"x": dst["loc"][0], "y": dst["loc"][1], "type": s.get("type", ""), "delay": round(s.get("delay", 0), 3),
+                             "cell": dst.get("cell", ""), **({"net": s["net"]} if s.get("net") else {})})
+        critical.append({"from": p.get("from", "").split("$")[0], "to": p.get("to", "").split("$")[0],
+                         "delay_ns": round(sum(s.get("delay", 0) for s in steps), 2), "hops": hops})
+    critical.sort(key=lambda c: -c["delay_ns"])
     return {"ok": True, "fmax": sorted(fmax, key=lambda f: f["mhz"]), "utilization": util,
             "grid": {"width": 34, "height": 34},
-            "tiles": [[x, y, kind, n] for (x, y, kind), n in sorted(tiles.items())]}
+            "tiles": [[x, y, kind, n] for (x, y, kind), n in sorted(tiles.items())],
+            "cells": cells, "critical": critical[:MAX_CRITICAL_PATHS]}
 
 
 def _place_and_route(tmpdir: str) -> dict:

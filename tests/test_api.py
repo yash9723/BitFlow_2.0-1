@@ -1196,6 +1196,26 @@ def test_pnr_summary():
     s = pnr_summary(report, placed)
     assert s["fmax"] == [{"clock": "clk", "mhz": 138.3}] and list(s["utilization"]) == ["ICESTORM_LC"], s
     assert s["tiles"] == [[5, 1, "logic", 2], [13, 33, "io", 1]], s
+    assert s["cells"] == [["a", "logic", 5, 1], ["b", "logic", 5, 1], ["c", "io", 13, 33]], s
+    assert s["critical"] == [], s
+
+
+def test_pnr_summary_critical_paths():
+    step = lambda frm, to, typ, d, net=None: {"from": {"cell": frm[0], "loc": frm[1]}, "to": {"cell": to[0], "loc": to[1]},
+                                              "type": typ, "delay": d, **({"net": net} if net else {})}
+    report = {"critical_paths": [
+        {"from": "<async>", "to": "posedge clk$SB_IO_IN_$glb_clk", "path": [step(("io", [0, 5]), ("lc", [3, 5]), "routing", 1.0, "en")]},
+        {"from": "posedge clk$SB_IO_IN_$glb_clk", "to": "posedge clk$SB_IO_IN_$glb_clk", "path": [
+            step(("r0", [1, 2]), ("r0", [1, 2]), "clk-to-q", 0.54),
+            step(("r0", [1, 2]), ("add", [2, 2]), "routing", 0.6, "q[0]"),
+            step(("add", [2, 2]), ("add", [2, 2]), "logic", 0.4)]},
+    ]}
+    s = pnr_summary(report, {"modules": {}})
+    assert [c["from"] for c in s["critical"]] == ["posedge clk", "<async>"], s   # slowest first
+    slow = s["critical"][0]
+    assert slow["to"] == "posedge clk" and slow["delay_ns"] == 1.54, slow
+    assert [(h["x"], h["y"], h["type"]) for h in slow["hops"]] == [(1, 2, "start"), (1, 2, "clk-to-q"), (2, 2, "routing"), (2, 2, "logic")], slow
+    assert slow["hops"][2]["net"] == "q[0]" and "net" not in slow["hops"][3], slow
 
 
 @needs_nextpnr
@@ -1206,6 +1226,8 @@ class TestPlaceAndRoute:
         pnr = d["pnr"]
         assert pnr["ok"] and pnr["fmax"] and pnr["fmax"][0]["clock"] == "clk" and pnr["fmax"][0]["mhz"] > 50, pnr
         assert any(t[2] == "logic" for t in pnr["tiles"]), pnr["tiles"]
+        assert pnr["cells"] and all(len(c) == 4 for c in pnr["cells"]), pnr["cells"][:3]
+        assert pnr["critical"] and pnr["critical"][0]["hops"] and pnr["critical"][0]["delay_ns"] > 0, pnr["critical"][:1]
 
     def test_combinational_design_has_no_clock(self, client):
         d = client.post("/fpga", json={"design_v": "module a(input [3:0] x, y, output [4:0] s); assign s = x + y; endmodule",

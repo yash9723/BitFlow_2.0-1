@@ -18,6 +18,8 @@ export interface Board {
   /** nextpnr device arguments and the chip database file it reads. */
   nextpnr: string[];
   chipdb: string;
+  /** The chip's tile grid (icestorm), for the floorplan. */
+  grid: { width: number; height: number };
   /** Compressed download the first time (mostly the chip database), shown to the user. */
   downloadMb: number;
   clock: Pin;
@@ -38,6 +40,7 @@ export const BOARDS: Record<BoardId, Board> = {
     name: "Lattice iCEstick (iCE40-HX1K)",
     nextpnr: ["--hx1k", "--package", "tq144"],
     chipdb: "chipdb-1k.bin",
+    grid: { width: 14, height: 18 },
     downloadMb: 11,
     clock:  { pin: 21, label: "12 MHz oscillator" },
     uartRx: { pin: 9,  label: "USB serial RX" },
@@ -51,6 +54,7 @@ export const BOARDS: Record<BoardId, Board> = {
     name: "1BitSquared iCEBreaker (iCE40-UP5K)",
     nextpnr: ["--up5k", "--package", "sg48"],
     chipdb: "chipdb-5k.bin",
+    grid: { width: 26, height: 32 },
     downloadMb: 20,
     clock:  { pin: 35, label: "12 MHz oscillator" },
     uartRx: { pin: 6,  label: "USB serial RX" },

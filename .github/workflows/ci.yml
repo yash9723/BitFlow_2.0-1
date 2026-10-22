@@ -49,6 +49,7 @@ jobs:
       - run: npm run check-fsm
       - run: npm run check-wave
       - run: npm run check-circuit
+      - run: npm run check-pnr
 
   web:
     name: Frontend type-check + build

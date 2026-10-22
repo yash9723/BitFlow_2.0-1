@@ -51,7 +51,11 @@ endmodule`;
     if (!out.ok) throw new Error(`${board}: ${out.error}`);
     assert.equal(Buffer.from(out.bin.slice(0, 8)).toString("hex"), "ff0000ff7eaa997e", "iCE40 preamble");
     assert.ok(out.fmaxMhz && out.fmaxMhz > 12, `fmax ${out.fmaxMhz}`);
-    console.log(`build ${board}: ok (${out.bin.length} bytes, ${out.fmaxMhz} MHz)`);
+    const { grid, cells = [], critical = [] } = out.pnr;
+    assert.ok(cells.length > 24, `placed cells ${cells.length}`);
+    assert.ok(cells.every(([, , x, y]) => x < grid.width && y < grid.height), "cells inside the board's grid");
+    assert.ok(critical.length > 0 && critical[0].hops.length > 1, "a critical path with hops");
+    console.log(`build ${board}: ok (${out.bin.length} bytes, ${out.fmaxMhz} MHz, ${cells.length} cells, path ${critical[0].delay_ns} ns)`);
   }
   const bad = await buildBitstream(tools, "icestick", "module broken(input a; endmodule");
   assert.ok(!bad.ok && /syntax error/.test(bad.error), "a syntax error is reported");
