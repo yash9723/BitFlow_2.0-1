@@ -8,6 +8,9 @@ import assert from "node:assert/strict";
 import { simulateOnBackend } from "../lib/backend";
 import { type Cell, type TruthTable, generateVerilog } from "../lib/studio/logic-min";
 import { type FsmModel, FSM_EXAMPLES, generateTestbench as fsmTestbench, generateVerilog as fsmVerilog, guidedWalk } from "../lib/studio/fsm";
+import { WAVE_EXAMPLES, fromVcd, generateTestbench as waveTestbench, nsPerUnit, setDir } from "../lib/studio/wave";
+import { parseVcd } from "../lib/vcd-parser";
+import { TEMPLATES } from "../lib/templates";
 
 if (!process.env.BACKEND_URL || !process.env.JWT_SECRET) {
   console.log("studio-sim: skipped (set BACKEND_URL and JWT_SECRET to run against a backend)");
@@ -52,7 +55,33 @@ for (const { label, model } of [...FSM_EXAMPLES, { label: "width rules", model: 
   }
 }
 
+// Timing diagrams: each example against a design that meets it
+const WAVE_DESIGNS: Record<string, [string, string]> = {
+  "Counter with enable": ["counter_en", `module counter_en (input wire clk, input wire rst, input wire en, output reg [3:0] count);
+    always @(posedge clk) if (rst) count <= 4'd0; else if (en) count <= count + 4'd1;
+endmodule`],
+  "D flip-flop": ["dff", "module dff (input wire clk, input wire d, output reg q);\n    always @(posedge clk) q <= d;\nendmodule"],
+  "AND gate (no clock)": ["and_gate", "module and_gate (input wire a, input wire b, output wire y);\n    assign y = a & b;\nendmodule"],
+};
+for (const { label, diagram } of WAVE_EXAMPLES) {
+  const [mod, design] = WAVE_DESIGNS[label];
+  cases.push([`timing: ${label}`, { design, testbench: waveTestbench(diagram, mod) }]);
+}
+
 (async () => {
+  // Round trip: run the Sandbox counter template, sample its waveform into a diagram,
+  // mark the output, and check the same design against the diagram's testbench.
+  const tpl = TEMPLATES.counter4bit;
+  const run = await simulateOnBackend({ design_v: tpl.design, testbench_v: tpl.testbench });
+  // As the Waveform panel sees it: no scope, so testbench and DUT copies share names; keep the first of each, no parameters
+  const vcd = parseVcd(Buffer.from(run.data.waveform.vcd_base64, "base64").toString("utf8"));
+  const firsts = vcd.signals.filter((s, i) => s.type !== "parameter" && vcd.signals.findIndex((x) => x.name === s.name) === i);
+  const sampled = fromVcd(firsts, vcd.maxTime, 20, nsPerUnit(vcd.timescale));
+  assert.equal(sampled.period, 10, "a 10 ns clock in a 1 ps VCD");
+  sampled.signals = sampled.signals.map((s) => (s.name === "count" ? setDir(s, "out") : s));
+  assert.ok(sampled.signals.some((s) => s.dir === "clock"), "the clock was found");
+  cases.push(["timing: diagram sampled from the counter template", { design: tpl.design, testbench: waveTestbench(sampled, "counter") }]);
+
   for (const [name, { design, testbench }] of cases) {
     const { status, data } = await simulateOnBackend({ design_v: design, testbench_v: testbench });
     const out = `${data?.stdout ?? ""}${data?.stderr ?? ""}`;

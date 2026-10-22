@@ -24,6 +24,7 @@
     "check-plot": "tsx scripts/plot.check.ts",
     "check-logic": "tsx scripts/logic-min.check.ts",
     "check-fsm": "tsx scripts/fsm-gen.check.ts",
+    "check-wave": "tsx scripts/wave.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },

@@ -57,6 +57,7 @@ import type { ParsedVcd, VcdSignal } from "@/lib/vcd-parser";
 import { binToHex, niceTimeStep } from "@/lib/vcd-parser";
 import { downloadBlob, downloadVcd } from "@/lib/api";
 import { series, toCsv, valueAt as getValueAtTime, xyPoints } from "@/lib/plot";
+import { FROM_SIM_KEY, fromVcd, nsPerUnit } from "@/lib/studio/wave";
 import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
 import type { SimulateResponse } from "@/lib/types";
 
@@ -990,6 +991,13 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
     const r = radixMap[rowKey.get(sg.id)!] ?? defaultRadix(sg.width);
     return { name: sg.name, changes: sg.changes, fmt: (v: string) => formatWithRadix(v, sg.width, r) };
   })), "text/csv");
+  /** The visible signals as a cycle-by-cycle timing diagram, opened in the Studio (new tab). */
+  const toTiming = () => {
+    // testbench bookkeeping (integer counters, parameters) isn't part of the design's timing
+    const d = fromVcd(displaySignals.filter((sg) => sg.type !== "parameter" && sg.type !== "integer"), maxTime, 32, nsPerUnit(timescale));
+    try { localStorage.setItem(FROM_SIM_KEY, JSON.stringify(d)); } catch { window.alert("Your browser blocked local storage, so the diagram can't be passed on."); return; }
+    window.open("/studio/timing", "_blank", "noopener");
+  };
   const headerBtn = "whitespace-nowrap font-mono text-[9px] px-1.5 py-px rounded text-dim hover:text-ghost hover:bg-rim/50 transition-colors";
   const zoomPercent = Math.round(zoom * 100);
   const isAtFit     = Math.abs(zoom - 1.0) < 0.01;
@@ -1099,6 +1107,7 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
               <button onClick={() => setXyOpen((v) => !v)} aria-pressed={xyOpen} title="Plot two buses against each other" className={headerBtn}>X–Y</button>
               <button onClick={exportSvg} title="Download the chart as SVG" className={headerBtn}>SVG</button>
               <button onClick={exportCsv} title="Download the visible signals as CSV" className={headerBtn}>CSV</button>
+              <button onClick={toTiming} title="Open the visible signals as a timing diagram (one cycle per clock edge)" className={headerBtn}>→ Timing</button>
             </>
           )}
 
