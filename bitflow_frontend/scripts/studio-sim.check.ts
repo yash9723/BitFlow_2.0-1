@@ -12,6 +12,7 @@ import { WAVE_EXAMPLES, fromVcd, generateTestbench as waveTestbench, nsPerUnit, 
 import { parseVcd } from "../lib/vcd-parser";
 import { CIRCUIT_EXAMPLES, defaultEvents as circuitEvents, generateTestbench as circuitTestbench, generateVerilog as circuitVerilog } from "../lib/studio/circuit";
 import { TEMPLATES } from "../lib/templates";
+import { PART_CASES } from "./circuit-cases";
 
 if (!process.env.BACKEND_URL || !process.env.JWT_SECRET) {
   console.log("studio-sim: skipped (set BACKEND_URL and JWT_SECRET to run against a backend)");
@@ -70,7 +71,7 @@ for (const { label, diagram } of WAVE_EXAMPLES) {
 }
 
 // Circuits: every example, testbench from its default walk (exhaustive Gray walk or clocked random walk)
-for (const { label, circuit } of CIRCUIT_EXAMPLES) {
+for (const { label, circuit } of [...CIRCUIT_EXAMPLES, ...Object.entries(PART_CASES).map(([label, circuit]) => ({ label, circuit }))]) {
   cases.push([`circuit: ${label}`, { design: circuitVerilog(circuit), testbench: circuitTestbench(circuit, circuitEvents(circuit, 64, 5)) }]);
 }
 

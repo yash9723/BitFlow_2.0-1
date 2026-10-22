@@ -17,10 +17,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GeneratedCode from "@/components/studio/GeneratedCode";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { GateSim } from "@/lib/gate-sim";
+import { GateSim, toNumber } from "@/lib/gate-sim";
 import {
-  type Circuit, type InputEvent, type Note, type Part, type PartKind, type PinRef, type Wire, CIRCUIT_EXAMPLES, INPUT_KINDS,
-  compile, defaultEvents, generateTestbench, generateVerilog, inputParts, outputParts, pins, validate,
+  type Circuit, type InputEvent, type Note, type Part, type PartKind, type PinRef, type Wire, CIRCUIT_EXAMPLES, INPUT_KINDS, MAX_WIDTH,
+  MAX_EXHAUSTIVE_INPUTS, compile, constValue, defaultEvents, generateTestbench, generateVerilog, inputParts, isSequential, outputParts,
+  pinWidth, pins, portWidth, toBits, validate, width,
 } from "@/lib/studio/circuit";
 import {
   type Clip, type Selection, History, NONE, SNAP, bounds, copy, forward, inRect, isEmpty, merge, move, noteLines, noteSize,
@@ -35,12 +36,27 @@ const snap = (v: number) => Math.round(v / SNAP) * SNAP;
 const CLIP_KEY = "bitflow_circuit_clip";
 
 const LABEL_POOL: Partial<Record<PartKind, string[]>> = {
-  switch: ["a", "b", "c", "d", "e", "f", "g", "h"], clock: ["clk", "clk2"], button: ["btn", "rst", "go"],
+  switch: ["a", "b", "c", "d", "e", "f", "g", "h"], clock: ["clk", "clk2"], button: ["btn", "rst", "go"], hexin: ["a", "b", "x", "y"],
+  hexout: ["value", "result"], counter: ["count"],
 };
 const PREFIX: Record<PartKind, string> = {
-  switch: "sw", button: "btn", clock: "clk", const0: "zero", const1: "one", not: "n", and: "g", or: "g", xor: "g",
-  nand: "g", nor: "g", xnor: "g", mux2: "m", dff: "q", led: "led", seg7: "seg",
+  switch: "sw", button: "btn", clock: "clk", hexin: "in", const0: "zero", const1: "one", const: "k", not: "n", and: "g", or: "g", xor: "g",
+  nand: "g", nor: "g", xnor: "g", mux2: "m", dff: "q", tff: "t", jkff: "jk", reg: "r", counter: "cnt",
+  adder: "add", cmp: "cmp", decoder: "dec", split: "sp", merge: "mg", led: "led", seg7: "seg", hexout: "hex",
 };
+/** Widths and options a new part starts with. */
+const DEFAULTS: Partial<Record<PartKind, Partial<Part>>> = {
+  hexin: { w: 4 }, hexout: { w: 4 }, const: { w: 4, value: 0 }, adder: { w: 4 }, cmp: { w: 4 }, decoder: { w: 2 },
+  split: { w: 4 }, merge: { w: 4 }, reg: { w: 4, reset: false }, counter: { w: 4, reset: false },
+  dff: { reset: false }, tff: { reset: false }, jkff: { reset: false },
+};
+const WIDTHS: Partial<Record<PartKind, number[]>> = {
+  decoder: [1, 2, 3, 4], split: [2, 3, 4, 5, 6, 7, 8, 12, 16], merge: [2, 3, 4, 5, 6, 7, 8, 12, 16],
+};
+const widthChoices = (k: PartKind) => WIDTHS[k] ?? [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16];
+const hasWidth = (k: PartKind) => ["hexin", "hexout", "const", "adder", "cmp", "decoder", "split", "merge", "reg", "counter",
+  "not", "and", "or", "xor", "nand", "nor", "xnor", "mux2"].includes(k);
+const hex = (v: number, w: number) => v.toString(16).toUpperCase().padStart(Math.ceil(w / 4), "0");
 function freshLabel(c: Circuit, kind: PartKind): string {
   const used = new Set(c.parts.map((p) => p.label));
   const pooled = LABEL_POOL[kind]?.find((l) => !used.has(l));
@@ -48,13 +64,16 @@ function freshLabel(c: Circuit, kind: PartKind): string {
   for (let i = 1; ; i++) if (!used.has(`${PREFIX[kind]}${i}`)) return `${PREFIX[kind]}${i}`;
 }
 
-const PALETTE: { kind: PartKind; label: string }[] = [
-  { kind: "switch", label: "Switch" }, { kind: "button", label: "Button" }, { kind: "clock", label: "Clock" },
-  { kind: "const0", label: "0" }, { kind: "const1", label: "1" },
-  { kind: "not", label: "NOT" }, { kind: "and", label: "AND" }, { kind: "or", label: "OR" }, { kind: "xor", label: "XOR" },
-  { kind: "nand", label: "NAND" }, { kind: "nor", label: "NOR" }, { kind: "xnor", label: "XNOR" },
-  { kind: "mux2", label: "MUX 2:1" }, { kind: "dff", label: "D flip-flop" },
-  { kind: "led", label: "LED" }, { kind: "seg7", label: "7-segment" },
+const PALETTE: { group: string; items: { kind: PartKind; label: string }[] }[] = [
+  { group: "Inputs", items: [{ kind: "switch", label: "Switch" }, { kind: "button", label: "Button" }, { kind: "clock", label: "Clock" },
+    { kind: "hexin", label: "Hex input" }, { kind: "const0", label: "0" }, { kind: "const1", label: "1" }, { kind: "const", label: "Constant" }] },
+  { group: "Gates", items: [{ kind: "not", label: "NOT" }, { kind: "and", label: "AND" }, { kind: "or", label: "OR" }, { kind: "xor", label: "XOR" },
+    { kind: "nand", label: "NAND" }, { kind: "nor", label: "NOR" }, { kind: "xnor", label: "XNOR" }, { kind: "mux2", label: "MUX 2:1" }] },
+  { group: "Arithmetic", items: [{ kind: "adder", label: "Adder" }, { kind: "cmp", label: "Comparator" }, { kind: "decoder", label: "Decoder" }] },
+  { group: "Memory", items: [{ kind: "dff", label: "D flip-flop" }, { kind: "tff", label: "T flip-flop" }, { kind: "jkff", label: "JK flip-flop" },
+    { kind: "reg", label: "Register" }, { kind: "counter", label: "Counter" }] },
+  { group: "Wiring", items: [{ kind: "split", label: "Splitter" }, { kind: "merge", label: "Merger" }] },
+  { group: "Outputs", items: [{ kind: "led", label: "LED" }, { kind: "hexout", label: "Hex display" }, { kind: "seg7", label: "7-segment" }] },
 ];
 
 const SHORTCUTS: [string, string][] = [
@@ -83,7 +102,7 @@ function writeClip(clip: Clip) {
 
 // ── Tool ──────────────────────────────────────────────────────────────────────
 
-type Live = { sim: GateSim; netOf: ReturnType<typeof compile>["netOf"] } | null;
+type Live = { sim: GateSim; bitsOf: ReturnType<typeof compile>["bitsOf"] } | null;
 type View = { x: number; y: number; z: number };
 
 export default function CircuitTool() {
@@ -115,7 +134,7 @@ export default function CircuitTool() {
 
   // Positions, bends and notes don't change the logic, so editing them doesn't rebuild the simulation or the checks
   const logicKey = JSON.stringify({
-    m: c.module, p: c.parts.map((p) => ({ id: p.id, kind: p.kind, label: p.label, n: p.n, reset: p.reset })),
+    m: c.module, p: c.parts.map((p) => ({ id: p.id, kind: p.kind, label: p.label, n: p.n, reset: p.reset, w: p.w, value: p.value })),
     w: c.wires.map((w) => [w.id, w.from, w.to]),
   });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,14 +149,14 @@ export default function CircuitTool() {
   const redraw = () => setTick((t) => t + 1);
   useEffect(() => {
     if (!ok) { simRef.current = null; redraw(); return; }
-    const { net, netOf } = compile(c);
+    const { net, bitsOf } = compile(c);
     const sim = new GateSim(net);
     for (const p of inputParts(c)) {
-      const v = inputsRef.current[p.label] ?? 0;
+      const v = (inputsRef.current[p.label] ?? 0) % 2 ** portWidth(p);
       inputsRef.current[p.label] = v;
-      if (v) sim.set(p.label, [v]);
+      if (v) sim.set(p.label, toBits(v, portWidth(p)));
     }
-    simRef.current = { sim, netOf };
+    simRef.current = { sim, bitsOf };
     setRecorded([]);                                  // the recording starts from this power-up
     redraw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,7 +166,7 @@ export default function CircuitTool() {
     const s = simRef.current;
     if (!s || inputsRef.current[label] === v) return;
     inputsRef.current[label] = v;
-    s.sim.set(label, [v]);
+    s.sim.set(label, toBits(v, s.sim.ports[label]?.bits.length ?? 1));
     setRecorded((r) => [...r, { port: label, value: v }]);
     redraw();
   }, []);
@@ -157,7 +176,7 @@ export default function CircuitTool() {
   }, [drive]);
   const powerUp = () => {
     for (const p of inputParts(c)) inputsRef.current[p.label] = 0;
-    if (ok) { const { net, netOf } = compile(c); simRef.current = { sim: new GateSim(net), netOf }; }
+    if (ok) { const { net, bitsOf } = compile(c); simRef.current = { sim: new GateSim(net), bitsOf }; }
     setRecorded([]);
     redraw();
   };
@@ -230,7 +249,7 @@ export default function CircuitTool() {
     const k = c.parts.length, ctr = visibleCentre();
     const p: Part = {
       id: uid("p"), kind, label: freshLabel(c, kind), x: snap(ctr.x - 60 + (k % 6) * 20), y: snap(ctr.y - 60 + (k % 8) * 20),
-      ...(kind === "dff" ? { reset: false } : {}),
+      ...DEFAULTS[kind],
     };
     edit({ ...c, parts: [...c.parts, p] });
     setSel({ ...NONE, parts: [p.id] });
@@ -268,8 +287,9 @@ export default function CircuitTool() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [logicKey, ok, events, notesKey],
   );
-  const sequential = c.parts.some((p) => p.kind === "dff");
-  const tableable = ok && !sequential && inputParts(c).length > 0 && inputParts(c).length <= 6 && outputParts(c).length > 0;
+  const sequential = c.parts.some(isSequential);
+  const inputBits = inputParts(c).reduce((n, p) => n + portWidth(p), 0);
+  const tableable = ok && !sequential && inputBits > 0 && inputBits <= 6 && outputParts(c).length > 0;
   const toTable = () => {
     const t = tableFromNetlist(compile(c).net);
     if (typeof t === "string") { window.alert(t); return; }
@@ -323,11 +343,16 @@ export default function CircuitTool() {
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[150px_minmax(0,1fr)_280px]">
-        <div className="flex xl:flex-col flex-wrap gap-1.5 font-mono text-[11px]">
-          {PALETTE.map((p) => (
-            <button key={p.kind} onClick={() => addPart(p.kind)} className="px-2 py-1.5 rounded border border-rim/60 text-ghost hover:text-bright hover:border-phosphor/50 text-left">
-              + {p.label}
-            </button>
+        <div className="flex xl:flex-col flex-wrap gap-1.5 font-mono text-[11px] xl:max-h-[640px] xl:overflow-y-auto xl:pr-1">
+          {PALETTE.map((g) => (
+            <div key={g.group} className="contents xl:block xl:space-y-1">
+              <div className="hidden xl:block text-[9px] uppercase tracking-wider text-dim pt-1">{g.group}</div>
+              {g.items.map((p) => (
+                <button key={p.kind} onClick={() => addPart(p.kind)} className="xl:w-full px-2 py-1 rounded border border-rim/60 text-ghost hover:text-bright hover:border-phosphor/50 text-left">
+                  + {p.label}
+                </button>
+              ))}
+            </div>
           ))}
           <button onClick={addNote} className="px-2 py-1.5 rounded border border-dashed border-warn/40 text-ghost hover:text-bright text-left">+ Note</button>
         </div>
@@ -354,7 +379,7 @@ export default function CircuitTool() {
           <span className="text-dim">testbench drives</span>
           <label className="flex items-center gap-1">
             <input type="radio" checked={tbSource === "auto"} onChange={() => setTbSource("auto")} />
-            {sequential || inputParts(c).length > 10 ? "a random walk (the clock toggles every other step)" : "every input combination (one change per step)"}
+            {sequential || inputBits > MAX_EXHAUSTIVE_INPUTS ? "a random walk (the clock toggles every other step)" : "every input combination (one bit changes per step)"}
           </label>
           <label className={`flex items-center gap-1 ${recorded.length ? "" : "opacity-50"}`}>
             <input type="radio" disabled={!recorded.length} checked={tbSource === "mine"} onChange={() => setTbSource("mine")} />
@@ -399,7 +424,8 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
   const capture = (e: React.PointerEvent) => { try { svg.current?.setPointerCapture(e.pointerId); } catch { /* not an active pointer */ } };
   const focus = () => box.current?.focus({ preventScroll: true });
   const byId = new Map(c.parts.map((p) => [p.id, p]));
-  const valueOf = (r: PinRef) => { const n = live?.netOf(r); return live && n !== undefined ? live.sim.net(n) : 0; };
+  /** An output pin's current value (a bus as a number). */
+  const valueOf = (r: PinRef) => { const bits = live?.bitsOf(r); return live && bits ? toNumber(bits.map((b) => live.sim.net(b))) : 0; };
   const has = (list: string[], id: string) => list.includes(id);
 
   // Ctrl/Cmd+wheel zooms around the pointer (a native listener: React's wheel handlers can't preventDefault)
@@ -524,8 +550,11 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
         {c.wires.map((w, i) => {
           const a = byId.get(w.from.part), b = byId.get(w.to.part);
           if (!a || !b) return null;
-          const d = wirePath(pinPos(a, w.from.pin), pinPos(b, w.to.pin), ((i % 5) - 2) * 7, w.bend);
-          const on = valueOf(w.from) === 1, selected = has(sel.wires, w.id);
+          const pa = pinPos(a, w.from.pin), pb = pinPos(b, w.to.pin);
+          const d = wirePath(pa, pb, ((i % 5) - 2) * 7, w.bend);
+          const bw = pinWidth(a, w.from.pin), bad = bw !== pinWidth(b, w.to.pin);
+          const v = valueOf(w.from), on = bw === 1 && v === 1, selected = has(sel.wires, w.id);
+          const colour = selected ? "#4db8ff" : bad ? "#ff5a5a" : bw > 1 ? "#5aa9e6" : on ? "#00e87a" : "#4a4d60";
           return (
             <g key={w.id} data-wire={w.id} style={{ cursor: "move" }}
                onPointerDown={(e) => {
@@ -536,22 +565,32 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
                  setDrag({ kind: "bend", group: `bend${++gesture.current}`, id: w.id, base: c });
                }}>
               <path d={d} stroke="transparent" strokeWidth={10} fill="none" />
-              <path d={d} stroke={selected ? "#4db8ff" : on ? "#00e87a" : "#4a4d60"} strokeWidth={selected ? 2.5 : 2} fill="none" strokeLinejoin="round" />
+              <path d={d} stroke={colour} strokeWidth={(bw > 1 ? 3.5 : 2) + (selected ? 0.5 : 0)} fill="none" strokeLinejoin="round"
+                    strokeDasharray={bad ? "6 4" : undefined} />
+              {bw > 1 && live && (
+                <text x={pa.x + 6} y={pa.y - 5} fontSize={9} fill="#9fd0ff" fontFamily="monospace" style={{ pointerEvents: "none" }}>
+                  {`${bw}'h${hex(v, bw)}`}
+                </text>
+              )}
             </g>
           );
         })}
 
         {c.parts.map((p) => (
           <PartView key={p.id} p={p} selected={has(sel.parts, p.id)} valueOf={valueOf}
-                    inputValue={inputs[p.label] ?? 0} outputBits={live && (p.kind === "led" || p.kind === "seg7") ? live.sim.get(p.label) : null}
+                    inputValue={inputs[p.label] ?? 0} outputBits={live && (p.kind === "led" || p.kind === "seg7" || p.kind === "hexout") ? live.sim.get(p.label) : null}
                     onBodyDown={(e) => startMove(e, "parts", p.id)}
                     onPinDown={(e, pin, isOutput) => {
                       e.stopPropagation(); capture(e); focus();
                       const q = toSvg(e);
                       setDrag({ kind: "wire", from: { part: p.id, pin }, isOutput, x: q.x, y: q.y });
                     }}
-                    onKnob={(down) => {
+                    onKnob={(down, back) => {
                       if (!live) return;
+                      if (p.kind === "hexin" && down) {
+                        const m = 2 ** width(p);                     // click counts up, shift-click down
+                        drive(p.label, ((inputs[p.label] ?? 0) + (back ? m - 1 : 1)) % m);
+                      }
                       if (p.kind === "switch" && down) drive(p.label, (inputs[p.label] ?? 0) ^ 1);
                       if (p.kind === "button") drive(p.label, down ? 1 : 0);
                       if (p.kind === "clock" && down) pulse([p.label]);
@@ -590,17 +629,23 @@ const GATE_SYMBOL: Record<string, string> = { and: "&", or: "≥1", xor: "=1", n
 function PartView({ p, selected, valueOf, inputValue, outputBits, onBodyDown, onPinDown, onKnob }: {
   p: Part; selected: boolean; valueOf: (r: PinRef) => number; inputValue: number; outputBits: number[] | null;
   onBodyDown: (e: React.PointerEvent) => void; onPinDown: (e: React.PointerEvent, pin: string, isOutput: boolean) => void;
-  onKnob: (down: boolean) => void;
+  onKnob: (down: boolean, back?: boolean) => void;
 }) {
   const { w, h } = size(p);
   const { inputs, outputs } = pins(p);
   const stroke = selected ? "#4db8ff" : "#5a5e74";
-  const outOn = outputs.length ? valueOf({ part: p.id, pin: outputs[0] }) === 1 : false;
+  const outOn = outputs.length && pinWidth(p, outputs[0]) === 1 ? valueOf({ part: p.id, pin: outputs[0] }) === 1 : false;
   const inverted = ["nand", "nor", "xnor", "not"].includes(p.kind);
-  const showPinNames = p.kind === "mux2" || p.kind === "dff" || p.kind === "seg7";
+  const showPinNames = !["switch", "button", "clock", "hexin", "const0", "const1", "const", "led", "hexout", "not", "and", "or", "xor", "nand", "nor", "xnor"].includes(p.kind);
+  const box = (title: string, sub?: string) => <>
+    <rect x={p.x} y={p.y} width={w} height={h} rx={4} fill="#13141a" stroke={stroke} />
+    <text x={p.x + w / 2} y={p.y + 13} textAnchor="middle" fontSize={9} fontWeight={700} fill="#c8cad6" fontFamily="monospace">{title}</text>
+    {sub && <text x={p.x + w / 2} y={p.y + h - 6} textAnchor="middle" fontSize={8} fill="#6b6f85" fontFamily="monospace">{sub}</text>}
+  </>;
+  const clkMark = inputs.includes("clk") ? (() => { const cy = pinPos(p, "clk").y; return <path d={`M ${p.x} ${cy - 5} L ${p.x + 7} ${cy} L ${p.x} ${cy + 5}`} fill="none" stroke="#8b8fa3" />; })() : null;
 
   let body: React.ReactNode;
-  if (INPUT_KINDS.includes(p.kind)) {
+  if (INPUT_KINDS.includes(p.kind) && p.kind !== "hexin") {
     const on = p.kind === "clock" ? outOn : inputValue === 1;
     body = (
       <>
@@ -620,6 +665,43 @@ function PartView({ p, selected, valueOf, inputValue, outputBits, onBodyDown, on
         </g>
       </>
     );
+  } else if (p.kind === "hexin") {
+    const W = width(p);
+    body = <>
+      <rect x={p.x} y={p.y} width={w} height={h} rx={6} fill="#13141a" stroke={stroke} />
+      <g data-knob={p.label} style={{ cursor: "pointer" }} onPointerDown={(e) => { e.stopPropagation(); onKnob(true, e.shiftKey); }}>
+        <rect x={p.x + 6} y={p.y + 7} width={w - 22} height={h - 14} rx={3} fill="#0b1a24" stroke="#2f5d7a" />
+        <text x={p.x + 6 + (w - 22) / 2} y={p.y + h / 2 + 5} textAnchor="middle" fontSize={14} fontWeight={700} fill="#7cc4ff" fontFamily="monospace">{hex(inputValue, W)}</text>
+      </g>
+      <text x={p.x + w - 9} y={p.y + h / 2 + 3} textAnchor="middle" fontSize={8} fill="#6b6f85" fontFamily="monospace">{W}b</text>
+    </>;
+  } else if (p.kind === "const") {
+    body = <>
+      <rect x={p.x} y={p.y} width={w} height={h} rx={6} fill="#13141a" stroke={stroke} />
+      <text x={p.x + w / 2 - 4} y={p.y + h / 2 + 5} textAnchor="middle" fontSize={13} fontWeight={700} fill="#9fd0ff" fontFamily="monospace">{`${width(p)}'h${hex(constValue(p), width(p))}`}</text>
+    </>;
+  } else if (p.kind === "hexout") {
+    const W = width(p), v = outputBits ? toNumber(outputBits) : 0;
+    body = <>
+      <rect x={p.x} y={p.y} width={w} height={h} rx={6} fill="#0d0e11" stroke={stroke} />
+      <text x={p.x + w / 2 + 3} y={p.y + h / 2 + 4} textAnchor="middle" fontSize={20} fontWeight={700} fill="#ff6b6b" fontFamily="monospace"
+            style={{ filter: "drop-shadow(0 0 4px rgba(255,90,90,0.6))" }}>{hex(v, W)}</text>
+      <text x={p.x + w - 4} y={p.y + h - 4} textAnchor="end" fontSize={8} fill="#6b6f85" fontFamily="monospace">{v}</text>
+    </>;
+  } else if (p.kind === "tff" || p.kind === "jkff") {
+    body = <>{box(p.kind === "tff" ? "T" : "JK")}{clkMark}
+      <text x={p.x + w - 6} y={p.y + h / 2 + 4} textAnchor="end" fontSize={10} fill="#8b8fa3" fontFamily="monospace">Q</text></>;
+  } else if (p.kind === "reg" || p.kind === "counter") {
+    body = <>{box(p.kind === "reg" ? "REG" : "COUNT", `${width(p)} bits`)}{clkMark}</>;
+  } else if (p.kind === "adder" || p.kind === "cmp" || p.kind === "decoder") {
+    body = <>{box(p.kind === "adder" ? "ADD" : p.kind === "cmp" ? "CMP" : "DEC", p.kind === "decoder" ? `${width(p)}→${2 ** width(p)}` : `${width(p)} bits`)}</>;
+  } else if (p.kind === "split" || p.kind === "merge") {
+    body = <>
+      <rect x={p.x} y={p.y} width={w} height={h} rx={3} fill="#13141a" stroke={stroke} />
+      <path d={p.kind === "split" ? `M ${p.x + 8} ${p.y + h / 2} L ${p.x + w - 8} ${p.y + 8} M ${p.x + 8} ${p.y + h / 2} L ${p.x + w - 8} ${p.y + h - 8}`
+                                  : `M ${p.x + w - 8} ${p.y + h / 2} L ${p.x + 8} ${p.y + 8} M ${p.x + w - 8} ${p.y + h / 2} L ${p.x + 8} ${p.y + h - 8}`}
+            stroke="#5aa9e6" strokeWidth={2} fill="none" />
+    </>;
   } else if (p.kind === "const0" || p.kind === "const1") {
     body = <>
       <rect x={p.x} y={p.y} width={w} height={h} rx={6} fill="#13141a" stroke={stroke} />
@@ -672,7 +754,9 @@ function PartView({ p, selected, valueOf, inputValue, outputBits, onBodyDown, on
         return (
           <g key={pin} data-pin={`${p.label}.${pin}`} onPointerDown={(e) => onPinDown(e, pin, false)} style={{ cursor: "crosshair" }}>
             <circle cx={q.x} cy={q.y} r={8} fill="transparent" />
-            <circle cx={q.x} cy={q.y} r={3.5} fill="#0d0e11" stroke="#8b8fa3" />
+            {pinWidth(p, pin) > 1
+              ? <rect x={q.x - 4} y={q.y - 4} width={8} height={8} rx={1.5} fill="#0d0e11" stroke="#5aa9e6" />
+              : <circle cx={q.x} cy={q.y} r={3.5} fill="#0d0e11" stroke="#8b8fa3" />}
             {showPinNames && <text x={q.x + 6} y={q.y + 3} fontSize={p.kind === "seg7" ? 7 : 8} fill="#6b6f85" fontFamily="monospace">{pin}</text>}
           </g>
         );
@@ -682,7 +766,11 @@ function PartView({ p, selected, valueOf, inputValue, outputBits, onBodyDown, on
         return (
           <g key={pin} data-pin={`${p.label}.${pin}`} onPointerDown={(e) => onPinDown(e, pin, true)} style={{ cursor: "crosshair" }}>
             <circle cx={q.x} cy={q.y} r={8} fill="transparent" />
-            <circle cx={q.x} cy={q.y} r={3.5} fill={outOn ? "#00e87a" : "#0d0e11"} stroke={outOn ? "#00e87a" : "#8b8fa3"} />
+            {pinWidth(p, pin) > 1
+              ? <rect x={q.x - 4} y={q.y - 4} width={8} height={8} rx={1.5} fill="#0d0e11" stroke="#5aa9e6" />
+              : (() => { const lit = outputs.length > 1 ? valueOf({ part: p.id, pin }) === 1 : outOn;
+                         return <circle cx={q.x} cy={q.y} r={3.5} fill={lit ? "#00e87a" : "#0d0e11"} stroke={lit ? "#00e87a" : "#8b8fa3"} />; })()}
+            {showPinNames && outputs.length > 1 && <text x={q.x - 6} y={q.y + 3} textAnchor="end" fontSize={8} fill="#6b6f85" fontFamily="monospace">{pin}</text>}
           </g>
         );
       })}
@@ -760,11 +848,12 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp }: {
   if (!p) return null;
   const set = (patch: Partial<Part>, group = "") => {
     const next = { ...p, ...patch };
-    const keep = new Set(pins(next).inputs);                       // dropping inputs drops their wires
+    const { inputs: ins, outputs: outs } = pins(next);           // dropping pins drops their wires
     edit({ ...c, parts: c.parts.map((x) => (x.id === p.id ? next : x)),
-      wires: c.wires.filter((w) => w.to.part !== p.id || keep.has(w.to.pin)) }, group);
+      wires: c.wires.filter((w) => (w.to.part !== p.id || ins.includes(w.to.pin)) && (w.from.part !== p.id || outs.includes(w.from.pin))) }, group);
   };
   const gate = ["and", "or", "xor", "nand", "nor", "xnor"].includes(p.kind);
+  const resettable = ["dff", "tff", "jkff", "reg", "counter"].includes(p.kind);
   return (
     <div className={box}>
       <div className="flex items-center justify-between"><span className="text-ghost uppercase tracking-wider">{p.kind}</span>{actions()}</div>
@@ -780,11 +869,27 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp }: {
           </select>
         </label>
       )}
-      {p.kind === "dff" && (
+      {hasWidth(p.kind) && (
+        <label className="flex items-center gap-2 text-dim">{p.kind === "decoder" ? "select bits" : "width"}
+          <select value={width(p)} onChange={(e) => set({ w: Number(e.target.value) })} aria-label="Width" className="bg-pit border border-rim/60 rounded px-1 text-[12px] text-pale">
+            {widthChoices(p.kind).filter((n) => n <= MAX_WIDTH).map((n) => <option key={n} value={n}>{n} bit{n === 1 ? "" : "s"}</option>)}
+          </select>
+        </label>
+      )}
+      {p.kind === "const" && (
+        <label className="flex items-center gap-2 text-dim">value
+          <input type="number" min={0} max={2 ** width(p) - 1} value={constValue(p)} aria-label="Constant value"
+                 onChange={(e) => set({ value: Math.max(0, Math.min(2 ** width(p) - 1, Number(e.target.value) || 0)) }, `value:${p.id}`)}
+                 className="w-24 bg-pit border border-rim/60 rounded px-2 py-0.5 text-[12px] text-pale" />
+        </label>
+      )}
+      {p.kind === "hexin" && <div className="text-dim">Click its display to count up, shift-click to count down.</div>}
+      {resettable && (
         <label className="flex items-center gap-2 text-ghost">
           <input type="checkbox" checked={!!p.reset} onChange={(e) => set({ reset: e.target.checked })} /> asynchronous reset input
         </label>
       )}
+      {(p.kind === "reg" || p.kind === "counter") && <div className="text-dim">An unconnected <span className="text-pale">en</span> reads 1: always enabled.</div>}
     </div>
   );
 }

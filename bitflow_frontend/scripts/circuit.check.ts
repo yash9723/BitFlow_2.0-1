@@ -9,6 +9,8 @@ import {
 } from "../lib/studio/circuit";
 import { tableFromNetlist } from "../lib/studio/logic-min";
 import { History, NONE, copy, inRect, merge, move, nextLabel, paste, remove, selectAll, wirePath } from "../lib/studio/circuit-edit";
+import { toBits } from "../lib/studio/circuit";
+import { PART_CASES } from "./circuit-cases";
 
 const ex = (label: string) => CIRCUIT_EXAMPLES.find((e) => e.label === label)!.circuit;
 for (const { label, circuit } of CIRCUIT_EXAMPLES) {
@@ -138,4 +140,62 @@ assert.equal(g.undo(half), null);
 assert.equal(wirePath({ x: 0, y: 0 }, { x: 100, y: 50 }, 0, 30), "M 0 0 H 30 V 50 H 100");
 const noted = { ...half, notes: [{ id: "n1", x: 0, y: 0, text: "sum is a XOR b\ncarry is a AND b" }] };
 assert.match(generateVerilog(noted), /\/\/ Note: sum is a XOR b carry is a AND b\nmodule half_adder/);
+
+// Buses and the newer parts, in the gate simulator (scripts/circuit-cases.ts; studio-sim runs their Verilog on Icarus)
+for (const [name, circuit] of Object.entries(PART_CASES)) {
+  assert.deepEqual(validate(circuit).filter((i) => i.level === "error"), [], name);
+}
+const sim = (name: keyof typeof PART_CASES) => new GateSim(compile(PART_CASES[name]).net);
+const num = (s: GateSim, port: string) => toNumber(s.get(port));
+const put = (s: GateSim, port: string, v: number) => s.set(port, toBits(v, s.ports[port].bits.length));
+const add = sim("adder4");
+for (let a = 0; a < 16; a++) for (let b = 0; b < 16; b++) for (const cin of [0, 1]) {
+  put(add, "a", a); put(add, "b", b); put(add, "cin", cin);
+  assert.equal(num(add, "sum") + 16 * num(add, "cout"), a + b + cin, `add ${a}+${b}+${cin}`);
+}
+const cmp = sim("cmp3");
+for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) {
+  put(cmp, "a", a); put(cmp, "b", b);
+  assert.deepEqual([num(cmp, "eq"), num(cmp, "lt"), num(cmp, "gt")], [+(a === b), +(a < b), +(a > b)], `cmp ${a} ${b}`);
+}
+const dec = sim("decoder3");
+for (let s = 0; s < 8; s++) { put(dec, "sel", s); assert.equal(num(dec, "y"), 1 << s, `decoder ${s}`); }
+const swp = sim("swap");
+for (let x = 0; x < 16; x++) { put(swp, "x", x); assert.equal(num(swp, "y"), (x & 0b1001) | ((x & 2) << 1) | ((x & 4) >> 1), `swap ${x}`); }
+const bw = sim("bitwise");
+put(bw, "a", 0b1100); put(bw, "b", 0b1010);
+assert.deepEqual([num(bw, "y_and"), num(bw, "y_xor"), num(bw, "y_not"), num(bw, "y_mux")], [0b1000, 0b0110, 0b0011, 0b1100]);
+put(bw, "s", 1); assert.equal(num(bw, "y_mux"), 0b1010);
+// Register: loads only when enabled; the counter's unconnected enable reads 1, so it counts every edge and wraps
+const rc = sim("regcount");
+const clk = (s: GateSim) => { put(s, "clk", 1); put(s, "clk", 0); };
+put(rc, "d", 9); clk(rc);
+assert.deepEqual([num(rc, "q"), num(rc, "count")], [0, 1], "no load without en");
+put(rc, "load", 1); clk(rc);
+assert.deepEqual([num(rc, "q"), num(rc, "count")], [9, 2]);
+put(rc, "load", 0); put(rc, "d", 3); clk(rc);
+assert.equal(num(rc, "q"), 9, "holds");
+for (let i = 0; i < 5; i++) clk(rc);
+assert.equal(num(rc, "count"), (3 + 5) % 8, "wraps");
+put(rc, "rst", 1); assert.equal(num(rc, "q"), 0, "async reset"); put(rc, "rst", 0);
+// T toggles when t = 1; JK: 00 hold, 01 reset, 10 set, 11 toggle
+const tj = sim("tjk");
+clk(tj); assert.equal(num(tj, "t_out"), 0);
+put(tj, "t", 1); clk(tj); assert.equal(num(tj, "t_out"), 1); clk(tj); assert.equal(num(tj, "t_out"), 0);
+const jk = (j: number, k: number) => { put(tj, "j", j); put(tj, "k", k); clk(tj); return num(tj, "jk_out"); };
+assert.deepEqual([jk(1, 0), jk(0, 0), jk(1, 1), jk(1, 1), jk(0, 1), jk(0, 0)], [1, 1, 0, 1, 0, 0]);
+const k5 = sim("const5");
+put(k5, "x", 18); assert.equal(num(k5, "hit"), 0); put(k5, "x", 19); assert.equal(num(k5, "hit"), 1);
+// Widths: a 4-bit pin into a 1-bit pin is an error; Verilog declares buses and multi-output signals
+const mismatch: Circuit = { ...PART_CASES.adder4, wires: [...PART_CASES.adder4.wires.filter((w) => w.to.part !== "cout_id"),
+  { id: "bad", from: { part: "add_id", pin: "sum" }, to: { part: "cout_id", pin: "in" } }] };
+assert.ok(validate(mismatch).some((i) => i.level === "error" && /is 4 bits but cout\.in takes 1/.test(i.msg)));
+const av = generateVerilog(PART_CASES.adder4);
+assert.match(av, /input  wire \[3:0\] a/);
+assert.match(av, /assign \{add_cout, add_sum\} = a \+ b \+ cin;/);
+assert.match(generateVerilog(PART_CASES.regcount), /always @\(posedge clk or posedge rst\) if \(rst\) r <= 4'd0; else if \(load\) r <= d;/);
+assert.match(generateVerilog(PART_CASES.regcount), /always @\(posedge clk\) cnt <= cnt \+ 1'b1;/);
+// Bus inputs in the testbench walk: every combination of the bits, one bit at a time
+assert.equal(defaultEvents(PART_CASES.cmp3).length, 63);
+assert.match(generateTestbench(PART_CASES.cmp3, defaultEvents(PART_CASES.cmp3)), /a = 3'd1; #5;/);
 console.log("circuit: all checks passed");

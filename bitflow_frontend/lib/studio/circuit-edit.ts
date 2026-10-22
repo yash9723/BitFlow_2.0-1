@@ -11,24 +11,34 @@ export const SNAP = 10;
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
 export function size(p: Part): { w: number; h: number } {
-  const n = pins(p).inputs.length;
+  const { inputs, outputs } = pins(p);
+  const n = inputs.length;
   switch (p.kind) {
     case "switch": case "button": case "clock": case "const0": case "const1": return { w: 60, h: 36 };
+    case "hexin": case "const": return { w: 76, h: 40 };
     case "led": return { w: 44, h: 36 };
+    case "hexout": return { w: 76, h: 44 };
     case "seg7": return { w: 60, h: 104 };
     case "mux2": return { w: 56, h: 76 };
-    case "dff": return { w: 64, h: n * 20 + 24 };
+    case "dff": case "tff": case "jkff": return { w: 64, h: n * 20 + 24 };
+    case "reg": case "counter": return { w: 76, h: n * 20 + 24 };
+    case "adder": return { w: 76, h: 84 };
+    case "cmp": return { w: 70, h: 76 };
+    case "decoder": return { w: 70, h: 56 };
+    case "split": case "merge": return { w: 44, h: Math.max(40, Math.max(n, outputs.length) * 14 + 12) };
     case "not": return { w: 56, h: 36 };
     default: return { w: 64, h: Math.max(44, n * 16 + 12) };
   }
 }
 
+/** Inputs spread down the left edge, outputs down the right. */
 export function pinPos(p: Part, pin: string): { x: number; y: number } {
   const { w, h } = size(p);
-  const { inputs } = pins(p);
+  const { inputs, outputs } = pins(p);
   const i = inputs.indexOf(pin);
   if (i >= 0) return { x: p.x, y: p.y + ((i + 1) * h) / (inputs.length + 1) };
-  return { x: p.x + w, y: p.y + h / 2 };
+  const o = Math.max(0, outputs.indexOf(pin));
+  return { x: p.x + w, y: p.y + ((o + 1) * h) / (outputs.length + 1) };
 }
 
 /** A note's text wrapped at 28 characters a line. */
