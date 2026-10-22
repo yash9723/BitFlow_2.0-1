@@ -21,7 +21,8 @@ export default function Discussion({ slug, refreshKey }: { slug: string; refresh
   const load = useCallback(() => {
     fetch(url).then(async (r) => {
       const body = await r.json().catch(() => ({}));
-      if (r.ok) { setData(body); setLocked(null); } else setLocked(body.error ?? "Discussion unavailable.");
+      if (r.ok && body.locked) setLocked(body.locked);
+      else if (r.ok) { setData(body); setLocked(null); } else setLocked(body.error ?? "Discussion unavailable.");
     }).catch(() => setLocked("Discussion unavailable."));
   }, [url]);
   useEffect(load, [load, refreshKey]);

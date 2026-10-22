@@ -14,7 +14,13 @@ export const dynamic = "force-dynamic";
 export async function GET(_request: Request, { params }: { params: { slug: string } }) {
   const user = await getSessionUser();
   const access = await discussionAccess(params.slug, user);
-  if ("error" in access) return NextResponse.json({ error: access.error }, { status: access.status });
+  // Not solved yet (or signed out) is the normal state on every problem page, not a failed request:
+  // answer 200 with only the reason, so browsers don't log an error. Nothing else is sent.
+  if ("error" in access) {
+    return access.status === 404
+      ? NextResponse.json({ error: access.error }, { status: 404 })
+      : NextResponse.json({ locked: access.error });
+  }
 
   const comments = await prisma.comment.findMany({
     where:   { questionId: access.question.id, hidden: false },

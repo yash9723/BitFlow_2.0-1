@@ -304,7 +304,7 @@ export default function LearnPage() {
   const [activeTab, setActiveTab] = useState<"curriculum" | "roadmap">("curriculum");
 
   useEffect(() => {
-    document.title = activeTab === "roadmap" ? "VLSI Career Roadmap — BitFlow" : "Learn — BitFlow";
+    document.title = activeTab === "roadmap" ? "VLSI Career Roadmap · BitFlow" : "Learning path · BitFlow";   // same as layout metadata
   }, [activeTab]);
 
   useEffect(() => {
