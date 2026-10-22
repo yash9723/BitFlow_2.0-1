@@ -41,20 +41,28 @@ export default function AboutPage() {
             BitFlow was designed and built by <strong>NAVIEL Advanced Engineering &amp; Technology</strong>. Our mission is to democratize digital electronics and hardware description languages by bringing powerful, modern web technologies to the traditionally complex world of RTL design.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
-            <div className="flex flex-col items-center p-8 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
-              <div className="w-40 h-40 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
+            <div className="flex flex-col items-center p-6 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
+              <div className="w-36 h-36 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
                 <img src="/Arun Kasi Dommeti.jpeg" alt="Arun Kasi Dommeti" className="w-full h-full object-cover" />
               </div>
-              <h3 className="font-serif text-xl font-bold text-bright mb-1">Arun Kasi Dommeti</h3>
+              <h3 className="font-serif text-lg font-bold text-bright mb-1 text-center">Arun Kasi Dommeti</h3>
               <p className="text-xs text-phosphor uppercase tracking-[0.2em] mt-1 font-semibold">Founder</p>
             </div>
             
-            <div className="flex flex-col items-center p-8 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
-              <div className="w-40 h-40 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
+            <div className="flex flex-col items-center p-6 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
+              <div className="w-36 h-36 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
                 <img src="/Abhilash Joyeal Uppalaguptha.jpeg" alt="Abhilash Joyeal Uppalaguptha" className="w-full h-full object-cover" />
               </div>
-              <h3 className="font-serif text-xl font-bold text-bright mb-1 text-center">Abhilash Joyeal Uppalaguptha</h3>
+              <h3 className="font-serif text-lg font-bold text-bright mb-1 text-center">Abhilash Joyeal Uppalaguptha</h3>
+              <p className="text-xs text-phosphor uppercase tracking-[0.2em] mt-1 font-semibold">Founder</p>
+            </div>
+
+            <div className="flex flex-col items-center p-6 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
+              <div className="w-36 h-36 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
+                <img src="/Yash Roop Pynni.jpeg" alt="Yash Roop Pynni" className="w-full h-full object-cover" />
+              </div>
+              <h3 className="font-serif text-lg font-bold text-bright mb-1 text-center">Yash Roop Pynni</h3>
               <p className="text-xs text-phosphor uppercase tracking-[0.2em] mt-1 font-semibold">Founder</p>
             </div>
           </div>
