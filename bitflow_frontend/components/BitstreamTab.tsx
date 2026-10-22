@@ -9,13 +9,7 @@ import { useState } from "react";
 import { BOARDS, type BoardId } from "@/lib/synth/boards";
 import { bitstreamToolsLoaded, buildBitstreamInBrowser } from "@/lib/synth/client";
 import type { BitstreamResult } from "@/lib/synth/fpga";
-
-function download(name: string, data: BlobPart, type: string) {
-  const url = URL.createObjectURL(new Blob([data], { type }));
-  const a = Object.assign(document.createElement("a"), { href: url, download: name });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+import { downloadBlob as download } from "@/lib/api";
 
 export default function BitstreamTab({ designCode, language }: { designCode: string; language: "verilog" | "vhdl" }) {
   const [board, setBoard] = useState<BoardId>("icestick");

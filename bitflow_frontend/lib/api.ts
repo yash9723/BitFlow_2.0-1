@@ -188,6 +188,14 @@ export function checkHealth(): Promise<boolean> {
  * @param vcdBase64 - The waveform.vcd_base64 field from SimulateResponse
  * @param filename  - Downloaded filename (default: wave.vcd)
  */
+/** Save `data` as a file named `name` (the browser's download prompt). */
+export function downloadBlob(name: string, data: BlobPart, type: string): void {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function downloadVcd(
   vcdBase64: string,
   filename = "wave.vcd"

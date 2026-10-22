@@ -21,6 +21,7 @@
     "check-bitstream": "tsx scripts/bitstream.check.ts",
     "check-similarity": "tsx scripts/similarity.check.ts",
     "check-radix": "tsx scripts/radix.check.ts",
+    "check-plot": "tsx scripts/plot.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },

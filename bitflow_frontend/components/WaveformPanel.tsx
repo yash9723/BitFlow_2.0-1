@@ -53,9 +53,10 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import type { ParsedVcd, VcdSignal, VcdChange } from "@/lib/vcd-parser";
+import type { ParsedVcd, VcdSignal } from "@/lib/vcd-parser";
 import { binToHex, niceTimeStep } from "@/lib/vcd-parser";
-import { downloadVcd } from "@/lib/api";
+import { downloadBlob, downloadVcd } from "@/lib/api";
+import { series, toCsv, valueAt as getValueAtTime, xyPoints } from "@/lib/plot";
 import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
 import type { SimulateResponse } from "@/lib/types";
 
@@ -65,6 +66,7 @@ import type { SimulateResponse } from "@/lib/types";
 
 const LABEL_W   = 136;   // px — fixed label column width (sticky left)
 const ROW_H     = 40;    // px — height per signal row (labels + SVG must match)
+const PLOT_H    = 3 * ROW_H;   // px — a bus drawn as a line plot
 const AXIS_H    = 26;    // px — time axis band above row 0
 const MARKER_COLOR = { a: "#ffb547", b: "#5ab0ff" } as const;   // pinned markers A / B
 const SIG_PAD   = 8;     // px — top/bottom inset for waveform within row
@@ -93,6 +95,7 @@ interface SavedView {
   order   : string[];
   radixMap: Record<string, Radix>;
   markers : { a: number | null; b: number | null };
+  plotMap : Record<string, boolean>;
 }
 // ponytail: in-memory only, so views reset on reload; move to sessionStorage if people ask.
 const savedViews = new Map<string, SavedView>();
@@ -107,25 +110,6 @@ interface HoverInfo {
 // Pure helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Binary-search `changes` for the last entry at or before `time`.
- * Returns null when `time` precedes the first recorded change.
- *
- * O(log n) per signal per mouse-move — negligible for realistic VCD sizes.
- */
-function getValueAtTime(changes: VcdChange[], time: number): string | null {
-  if (changes.length === 0) return null;
-  if (time < changes[0].time) return null;
-
-  let lo = 0;
-  let hi = changes.length - 1;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    if (changes[mid].time <= time) lo = mid;
-    else hi = mid - 1;
-  }
-  return changes[lo].value;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG waveform renderers
@@ -140,14 +124,14 @@ function getValueAtTime(changes: VcdChange[], time: number): string | null {
  */
 function render1bit(
   sig       : VcdSignal,
-  rowIndex  : number,
+  top       : number,         // y of the row's top edge
   pxPerUnit : number,
   chartW    : number,
 ): React.ReactElement {
   const xOf = (t: number) => t * pxPerUnit;
 
-  const yH = rowIndex * ROW_H + AXIS_H + SIG_PAD;           // y when HIGH
-  const yL = rowIndex * ROW_H + AXIS_H + ROW_H - SIG_PAD;   // y when LOW
+  const yH = top + SIG_PAD;           // y when HIGH
+  const yL = top + ROW_H - SIG_PAD;   // y when LOW
   const yX = (yH + yL) / 2;                                  // y when X/Z
 
   const toY = (v: string): number =>
@@ -205,15 +189,15 @@ function render1bit(
  */
 function renderBus(
   sig       : VcdSignal,
-  rowIndex  : number,
+  top       : number,         // y of the row's top edge
   pxPerUnit : number,
   chartW    : number,
   radix     : Radix,          // ← NEW: controls segment label formatting
 ): React.ReactElement {
   const xOf = (t: number) => t * pxPerUnit;
 
-  const yH = rowIndex * ROW_H + AXIS_H + SIG_PAD;
-  const yL = rowIndex * ROW_H + AXIS_H + ROW_H - SIG_PAD;
+  const yH = top + SIG_PAD;
+  const yL = top + ROW_H - SIG_PAD;
   const yM = (yH + yL) / 2;
 
   if (sig.changes.length === 0) {
@@ -276,9 +260,102 @@ function renderBus(
   );
 }
 
+/**
+ * Bus as a line plot (a PLOT_H row): a step line from the signal's minimum
+ * (bottom) to its maximum (top), both labelled at the left. x/z leave a gap.
+ */
+function renderLine(
+  sig       : VcdSignal,
+  top       : number,
+  pxPerUnit : number,
+  chartW    : number,
+  signed    : boolean,
+): React.ReactElement {
+  const { points, min, max } = series(sig, signed);
+  const yTop = top + SIG_PAD + 6;
+  const yBot = top + PLOT_H - SIG_PAD;
+  const yOf  = (v: number) => (max === min ? (yTop + yBot) / 2 : yBot - ((v - min) / (max - min)) * (yBot - yTop));
+
+  let d = "";
+  points.forEach((p, i) => {
+    if (p.v === null) return;
+    const x2 = i + 1 < points.length ? points[i + 1].t * pxPerUnit : chartW;
+    d += (i > 0 && points[i - 1].v !== null ? ` V ${yOf(p.v)}` : ` M ${p.t * pxPerUnit} ${yOf(p.v)}`) + ` H ${x2}`;
+  });
+
+  const label = (y: number, v: number) => (
+    <text x={4} y={y} fontSize={9} fill="#4a4d60" fontFamily="monospace" style={{ userSelect: "none" }}>{v}</text>
+  );
+  return (
+    <g key={sig.id}>
+      <line x1={0} x2={chartW} y1={yTop} y2={yTop} stroke="#1f2130" strokeDasharray="2 4" />
+      <line x1={0} x2={chartW} y1={yBot} y2={yBot} stroke="#1f2130" strokeDasharray="2 4" />
+      {d && <path d={d} stroke="#4db8ff" fill="none" strokeWidth={1.5} strokeLinejoin="round" />}
+      {label(yTop - 2, max)}
+      {min !== max && label(yBot - 3, min)}
+    </g>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Two buses against each other (values at every change of either), e.g. I/Q or a DAC sweep. */
+function XyPlot({ buses, signedOf, onClose }: {
+  buses   : VcdSignal[];
+  signedOf: (s: VcdSignal) => boolean;
+  onClose : () => void;
+}) {
+  const [xi, setXi] = useState(0);
+  const [yi, setYi] = useState(Math.min(1, buses.length - 1));
+  const x = buses[xi], y = buses[yi];
+  const pts = useMemo(() => (x && y ? xyPoints(x, y, signedOf(x), signedOf(y)) : []), [x, y, signedOf]);
+
+  const W = 300, H = 210, P = 30;
+  const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const sx = (v: number) => (x1 === x0 ? W / 2 : P + ((v - x0) / (x1 - x0)) * (W - P - 10));
+  const sy = (v: number) => (y1 === y0 ? H / 2 : H - P - ((v - y0) / (y1 - y0)) * (H - P - 10));
+  const pick = (value: number, set: (n: number) => void, label: string) => (
+    <label className="flex items-center gap-1">
+      <span className="text-dim">{label}</span>
+      <select value={value} onChange={(e) => set(Number(e.target.value))}
+              className="bg-pit border border-rim/60 rounded px-1 text-pale max-w-[110px]">
+        {buses.map((b, i) => <option key={b.id} value={i}>{b.name}</option>)}
+      </select>
+    </label>
+  );
+
+  return (
+    <div className="absolute top-2 right-2 z-20 bg-surface border border-rim rounded-lg shadow-xl p-2 font-mono text-[10px] space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="text-ghost uppercase tracking-wider">X–Y plot</span>
+        {buses.length >= 2 && pick(xi, setXi, "x")}
+        {buses.length >= 2 && pick(yi, setYi, "y")}
+        <button onClick={onClose} aria-label="Close X–Y plot" className="ml-auto text-dim hover:text-ghost px-1">×</button>
+      </div>
+      {buses.length < 2 ? (
+        <p className="text-dim w-[300px]">Needs two buses (signals wider than 1 bit) in the waveform.</p>
+      ) : pts.length === 0 ? (
+        <p className="text-dim w-[300px]">No time where both have a known value.</p>
+      ) : (
+        <svg width={W} height={H} className="block bg-pit rounded">
+          <line x1={P} y1={H - P} x2={W - 6} y2={H - P} stroke="#2e3040" />
+          <line x1={P} y1={6} x2={P} y2={H - P} stroke="#2e3040" />
+          <polyline points={pts.map(([a, c]) => `${sx(a)},${sy(c)}`).join(" ")} fill="none" stroke="#4db8ff" strokeOpacity={0.35} />
+          {pts.map(([a, c], i) => <circle key={i} cx={sx(a)} cy={sy(c)} r={2} fill="#4db8ff" />)}
+          <text x={P} y={H - P + 12} fontSize={9} fill="#4a4d60">{x0}</text>
+          <text x={W - 6} y={H - P + 12} fontSize={9} fill="#4a4d60" textAnchor="end">{x1}</text>
+          <text x={P - 3} y={H - P} fontSize={9} fill="#4a4d60" textAnchor="end">{y0}</text>
+          <text x={P - 3} y={14} fontSize={9} fill="#4a4d60" textAnchor="end">{y1}</text>
+          <text x={(W + P) / 2} y={H - 4} fontSize={9} fill="#8b8fa3" textAnchor="middle">{x.name}</text>
+          <text x={10} y={(H - P) / 2} fontSize={9} fill="#8b8fa3" textAnchor="middle" transform={`rotate(-90 10 ${(H - P) / 2})`}>{y.name}</text>
+        </svg>
+      )}
+    </div>
+  );
+}
 
 function EmptyState() {
   return (
@@ -312,6 +389,9 @@ interface SignalLabelProps {
   onHide       : (key: string) => void;
   /** Drag a label onto another to move it there. */
   onMove       : (from: string, to: string) => void;
+  /** Bus drawn as a line plot (a taller row). */
+  plotted      : boolean;
+  onPlotToggle : (key: string) => void;
 }
 
 const SignalLabel = React.memo(function SignalLabel({
@@ -323,6 +403,8 @@ const SignalLabel = React.memo(function SignalLabel({
   rowKey,
   onHide,
   onMove,
+  plotted,
+  onPlotToggle,
 }: SignalLabelProps) {
   const isBus = sig.width > 1;
   const display = hoverValue !== undefined
@@ -344,7 +426,7 @@ const SignalLabel = React.memo(function SignalLabel({
   return (
     <div
       className="group flex items-center justify-between px-2 border-b border-rim/30 shrink-0 select-none transition-opacity duration-100 cursor-grab"
-      style={{ height: ROW_H, opacity: dimmed ? 0.25 : 1 }}
+      style={{ height: plotted ? PLOT_H : ROW_H, opacity: dimmed ? 0.25 : 1 }}
       draggable
       title="Drag to reorder"
       onDragStart={(e) => { e.dataTransfer.setData("text/x-bitflow-signal", rowKey); e.dataTransfer.effectAllowed = "move"; }}
@@ -361,7 +443,19 @@ const SignalLabel = React.memo(function SignalLabel({
 
       {/* Right side: radix button + width badge + live value badge */}
       <div className="flex items-center gap-1 shrink-0">
-        {/* Radix cycle button — only for buses */}
+        {/* Plot toggle and radix cycle button — only for buses */}
+        {isBus && (
+          <button
+            onClick={() => onPlotToggle(rowKey)}
+            title={plotted ? "Show as values" : "Plot as a line (signed when the radix is ±)"}
+            aria-label={plotted ? `Show ${sig.name} as values` : `Plot ${sig.name} as a line`}
+            aria-pressed={plotted}
+            className={`font-mono text-[10px] w-4 h-4 rounded flex items-center justify-center transition-colors duration-100 ${
+              plotted ? "text-info bg-info/10" : "text-dim hover:text-info hover:bg-info/10"}`}
+          >
+            ∿
+          </button>
+        )}
         {isBus && (
           <button
             onClick={() => onRadixChange(rowKey, nextRadix(radix))}
@@ -575,6 +669,23 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
     setRadixMap((prev) => ({ ...prev, [key]: radix }));
   }, []);
 
+  /** plotMap: buses drawn as a line plot (PLOT_H rows), keyed by row key. */
+  const [plotMap, setPlotMap] = useState<Record<string, boolean>>(saved?.plotMap ?? {});
+  const handlePlotToggle = useCallback((key: string) => setPlotMap((p) => ({ ...p, [key]: !p[key] })), []);
+  const isSigned = useCallback(
+    (s: VcdSignal) => (radixMap[rowKey.get(s.id)!] ?? defaultRadix(s.width)) === "sdec",
+    [radixMap, rowKey],
+  );
+
+  /** rowTops[i]: y of row i's top edge in the SVG; the last entry is the bottom of the last row. */
+  const rowTops = useMemo(() => {
+    const tops = [AXIS_H];
+    for (const s of displaySignals) tops.push(tops[tops.length - 1] + (s.width > 1 && plotMap[rowKey.get(s.id)!] ? PLOT_H : ROW_H));
+    return tops;
+  }, [displaySignals, plotMap, rowKey]);
+  const [xyOpen, setXyOpen] = useState(false);
+  const svgRef = useRef<SVGSVGElement>(null);
+
   // ── Derived geometry ──────────────────────────────────────────────────────
 
   /**
@@ -588,7 +699,7 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
 
   const pxPerUnit = basePxPerUnit * zoom;
   const chartW    = Math.max(maxTime * pxPerUnit + PAD_RIGHT, containerWidth);
-  const svgH      = AXIS_H + displaySignals.length * ROW_H;
+  const svgH      = rowTops[rowTops.length - 1];
 
   // Keep all shadowed refs current after every render
   useEffect(() => { zoomRef.current      = zoom;         }, [zoom]);
@@ -745,8 +856,8 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
   const [markers, setMarkers] = useState<SavedView["markers"]>(saved?.markers ?? { a: null, b: null });
 
   useEffect(() => {
-    if (viewKey) savedViews.set(viewKey, { hidden, order, radixMap, markers });
-  }, [viewKey, hidden, order, radixMap, markers]);
+    if (viewKey) savedViews.set(viewKey, { hidden, order, radixMap, markers, plotMap });
+  }, [viewKey, hidden, order, radixMap, markers, plotMap]);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const el  = scrollRef.current;
@@ -775,12 +886,14 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
   const waveformElements = useMemo(
     () =>
       displaySignals.map((sig, ri) => {
-        const radix = radixMap[rowKey.get(sig.id)!] ?? defaultRadix(sig.width);
-        return sig.width === 1
-          ? render1bit(sig, ri, pxPerUnit, chartW)
-          : renderBus(sig, ri, pxPerUnit, chartW, radix);
+        const key   = rowKey.get(sig.id)!;
+        const radix = radixMap[key] ?? defaultRadix(sig.width);
+        if (sig.width === 1) return render1bit(sig, rowTops[ri], pxPerUnit, chartW);
+        return plotMap[key]
+          ? renderLine(sig, rowTops[ri], pxPerUnit, chartW, radix === "sdec")
+          : renderBus(sig, rowTops[ri], pxPerUnit, chartW, radix);
       }),
-    [displaySignals, pxPerUnit, chartW, radixMap, rowKey],
+    [displaySignals, pxPerUnit, chartW, radixMap, rowKey, rowTops, plotMap],
   );
 
   /**
@@ -843,18 +956,41 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
     const rowDividers = displaySignals.map((_, ri) => (
       <line
         key={`rd-${ri}`}
-        x1={0}      y1={AXIS_H + (ri + 1) * ROW_H}
-        x2={chartW} y2={AXIS_H + (ri + 1) * ROW_H}
+        x1={0}      y1={rowTops[ri + 1]}
+        x2={chartW} y2={rowTops[ri + 1]}
         stroke="#1a1b22" strokeWidth={1}
       />
     ));
 
     return { tickLines, tickLabels, rowDividers };
-  }, [displaySignals, pxPerUnit, chartW, svgH, maxTime]);
+  }, [displaySignals, pxPerUnit, chartW, svgH, maxTime, rowTops]);
 
   // ── Misc derived values ───────────────────────────────────────────────────
 
   const hasVcd      = result?.waveform.available && result.waveform.vcd_base64;
+
+  /** The chart as a standalone SVG, with the signal names drawn in a left column. */
+  const exportSvg = () => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const esc   = (t: string) => t.replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
+    const ser   = new XMLSerializer();
+    const names = displaySignals.map((sg, i) =>
+      `<text x="8" y="${(rowTops[i] + rowTops[i + 1]) / 2 + 4}" font-family="monospace" font-size="11" fill="#c8cad6">${esc(sg.name)}</text>`).join("");
+    const w = LABEL_W + chartW;
+    downloadBlob("wave.svg",
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${svgH}" viewBox="0 0 ${w} ${svgH}">` +
+      `<rect width="${w}" height="${svgH}" fill="#0d0e11"/>${names}` +
+      `<g transform="translate(${LABEL_W},0)">${Array.from(svg.childNodes, (n) => ser.serializeToString(n)).join("")}</g></svg>`,
+      "image/svg+xml");
+  };
+
+  /** Visible signals as CSV: one row per change time, values in each row's current radix. */
+  const exportCsv = () => downloadBlob("wave.csv", toCsv(displaySignals.map((sg) => {
+    const r = radixMap[rowKey.get(sg.id)!] ?? defaultRadix(sg.width);
+    return { name: sg.name, changes: sg.changes, fmt: (v: string) => formatWithRadix(v, sg.width, r) };
+  })), "text/csv");
+  const headerBtn = "whitespace-nowrap font-mono text-[9px] px-1.5 py-px rounded text-dim hover:text-ghost hover:bg-rim/50 transition-colors";
   const zoomPercent = Math.round(zoom * 100);
   const isAtFit     = Math.abs(zoom - 1.0) < 0.01;
 
@@ -944,7 +1080,7 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
 
           {/* Scroll-to-zoom hint — only shown at fit level */}
           {isAtFit && (
-            <span className="hidden sm:block font-mono text-[8px] text-dim/40 select-none">
+            <span className="hidden xl:block font-mono text-[8px] text-dim/40 select-none">
               scroll to zoom · click: marker A · shift-click: B
             </span>
           )}
@@ -956,6 +1092,14 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
             >
               show {hiddenCount} hidden
             </button>
+          )}
+
+          {signals.length > 0 && (
+            <>
+              <button onClick={() => setXyOpen((v) => !v)} aria-pressed={xyOpen} title="Plot two buses against each other" className={headerBtn}>X–Y</button>
+              <button onClick={exportSvg} title="Download the chart as SVG" className={headerBtn}>SVG</button>
+              <button onClick={exportCsv} title="Download the visible signals as CSV" className={headerBtn}>CSV</button>
+            </>
           )}
 
           {/* Download VCD */}
@@ -991,7 +1135,10 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
 
       {/* ── Diagram body ───────────────────────────────────────────────────── */}
       {isOpen && signals.length > 0 && (
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="relative flex flex-1 min-h-0 overflow-hidden">
+          {xyOpen && (
+            <XyPlot buses={displaySignals.filter((sg) => sg.width > 1)} signedOf={isSigned} onClose={() => setXyOpen(false)} />
+          )}
 
           {/*
            * ── Left column: sticky search header + scrollable labels ──────────
@@ -1057,6 +1204,8 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
                 rowKey={rowKey.get(sig.id)!}
                 onHide={handleHide}
                 onMove={handleMove}
+                plotted={sig.width > 1 && !!plotMap[rowKey.get(sig.id)!]}
+                onPlotToggle={handlePlotToggle}
               />
             ))}
           </div>
@@ -1089,6 +1238,7 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
              */}
             {containerWidth > 0 && (
               <svg
+                ref={svgRef}
                 width={chartW}
                 height={svgH}
                 style={{ display: "block" }}
