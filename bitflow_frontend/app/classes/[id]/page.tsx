@@ -1,13 +1,14 @@
 "use client";
 /**
  * /classes/[id] — one class.
- *   Teachers: join code, new assignment, assignments, progress grid (+ CSV), roster.
+ *   Teachers: join code, new assignment, assignments, progress grid (+ CSV), analytics, roster.
  *   Students: their assignments with per-problem status and links.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import ClassAnalytics from "@/components/ClassAnalytics";
 
 type Status = "on_time" | "late" | "missing" | "pending";
 type Problem = { slug: string; title: string; difficulty: string; href: string };
@@ -250,6 +251,13 @@ export default function ClassPage() {
               </p>
             </>
           )}
+        </section>
+      )}
+
+      {teacher && columns.length > 0 && progress.students.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-[11px] uppercase tracking-[0.18em] text-dim">Analytics</h2>
+          <ClassAnalytics classId={id} />
         </section>
       )}
 

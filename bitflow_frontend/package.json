@@ -19,6 +19,7 @@
     "check-waveform-diff": "tsx scripts/waveform-diff.check.ts",
     "check-vhdl-starter": "tsx scripts/vhdl-starter.check.ts",
     "check-bitstream": "tsx scripts/bitstream.check.ts",
+    "check-similarity": "tsx scripts/similarity.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },
