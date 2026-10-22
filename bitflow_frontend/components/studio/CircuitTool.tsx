@@ -28,6 +28,25 @@ import {
   paste, pinPos, remove, selectAll, size, wirePath,
 } from "@/lib/studio/circuit-edit";
 import { tableFromNetlist } from "@/lib/studio/logic-min";
+import { type Trace, longestPath, traceToParsed, traceToVcd } from "@/lib/studio/circuit-analysis";
+import { waveformSvg } from "@/lib/waveform-svg";
+import { downloadBlob } from "@/lib/api";
+
+const TRACE_STEPS = 400;          // steps kept by the logic analyzer
+const TRACE_SHOWN = 160;          // steps drawn
+const GATE_PS = 100;              // assumed gate delay for the timing estimate
+
+/** Probed signals: the user's choice, or every input and output. */
+const probeRefs = (c: Circuit): PinRef[] =>
+  (c.probes ?? [...inputParts(c).map((p) => ({ part: p.id, pin: "out" })), ...outputParts(c).map((p) => ({ part: p.id, pin: "in" }))])
+    .filter((r) => c.parts.some((p) => p.id === r.part));
+const sameRef = (a: PinRef, b: PinRef) => a.part === b.part && a.pin === b.pin;
+/** A probe's name and width: a port's label, a single-output part's label, else <label>.<pin>. */
+function probeInfo(c: Circuit, r: PinRef): { name: string; width: number } {
+  const p = c.parts.find((x) => x.id === r.part)!;
+  if (INPUT_KINDS.includes(p.kind) || ["led", "seg7", "hexout"].includes(p.kind)) return { name: p.label, width: portWidth(p) };
+  return { name: pins(p).outputs.length > 1 ? `${p.label}.${r.pin}` : p.label, width: pinWidth(p, r.pin) };
+}
 
 const VIEW = { w: 860, h: 520 };
 const ZOOM = { min: 0.25, max: 3 };
@@ -147,6 +166,29 @@ export default function CircuitTool() {
   const [recorded, setRecorded] = useState<InputEvent[]>([]);
   const [, setTick] = useState(0);
   const redraw = () => setTick((t) => t + 1);
+
+  // Logic analyzer: one row of probe values per step (an input change or clock edge)
+  const probes = probeRefs(c);
+  const probesRef = useRef(probes);
+  probesRef.current = probes;
+  const probeKey = JSON.stringify(probes);
+  const traceRef = useRef<number[][]>([]);
+  const pausedRef = useRef(false);
+  const [paused, setPaused] = useState(false);
+  const sample = useCallback(() => {
+    const s = simRef.current;
+    if (!s || pausedRef.current) return;
+    const cc = cRef.current;
+    traceRef.current.push(probesRef.current.map((r) => {
+      const p = cc.parts.find((x) => x.id === r.part);
+      if (!p) return 0;
+      if (["led", "seg7", "hexout"].includes(p.kind)) return toNumber(s.sim.get(p.label));
+      return toNumber((s.bitsOf(r) ?? []).map((b) => s.sim.net(b)));
+    }));
+    if (traceRef.current.length > TRACE_STEPS) traceRef.current.shift();
+  }, []);
+  const restartTrace = useCallback(() => { traceRef.current = []; sample(); }, [sample]);
+
   useEffect(() => {
     if (!ok) { simRef.current = null; redraw(); return; }
     const { net, bitsOf } = compile(c);
@@ -158,9 +200,13 @@ export default function CircuitTool() {
     }
     simRef.current = { sim, bitsOf };
     setRecorded([]);                                  // the recording starts from this power-up
+    restartTrace();
     redraw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logicKey, ok]);
+  // A different set of probes starts a new trace
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { restartTrace(); redraw(); }, [probeKey]);
 
   const drive = useCallback((label: string, v: number) => {
     const s = simRef.current;
@@ -168,8 +214,9 @@ export default function CircuitTool() {
     inputsRef.current[label] = v;
     s.sim.set(label, toBits(v, s.sim.ports[label]?.bits.length ?? 1));
     setRecorded((r) => [...r, { port: label, value: v }]);
+    sample();
     redraw();
-  }, []);
+  }, [sample]);
   const pulse = useCallback((labels: string[]) => {
     for (const l of labels) drive(l, 1);
     for (const l of labels) drive(l, 0);
@@ -178,8 +225,33 @@ export default function CircuitTool() {
     for (const p of inputParts(c)) inputsRef.current[p.label] = 0;
     if (ok) { const { net, bitsOf } = compile(c); simRef.current = { sim: new GateSim(net), bitsOf }; }
     setRecorded([]);
+    restartTrace();
     redraw();
   };
+  const toggleProbe = (r: PinRef) => {
+    const cur = probeRefs(c);
+    edit({ ...c, probes: cur.some((x) => sameRef(x, r)) ? cur.filter((x) => !sameRef(x, r)) : [...cur, r] });
+  };
+
+  // Timing: the longest combinational path, mapped back to the parts and wires it runs through
+  const [showPath, setShowPath] = useState(false);
+  const timing = useMemo(() => {
+    if (!ok) return null;
+    const { net, bitsOf } = compile(c);
+    const lp = longestPath(net);
+    const onPath = new Set(lp.nets);
+    const netPart = new Map<number, Part>();
+    for (const p of c.parts) for (const o of pins(p).outputs) for (const b of bitsOf({ part: p.id, pin: o }) ?? []) if (typeof b === "number") netPart.set(b, p);
+    const parts = new Set<string>(), labels: string[] = [];
+    const add = (p: Part | undefined) => { if (!p) return; parts.add(p.id); if (labels[labels.length - 1] !== p.label) labels.push(p.label); };
+    lp.nets.forEach((n) => add(netPart.get(n)));
+    const end = lp.nets[lp.nets.length - 1];
+    const ff = net.cells.find((x) => x.type.startsWith("$_DFF") && x.conn.D[0] === end);   // ends at a flip-flop's input...
+    add(outputParts(c).find((p) => net.ports[p.label]?.bits.includes(end)) ?? (ff ? netPart.get(Number(ff.conn.Q[0])) : undefined));   // ...or an output
+    const wires = new Set(c.wires.filter((w) => parts.has(w.from.part) && parts.has(w.to.part) && (bitsOf(w.from) ?? []).some((b) => onPath.has(Number(b)))).map((w) => w.id));
+    return { delay: lp.delay, labels, parts, wires };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logicKey, ok]);
 
   // Free-running clock
   const [hz, setHz] = useState(0);
@@ -340,7 +412,18 @@ export default function CircuitTool() {
         </label>
         <button className={btn} onClick={powerUp} title="All inputs to 0, flip-flops to 0, recording cleared">Power up again</button>
         {tableable && <button className={btn} onClick={toTable} title="Open this circuit's truth table and K-map">Truth table →</button>}
+        <button className={`${btn} ${showPath ? "border-warn/60 text-warn" : ""}`} disabled={!timing} onClick={() => setShowPath((s) => !s)}
+                title="Highlight the longest chain of gates between inputs/flip-flops and outputs/flip-flops">Longest path</button>
       </div>
+      {showPath && timing && (
+        <p className="font-mono text-[11px] text-warn -mt-2">
+          {timing.delay === 0
+            ? "No gates between the inputs (or flip-flops) and the outputs."
+            : <>Longest path: {timing.delay} gate delay{timing.delay === 1 ? "" : "s"} ({timing.labels.join(" → ")}). At {GATE_PS} ps per gate that is{" "}
+                {((timing.delay * GATE_PS) / 1000).toFixed(1)} ns, so {sequential ? "the clock can run at up to" : "results settle in time for a clock of up to"} about{" "}
+                {Math.round(1e6 / (timing.delay * GATE_PS))} MHz.</>}
+        </p>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[150px_minmax(0,1fr)_280px]">
         <div className="flex xl:flex-col flex-wrap gap-1.5 font-mono text-[11px] xl:max-h-[640px] xl:overflow-y-auto xl:pr-1">
@@ -358,7 +441,7 @@ export default function CircuitTool() {
         </div>
         <div className="relative min-w-0">
           <Canvas c={c} edit={edit} sel={sel} setSel={setSel} live={simRef.current} inputs={inputsRef.current} drive={drive} pulse={pulse}
-                  view={view} setView={setView} onKey={onKey} />
+                  view={view} setView={setView} onKey={onKey} hot={showPath && timing ? timing : null} />
           {help && (
             <div className="absolute top-2 right-2 z-10 w-72 rounded-lg border border-rim bg-pit/95 p-3 font-mono text-[10px] shadow-xl">
               <div className="flex justify-between mb-1.5"><span className="text-pale uppercase tracking-wider">Shortcuts</span>
@@ -368,10 +451,15 @@ export default function CircuitTool() {
           )}
         </div>
         <div className="space-y-4 min-w-0">
-          <Inspector c={c} edit={edit} sel={sel} onDelete={deleteSel} onDuplicate={duplicate} onHelp={() => setHelp(true)} />
+          <Inspector c={c} edit={edit} sel={sel} onDelete={deleteSel} onDuplicate={duplicate} onHelp={() => setHelp(true)}
+                     probes={probes} onProbe={toggleProbe} />
           <Issues issues={issues} onPick={(id) => setSel({ ...NONE, parts: [id] })} />
         </div>
       </div>
+
+      <Analyzer c={c} probes={probes} steps={traceRef.current} paused={paused} live={!!simRef.current}
+                onPause={() => { pausedRef.current = !paused; setPaused(!paused); }}
+                onClear={() => { restartTrace(); redraw(); }} />
 
       <section className="space-y-3 border-t border-rim/40 pt-5">
         <div className="flex flex-wrap items-center gap-3 font-mono text-[11px]">
@@ -403,10 +491,12 @@ type Drag =
   | { kind: "pan"; cx: number; cy: number; view: View }
   | null;
 
-function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setView, onKey }: {
+function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setView, onKey, hot }: {
   c: Circuit; edit: (c: Circuit, group?: string) => void; sel: Selection; setSel: (s: Selection) => void; live: Live;
   inputs: Record<string, number>; drive: (label: string, v: number) => void; pulse: (labels: string[]) => void;
   view: View; setView: (v: View | ((v: View) => View)) => void; onKey: (e: React.KeyboardEvent) => void;
+  /** The longest path, highlighted. */
+  hot: { parts: Set<string>; wires: Set<string> } | null;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -554,7 +644,7 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
           const d = wirePath(pa, pb, ((i % 5) - 2) * 7, w.bend);
           const bw = pinWidth(a, w.from.pin), bad = bw !== pinWidth(b, w.to.pin);
           const v = valueOf(w.from), on = bw === 1 && v === 1, selected = has(sel.wires, w.id);
-          const colour = selected ? "#4db8ff" : bad ? "#ff5a5a" : bw > 1 ? "#5aa9e6" : on ? "#00e87a" : "#4a4d60";
+          const colour = selected ? "#4db8ff" : bad ? "#ff5a5a" : hot?.wires.has(w.id) ? "#ffb547" : bw > 1 ? "#5aa9e6" : on ? "#00e87a" : "#4a4d60";
           return (
             <g key={w.id} data-wire={w.id} style={{ cursor: "move" }}
                onPointerDown={(e) => {
@@ -577,7 +667,7 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
         })}
 
         {c.parts.map((p) => (
-          <PartView key={p.id} p={p} selected={has(sel.parts, p.id)} valueOf={valueOf}
+          <PartView key={p.id} p={p} selected={has(sel.parts, p.id)} hot={!!hot?.parts.has(p.id)} valueOf={valueOf}
                     inputValue={inputs[p.label] ?? 0} outputBits={live && (p.kind === "led" || p.kind === "seg7" || p.kind === "hexout") ? live.sim.get(p.label) : null}
                     onBodyDown={(e) => startMove(e, "parts", p.id)}
                     onPinDown={(e, pin, isOutput) => {
@@ -626,14 +716,14 @@ function NoteView({ n, selected, onDown }: { n: Note; selected: boolean; onDown:
 
 const GATE_SYMBOL: Record<string, string> = { and: "&", or: "≥1", xor: "=1", nand: "&", nor: "≥1", xnor: "=1", not: "1" };
 
-function PartView({ p, selected, valueOf, inputValue, outputBits, onBodyDown, onPinDown, onKnob }: {
-  p: Part; selected: boolean; valueOf: (r: PinRef) => number; inputValue: number; outputBits: number[] | null;
+function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDown, onPinDown, onKnob }: {
+  p: Part; selected: boolean; hot: boolean; valueOf: (r: PinRef) => number; inputValue: number; outputBits: number[] | null;
   onBodyDown: (e: React.PointerEvent) => void; onPinDown: (e: React.PointerEvent, pin: string, isOutput: boolean) => void;
   onKnob: (down: boolean, back?: boolean) => void;
 }) {
   const { w, h } = size(p);
   const { inputs, outputs } = pins(p);
-  const stroke = selected ? "#4db8ff" : "#5a5e74";
+  const stroke = selected ? "#4db8ff" : hot ? "#ffb547" : "#5a5e74";
   const outOn = outputs.length && pinWidth(p, outputs[0]) === 1 ? valueOf({ part: p.id, pin: outputs[0] }) === 1 : false;
   const inverted = ["nand", "nor", "xnor", "not"].includes(p.kind);
   const showPinNames = !["switch", "button", "clock", "hexin", "const0", "const1", "const", "led", "hexout", "not", "and", "or", "xor", "nand", "nor", "xnor"].includes(p.kind);
@@ -780,11 +870,18 @@ function PartView({ p, selected, valueOf, inputValue, outputBits, onBodyDown, on
 
 // ── Side panels ────────────────────────────────────────────────────────────────
 
-function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp }: {
+function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProbe }: {
   c: Circuit; edit: (c: Circuit, group?: string) => void; sel: Selection; onDelete: () => void; onDuplicate: () => void; onHelp: () => void;
+  probes: PinRef[]; onProbe: (r: PinRef) => void;
 }) {
   const box = "p-3 rounded-xl border border-rim/60 bg-surface/30 space-y-2 font-mono text-[11px]";
   const field = "w-full bg-pit border border-rim/60 rounded px-2 py-1 text-[12px] text-pale";
+  /** A checkbox that adds a signal to the logic analyzer. */
+  const probe = (r: PinRef, label = "Probe in the logic analyzer") => (
+    <label key={`${r.part}.${r.pin}`} className="flex items-center gap-2 text-ghost">
+      <input type="checkbox" checked={probes.some((x) => sameRef(x, r))} onChange={() => onProbe(r)} /> {label}
+    </label>
+  );
   const count = sel.parts.length + sel.wires.length + sel.notes.length;
   const actions = (dup = true) => (
     <span className="flex gap-3">
@@ -836,6 +933,7 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp }: {
       <div className={box}>
         <div className="flex items-center justify-between"><span className="text-ghost uppercase tracking-wider">Wire</span>{actions(false)}</div>
         <div className="text-pale">{name(w.from)} → {name(w.to)}</div>
+        {probe(w.from)}
         {w.bend !== undefined && (
           <button className="text-info hover:underline" onClick={() => edit({ ...c, wires: c.wires.map((x) => (x.id === w.id ? { ...x, bend: undefined } : x)) })}>
             Straighten (automatic route)
@@ -890,7 +988,36 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp }: {
         </label>
       )}
       {(p.kind === "reg" || p.kind === "counter") && <div className="text-dim">An unconnected <span className="text-pale">en</span> reads 1: always enabled.</div>}
+      {["led", "seg7", "hexout"].includes(p.kind) ? probe({ part: p.id, pin: "in" })
+        : pins(p).outputs.length === 1 ? probe({ part: p.id, pin: pins(p).outputs[0] })
+        : pins(p).outputs.map((o) => probe({ part: p.id, pin: o }, `Probe ${o}`))}
     </div>
+  );
+}
+
+/** The logic analyzer: probed signals over the last steps, drawn by lib/waveform-svg.ts; VCD to download. */
+function Analyzer({ c, probes, steps, paused, live, onPause, onClear }: {
+  c: Circuit; probes: PinRef[]; steps: number[][]; paused: boolean; live: boolean; onPause: () => void; onClear: () => void;
+}) {
+  const trace: Trace = { probes: probes.map((r) => probeInfo(c, r)), steps };
+  const shown: Trace = { ...trace, steps: steps.slice(-TRACE_SHOWN) };
+  const svg = live && probes.length && steps.length ? waveformSvg(traceToParsed(shown), {}, { width: 900, theme: "dark", maxSignals: 24 }).svg : "";
+  const btn = "px-2 py-0.5 rounded border border-rim/60 text-ghost hover:text-bright disabled:opacity-40";
+  return (
+    <section className="space-y-2 font-mono text-[11px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-display text-[15px] font-semibold mr-1">Logic analyzer</h2>
+        <span className="text-dim">{Math.max(0, steps.length - 1)} step{steps.length === 2 ? "" : "s"} · {probes.length} probe{probes.length === 1 ? "" : "s"}</span>
+        <button className={btn} onClick={onPause} disabled={!live}>{paused ? "Resume" : "Pause"}</button>
+        <button className={btn} onClick={onClear} disabled={!live}>Clear</button>
+        <button className={btn} disabled={!live || steps.length < 2}
+                onClick={() => downloadBlob(`${c.module}_trace.vcd`, traceToVcd(trace, c.module), "text/plain")}>Download VCD</button>
+        <span className="text-dim">Each input change or clock edge is one step. Probe any wire or part from the side panel.</span>
+      </div>
+      {svg
+        ? <div className="overflow-x-auto rounded-lg border border-rim/60 bg-void/60 [&>svg]:w-full [&>svg]:h-auto [&>svg]:min-w-[640px]" dangerouslySetInnerHTML={{ __html: svg }} />
+        : <p className="text-dim">{live ? "Nothing probed yet." : "Fix the errors above to run the circuit."}</p>}
+    </section>
   );
 }
 

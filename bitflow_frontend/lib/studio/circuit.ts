@@ -28,7 +28,8 @@ export interface PinRef { part: string; pin: string }
 export interface Wire { id: string; from: PinRef; to: PinRef; bend?: number }
 /** A text note on the canvas: no logic, exported as a comment. */
 export interface Note { id: string; x: number; y: number; text: string }
-export interface Circuit { module: string; parts: Part[]; wires: Wire[]; notes?: Note[] }
+/** probes: the signals the logic analyzer records (default: every input and output). */
+export interface Circuit { module: string; parts: Part[]; wires: Wire[]; notes?: Note[]; probes?: PinRef[] }
 /** One input change, as the editor records it and the testbench replays it (a bus input's whole value). */
 export interface InputEvent { port: string; value: number }
 

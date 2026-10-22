@@ -11,6 +11,8 @@ import { tableFromNetlist } from "../lib/studio/logic-min";
 import { History, NONE, copy, inRect, merge, move, nextLabel, paste, remove, selectAll, wirePath } from "../lib/studio/circuit-edit";
 import { toBits } from "../lib/studio/circuit";
 import { PART_CASES } from "./circuit-cases";
+import { longestPath, traceToParsed, traceToVcd } from "../lib/studio/circuit-analysis";
+import { parseVcd } from "../lib/vcd-parser";
 
 const ex = (label: string) => CIRCUIT_EXAMPLES.find((e) => e.label === label)!.circuit;
 for (const { label, circuit } of CIRCUIT_EXAMPLES) {
@@ -198,4 +200,27 @@ assert.match(generateVerilog(PART_CASES.regcount), /always @\(posedge clk\) cnt 
 // Bus inputs in the testbench walk: every combination of the bits, one bit at a time
 assert.equal(defaultEvents(PART_CASES.cmp3).length, 63);
 assert.match(generateTestbench(PART_CASES.cmp3, defaultEvents(PART_CASES.cmp3)), /a = 3'd1; #5;/);
+
+// Timing: longest path in unit gate delays (lib/studio/circuit-analysis.ts)
+const lp = (c: Circuit) => longestPath(compile(c).net);
+assert.equal(lp(ex("Half adder")).delay, 1);
+assert.equal(lp(ex("Majority vote")).delay, 3, "AND, then two ORs for the 3-input OR");
+assert.equal(lp(ex("2-bit counter")).delay, 1, "flip-flop to flip-flop through one gate");
+const add4 = lp(ex("4-bit adder"));
+assert.equal(add4.delay, 9, "ripple carry: XOR, then AND+OR per bit");
+const addNet = compile(ex("4-bit adder"));
+assert.equal(add4.nets[add4.nets.length - 1], addNet.net.ports.carry.bits[0], "ends at the carry out");
+assert.ok(addNet.net.ports.cin.bits.includes(add4.nets[0]) || addNet.net.ports.a.bits.includes(add4.nets[0]) || addNet.net.ports.b.bits.includes(add4.nets[0]), "starts at an input");
+assert.equal(lp(PART_CASES.swap).delay, 0, "splitters and mergers are free");
+// Logic analyzer trace: only changes are kept; VCD text for other viewers
+const trace = { probes: [{ name: "a", width: 1 }, { name: "n", width: 4 }], steps: [[0, 0], [1, 0], [1, 5], [1, 5], [0, 15]] };
+const pv = traceToParsed(trace);
+assert.deepEqual(pv.signals[0].changes, [{ time: 0, value: "0" }, { time: 1, value: "1" }, { time: 4, value: "0" }]);
+assert.deepEqual(pv.signals[1].changes.map((c) => c.value), ["0000", "0101", "1111"]);
+assert.equal(pv.maxTime, 5);
+const vcd = traceToVcd(trace, "demo");
+assert.match(vcd, /\$var wire 4 " n \$end/);
+assert.match(vcd, /#2\nb0101 "/);
+assert.ok(!/#3\n/.test(vcd), "no entry for a step where nothing changed");
+assert.equal(parseVcd(vcd).signals[1].changes.length, 3, "our own parser reads it back");
 console.log("circuit: all checks passed");
