@@ -20,16 +20,27 @@ export type PartKind =
   | "not" | "and" | "or" | "xor" | "nand" | "nor" | "xnor" | "mux2"
   | "dff" | "tff" | "jkff" | "reg" | "counter"
   | "adder" | "cmp" | "decoder" | "split" | "merge"
-  | "led" | "seg7" | "hexout";
-/** w: width in bits (buses; a decoder's select width); value: a constant's value; n: gate inputs; reset: flip-flop reset pin. */
-export interface Part { id: string; kind: PartKind; x: number; y: number; label: string; n?: number; reset?: boolean; w?: number; value?: number }
+  | "led" | "seg7" | "hexout"
+  | "block";
+/** A block's pins: its definition's inputs and outputs (switch/hex-input and LED/display parts), by label. */
+export interface BlockPorts { inputs: { name: string; width: number }[]; outputs: { name: string; width: number }[] }
+/**
+ * w: width in bits (buses; a decoder's select width); value: a constant's value; n: gate inputs; reset: flip-flop reset pin;
+ * block/ports: a block instance's definition (a key of Circuit.blocks) and a copy of its pins.
+ */
+export interface Part {
+  id: string; kind: PartKind; x: number; y: number; label: string; n?: number; reset?: boolean; w?: number; value?: number;
+  block?: string; ports?: BlockPorts;
+}
 export interface PinRef { part: string; pin: string }
 /** bend: where the user dragged the wire's middle run (x of the vertical run; y when it routes backwards). */
 export interface Wire { id: string; from: PinRef; to: PinRef; bend?: number }
 /** A text note on the canvas: no logic, exported as a comment. */
 export interface Note { id: string; x: number; y: number; text: string }
 /** probes: the signals the logic analyzer records (default: every input and output). */
-export interface Circuit { module: string; parts: Part[]; wires: Wire[]; notes?: Note[]; probes?: PinRef[] }
+/** blocks: reusable subcircuits by module name (each a circuit whose inputs and outputs become the block's pins). */
+export interface Circuit { module: string; parts: Part[]; wires: Wire[]; notes?: Note[]; probes?: PinRef[]; blocks?: Library }
+export type Library = Record<string, Circuit>;
 /** One input change, as the editor records it and the testbench replays it (a bus input's whole value). */
 export interface InputEvent { port: string; value: number }
 
@@ -71,6 +82,7 @@ export function pins(p: Part): { inputs: string[]; outputs: string[] } {
     case "led": return { inputs: ["in"], outputs: [] };
     case "seg7": return { inputs: ["a", "b", "c", "d", "e", "f", "g"], outputs: [] };
     case "hexout": return { inputs: ["in"], outputs: [] };
+    case "block": return { inputs: (p.ports?.inputs ?? []).map((x) => x.name), outputs: (p.ports?.outputs ?? []).map((x) => x.name) };
     default: return { inputs: ["a", "b", "c", "d"].slice(0, Math.max(2, Math.min(4, p.n ?? 2))), outputs: ["y"] };
   }
 }
@@ -89,6 +101,7 @@ export function pinWidth(p: Part, pin: string): number {
     case "decoder": return pin === "sel" ? w : 2 ** w;
     case "split": return pin === "in" ? w : 1;
     case "merge": return pin === "out" ? w : 1;
+    case "block": return [...(p.ports?.inputs ?? []), ...(p.ports?.outputs ?? [])].find((x) => x.name === pin)?.width ?? 1;
     default: return 1;
   }
 }
@@ -108,16 +121,46 @@ export const toBits = (v: number, w: number) => Array.from({ length: w }, (_, i)
 /** A constant's value, kept inside its width. */
 export const constValue = (p: Part) => Math.max(0, Math.floor(p.value ?? 0)) % 2 ** width(p);
 
+/** The pins a block made from `def` has. */
+export const blockPorts = (def: Circuit): BlockPorts => ({
+  inputs: inputParts(def).map((p) => ({ name: p.label, width: portWidth(p) })),
+  outputs: outputParts(def).map((p) => ({ name: p.label, width: portWidth(p) })),
+});
+const MAX_DEPTH = 8;
+/** Does the circuit (or any block in it) hold state? Then testbenches use a clocked random walk. */
+export function hasState(c: Circuit, lib: Library = c.blocks ?? {}, depth = 0): boolean {
+  return depth <= MAX_DEPTH && c.parts.some((p) => isSequential(p) || (p.kind === "block" && !!lib[p.block ?? ""] && hasState(lib[p.block!], lib, depth + 1)));
+}
+
 export interface Compiled {
   net: BoardNetlist;
   /** The nets an output pin drives, LSB first (for colouring wires and showing bus values). */
   bitsOf: (r: PinRef) => Bit[] | undefined;
 }
 
-/** The circuit as the board's netlist: input/output parts become ports, everything else gate cells and flip-flops. */
-export function compile(c: Circuit): Compiled {
+/**
+ * The circuit as the board's netlist: input/output parts become ports, everything else gate
+ * cells and flip-flops; blocks are inlined from `lib` (the top circuit's library by default).
+ */
+export function compile(c: Circuit, lib: Library = c.blocks ?? {}): Compiled {
   let next = 2;
-  const fresh = (): Bit => next++;
+  const cells: BoardNetlist["cells"] = [], ports: BoardNetlist["ports"] = {};
+  const bitsOf = build(c, { fresh: () => next++, cells, lib, depth: 0 }, null, ports);
+  return { net: { ports, cells }, bitsOf };
+}
+
+interface Ctx { fresh: () => Bit; cells: BoardNetlist["cells"]; lib: Library; depth: number }
+/** A block's binding: the outer nets on each of its input and output pins, by name. */
+type Binding = { inputs: Map<string, Bit[]>; outputs: Map<string, Bit[]> } | null;
+
+/**
+ * Cells for one circuit. At the top its inputs and outputs become ports; inside a block they
+ * are bound to the instance's nets instead. Returns its output pins' nets.
+ */
+function build(c: Circuit, ctx: Ctx, bind: Binding, ports: BoardNetlist["ports"]): (r: PinRef) => Bit[] | undefined {
+  if (ctx.depth > MAX_DEPTH) throw new Error("Blocks are nested too deeply: does a block contain itself?");
+  const { fresh, cells } = ctx;
+  const fit = (bits: Bit[] | undefined, w: number) => (bits && bits.length === w ? bits : Array<Bit>(w).fill("0"));
   const outBits = new Map<string, Bit[]>();
   for (const p of c.parts) {
     for (const o of pins(p).outputs) {
@@ -125,6 +168,7 @@ export function compile(c: Circuit): Compiled {
       outBits.set(`${p.id}.${o}`,
         p.kind === "const0" ? ["0"] : p.kind === "const1" ? ["1"]
         : p.kind === "const" ? toBits(constValue(p), w).map((b) => (b ? "1" : "0"))
+        : bind && isInput(p) ? fit(bind.inputs.get(p.label), w)        // inside a block: the instance's input nets
         : Array.from({ length: w }, fresh));
     }
   }
@@ -136,8 +180,6 @@ export function compile(c: Circuit): Compiled {
     const src = d && outBits.get(key(d));
     return src && src.length === w ? src : Array(w).fill(pinDefault(p, pin) ? "1" : "0");
   };
-  const cells: BoardNetlist["cells"] = [];
-  const ports: BoardNetlist["ports"] = {};
   const cell = (type: string, conn: Record<string, Bit>, y: Bit = fresh()): Bit => {
     cells.push({ type, conn: { ...Object.fromEntries(Object.entries(conn).map(([k, v]) => [k, [v]])), Y: [y] } });
     return y;
@@ -151,10 +193,23 @@ export function compile(c: Circuit): Compiled {
     const one = (pin: string) => inBits(p, pin)[0];
     const rst = p.reset ? one("rst") : undefined;
     const w = width(p);
-    if (isInput(p)) { ports[p.label] = { direction: "input", bits: out() }; continue; }
-    if (p.kind === "led" || p.kind === "hexout") { ports[p.label] = { direction: "output", bits: inBits(p, "in") }; continue; }
-    if (p.kind === "seg7") { ports[p.label] = { direction: "output", bits: pins(p).inputs.map(one) }; continue; }
+    if (isInput(p)) { if (!bind) ports[p.label] = { direction: "input", bits: out() }; continue; }
+    if (isOutput(p)) {
+      const bits = p.kind === "seg7" ? pins(p).inputs.map(one) : inBits(p, "in");
+      if (!bind) ports[p.label] = { direction: "output", bits };
+      else bind.outputs.get(p.label)?.forEach((y, i) => cell("$_BUF_", { A: bits[i] ?? "0" }, y));   // drive the instance's output nets
+      continue;
+    }
     switch (p.kind) {
+      case "block": {
+        const def = ctx.lib[p.block ?? ""];
+        if (!def) break;
+        build(def, { ...ctx, depth: ctx.depth + 1 }, {
+          inputs: new Map((p.ports?.inputs ?? []).map((i) => [i.name, inBits(p, i.name)])),
+          outputs: new Map((p.ports?.outputs ?? []).map((o) => [o.name, out(o.name)])),
+        }, ports);
+        break;
+      }
       case "not": out().forEach((y, i) => cell("$_NOT_", { A: inBits(p, "a")[i] }, y)); break;
       case "mux2": out().forEach((y, i) => cell("$_MUX_", { A: inBits(p, "d0")[i], B: inBits(p, "d1")[i], S: one("s") }, y)); break;
       case "dff": ff(one("d"), one("clk"), out()[0], rst); break;
@@ -226,13 +281,16 @@ export function compile(c: Circuit): Compiled {
       }
     }
   }
-  return { net: { ports, cells }, bitsOf: (r) => outBits.get(key(r)) };
+  return (r) => outBits.get(key(r));
 }
 
 export interface CircuitIssue { level: "error" | "warning"; msg: string; at?: string }
 
-export function validate(c: Circuit): CircuitIssue[] {
+export function validate(c: Circuit, lib: Library = c.blocks ?? {}): CircuitIssue[] {
   const out: CircuitIssue[] = [];
+  for (const p of c.parts.filter((x) => x.kind === "block")) {
+    if (!lib[p.block ?? ""]) out.push({ level: "error", msg: `${p.label} uses a block "${p.block}" that doesn't exist any more.`, at: p.id });
+  }
   const mp = nameProblem(c.module);
   if (mp) out.push({ level: "error", msg: `Module name "${c.module}" ${mp}.` });
   const seen = new Set<string>([c.module]);
@@ -245,6 +303,7 @@ export function validate(c: Circuit): CircuitIssue[] {
     seen.add(p.label);
     // A multi-output part's pins become <label>_<pin> in the Verilog: those names must be free too
     if (pins(p).outputs.length > 1) for (const o of pins(p).outputs) seen.add(`${p.label}_${o}`);
+    if (p.kind === "block") seen.add(`u_${p.label}`);
   }
   const byId = new Map(c.parts.map((p) => [p.id, p]));
   for (const w of c.wires) {
@@ -264,7 +323,7 @@ export function validate(c: Circuit): CircuitIssue[] {
   if (!inputParts(c).length) out.push({ level: "warning", msg: "No inputs: add a switch, button, clock or hex input." });
   if (!outputParts(c).length) out.push({ level: "warning", msg: "No outputs: add an LED, a hex display or a 7-segment display, so there is something to see and test." });
   if (!out.some((i) => i.level === "error")) {
-    try { new GateSim(compile(c).net); } catch (e) { out.push({ level: "error", msg: (e as Error).message }); }
+    try { new GateSim(compile(c, lib).net); } catch (e) { out.push({ level: "error", msg: (e as Error).message }); }
   }
   return out;
 }
@@ -272,8 +331,8 @@ export function validate(c: Circuit): CircuitIssue[] {
 // ── Simulation helpers ───────────────────────────────────────────────────────
 
 /** Every output's value at power-up and after each event (GateSim), as numbers (7-segment: bit 0 = segment a). */
-export function expectedOutputs(c: Circuit, events: InputEvent[]): Record<string, number>[] {
-  const sim = new GateSim(compile(c).net);
+export function expectedOutputs(c: Circuit, events: InputEvent[], lib: Library = c.blocks ?? {}): Record<string, number>[] {
+  const sim = new GateSim(compile(c, lib).net);
   const outs = outputParts(c);
   const widths = new Map(inputParts(c).map((p) => [p.label, portWidth(p)]));
   const read = () => Object.fromEntries(outs.map((p) => [p.label, toNumber(sim.get(p.label))]));
@@ -295,10 +354,10 @@ export const MAX_EXHAUSTIVE_INPUTS = 10;
  * a Gray-code walk (one input bit changes per step) through every combination.
  * Otherwise a random walk; with a clock, every other step toggles it.
  */
-export function defaultEvents(c: Circuit, steps = 48, seed = 1): InputEvent[] {
+export function defaultEvents(c: Circuit, steps = 48, seed = 1, lib: Library = c.blocks ?? {}): InputEvent[] {
   const ins = inputParts(c);
   if (!ins.length) return [];
-  const sequential = c.parts.some(isSequential);
+  const sequential = hasState(c, lib);
   const bits = ins.flatMap((p) => Array.from({ length: portWidth(p) }, (_, i) => ({ port: p.label, i })));
   const state = new Map(ins.map((p) => [p.label, 0]));
   if (!sequential && bits.length <= MAX_EXHAUSTIVE_INPUTS) {
@@ -333,7 +392,23 @@ const lit = (w: number, v: number) => `${w}'d${v}`;
 /** A part's signal for one output pin: its label, or <label>_<pin> when it has several outputs. */
 const sig = (p: Part, pin: string) => (pins(p).outputs.length > 1 ? `${p.label}_${pin}` : p.label);
 
-export function generateVerilog(c: Circuit): string {
+/** Structural Verilog: a module for each block the circuit uses (innermost first), then the circuit's own. */
+export function generateVerilog(c: Circuit, lib: Library = c.blocks ?? {}): string {
+  const order: string[] = [];
+  const visit = (x: Circuit, depth: number) => {
+    if (depth > MAX_DEPTH) return;
+    for (const p of x.parts) {
+      const name = p.kind === "block" ? p.block ?? "" : "";
+      if (name && lib[name] && !order.includes(name)) { visit(lib[name], depth + 1); if (!order.includes(name)) order.push(name); }
+    }
+  };
+  visit(c, 0);
+  const notes = (c.notes ?? []).map((n) => n.text.trim()).filter(Boolean).map((t) => `// Note: ${t.replace(/\s*\n\s*/g, " ")}\n`).join("");
+  return `// Generated by BitFlow Studio from a drawn circuit (structural Verilog).
+${notes}${order.map((name) => `${moduleText({ ...lib[name], module: name })}\n`).join("")}${moduleText(c)}`;
+}
+
+function moduleText(c: Circuit): string {
   const byId = new Map(c.parts.map((p) => [p.id, p]));
   const driver = new Map(c.wires.map((w) => [key(w.to), w.from]));
   /** The expression an input pin reads: its driver's signal, a constant, or its default. */
@@ -383,10 +458,12 @@ export function generateVerilog(c: Circuit): string {
     } else if (p.kind === "merge") body.push(`    assign ${p.label} = {${[...pins(p).inputs].reverse().map((i) => src(p, i)).join(", ")}};`);
     else if (p.kind === "led" || p.kind === "hexout") body.push(`    assign ${p.label} = ${src(p, "in")};`);
     else if (p.kind === "seg7") body.push(`    assign ${p.label} = {${[...pins(p).inputs].reverse().map((pin) => src(p, pin)).join(", ")}};   // {g..a}`);
+    else if (p.kind === "block") {
+      const conns = [...(p.ports?.inputs ?? []).map((i) => `.${i.name}(${src(p, i.name)})`), ...(p.ports?.outputs ?? []).map((o) => `.${o.name}(${sig(p, o.name)})`)];
+      body.push(`    ${p.block} u_${p.label} (${conns.join(", ")});`);
+    }
   }
-  const notes = (c.notes ?? []).map((n) => n.text.trim()).filter(Boolean).map((t) => `// Note: ${t.replace(/\s*\n\s*/g, " ")}\n`).join("");
-  return `// Generated by BitFlow Studio from a drawn circuit (structural Verilog).
-${notes}module ${c.module} (
+  return `module ${c.module} (
 ${ports.join(",\n")}
 );
 ${decls.length ? `${decls.join("\n")}\n` : ""}
@@ -396,10 +473,10 @@ endmodule
 }
 
 /** A testbench that starts with every input at 0, applies `events` 5 ns apart, and checks every output after each. */
-export function generateTestbench(c: Circuit, events: InputEvent[]): string {
+export function generateTestbench(c: Circuit, events: InputEvent[], lib: Library = c.blocks ?? {}): string {
   const tb = `tb_${c.module}`;
   const outs = outputParts(c), ins = inputParts(c);
-  const expected = expectedOutputs(c, events);
+  const expected = expectedOutputs(c, events, lib);
   const widths = new Map(ins.map((p) => [p.label, portWidth(p)]));
   const checks = (row: Record<string, number>, at: string) => outs.map((p) =>
     `        if (${p.label} !== ${lit(portWidth(p), row[p.label])}) begin $display("FAIL: ${at}: ${p.label} expected ${row[p.label]}, got %0d", ${p.label}); errors = errors + 1; end`);

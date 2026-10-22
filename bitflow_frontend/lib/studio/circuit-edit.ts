@@ -4,7 +4,10 @@
  * selections, box select, move, delete, copy/paste and undo history. Pure functions
  * on lib/studio/circuit.ts circuits. Self-check: scripts/circuit.check.ts.
  */
-import { type Circuit, type Note, type Part, type Wire, pins } from "./circuit";
+import {
+  type Circuit, type Library, type Note, type Part, type PartKind, type PinRef, type Wire, INPUT_KINDS, OUTPUT_KINDS, blockPorts, pinWidth, pins,
+} from "./circuit";
+import { nameProblem } from "./logic-min";
 
 export const SNAP = 10;
 
@@ -27,6 +30,7 @@ export function size(p: Part): { w: number; h: number } {
     case "decoder": return { w: 70, h: 56 };
     case "split": case "merge": return { w: 44, h: Math.max(40, Math.max(n, outputs.length) * 14 + 12) };
     case "not": return { w: 56, h: 36 };
+    case "block": return { w: 100, h: Math.max(44, Math.max(n, outputs.length) * 20 + 24) };
     default: return { w: 64, h: Math.max(44, n * 16 + 12) };
   }
 }
@@ -57,16 +61,18 @@ export const forward = (a: { x: number }, b: { x: number }) => b.x >= a.x + 16;
  * staggers so wires sharing a gap don't overlap), then right again; a backward (feedback)
  * wire loops around through y = `bend` (default: halfway).
  */
-export function wirePath(a: { x: number; y: number }, b: { x: number; y: number }, lane = 0, bend?: number): string {
+export function wirePoints(a: { x: number; y: number }, b: { x: number; y: number }, lane = 0, bend?: number): [number, number][] {
   if (forward(a, b)) {
     const room = Math.max(0, (b.x - a.x) / 2 - 8);
     const mx = bend !== undefined ? Math.max(a.x + 8, Math.min(b.x - 8, bend))
                                   : Math.round((a.x + b.x) / 2 + Math.max(-room, Math.min(room, lane)));
-    return `M ${a.x} ${a.y} H ${mx} V ${b.y} H ${b.x}`;
+    return [[a.x, a.y], [mx, a.y], [mx, b.y], [b.x, b.y]];
   }
   const midY = bend ?? Math.round((a.y + b.y) / 2);
-  return `M ${a.x} ${a.y} H ${a.x + 12} V ${midY} H ${b.x - 12} V ${b.y} H ${b.x}`;
+  return [[a.x, a.y], [a.x + 12, a.y], [a.x + 12, midY], [b.x - 12, midY], [b.x - 12, b.y], [b.x, b.y]];
 }
+export const wirePath = (a: { x: number; y: number }, b: { x: number; y: number }, lane = 0, bend?: number) =>
+  wirePoints(a, b, lane, bend).map(([x, y], i) => (i === 0 ? `M ${x} ${y}` : i % 2 ? `H ${x}` : `V ${y}`)).join(" ");
 
 /** The smallest box around every part and note (null for an empty circuit). */
 export function bounds(c: Circuit): { x: number; y: number; w: number; h: number } | null {
@@ -176,6 +182,126 @@ export function paste(c: Circuit, clip: Clip, dx: number, dy: number, uid: (pref
   return {
     circuit: { ...c, parts: [...c.parts, ...parts], wires: [...c.wires, ...wires], notes: [...(c.notes ?? []), ...notes] },
     sel: { parts: parts.map((p) => p.id), wires: wires.map((w) => w.id), notes: notes.map((n) => n.id) },
+  };
+}
+
+// ── Blocks (subcircuits) ─────────────────────────────────────────────────────
+
+/** Why `name` can't name a new block in `top`, or null. */
+export function blockNameIssue(top: Circuit, name: string): string | null {
+  const np = nameProblem(name);
+  if (np) return `"${name}" ${np}.`;
+  if (name === top.module || top.blocks?.[name]) return `"${name}" is already used.`;
+  return null;
+}
+
+/** Does block `name` contain block `target` (or is it `target`)? A block can't be placed inside one of these. */
+export function usesBlock(lib: Library, name: string, target: string, depth = 0): boolean {
+  if (name === target || depth > 8) return true;
+  return (lib[name]?.parts ?? []).some((p) => p.kind === "block" && !!p.block && usesBlock(lib, p.block, target, depth + 1));
+}
+
+/**
+ * Turn the selected parts into block `name`: wires crossing the selection become its pins
+ * (one input per outside signal, one output per inside signal used outside), and the parts
+ * are replaced by one instance of it. Returns the new circuit and the block's definition,
+ * or why it can't be done.
+ */
+export function makeBlock(c: Circuit, s: Selection, name: string, uid: (prefix: string) => string):
+  { circuit: Circuit; def: Circuit; instance: string } | string {
+  const inside = c.parts.filter((p) => s.parts.includes(p.id));
+  if (!inside.length) return "Select the parts to put in the block first.";
+  if (inside.some((p) => INPUT_KINDS.includes(p.kind) || OUTPUT_KINDS.includes(p.kind))) {
+    return "Leave switches, clocks, LEDs and displays out of the selection: the wires crossing it become the block's pins.";
+  }
+  const ps = new Set(inside.map((p) => p.id));
+  const byId = new Map(c.parts.map((p) => [p.id, p]));
+  const k = (r: PinRef) => `${r.part}.${r.pin}`;
+  const used = new Set<string>();
+  for (const p of inside) {
+    used.add(p.label);
+    if (pins(p).outputs.length > 1) for (const o of pins(p).outputs) used.add(`${p.label}_${o}`);
+    if (p.kind === "block") used.add(`u_${p.label}`);
+  }
+  const portName = (want: string) => { const n = nextLabel(want.replace(/[^A-Za-z0-9_]/g, "_"), used); used.add(n); return n; };
+  const pinName = (r: PinRef) => { const p = byId.get(r.part)!; return pins(p).outputs.length > 1 ? `${p.label}_${r.pin}` : p.label; };
+
+  const b = bounds({ ...c, parts: inside, notes: [] })!;
+  const crossingIn = c.wires.filter((w) => ps.has(w.to.part) && !ps.has(w.from.part) && byId.has(w.from.part));
+  const crossingOut = c.wires.filter((w) => ps.has(w.from.part) && !ps.has(w.to.part) && byId.has(w.to.part));
+  const at = (r: PinRef) => pinPos(byId.get(r.part)!, r.pin).y;
+
+  // One input port per outside source, in top-to-bottom order of where it enters
+  const ins = new Map<string, Part>();
+  for (const w of [...crossingIn].sort((x, y) => at(x.to) - at(y.to))) {
+    if (ins.has(k(w.from))) continue;
+    const src = byId.get(w.from.part)!, wd = pinWidth(src, w.from.pin);
+    const kind: PartKind = src.kind === "clock" ? "clock" : wd > 1 ? "hexin" : "switch";
+    ins.set(k(w.from), { id: uid("p"), kind, label: portName(pinName(w.from)), x: b.x - 120, y: b.y + ins.size * 60, ...(wd > 1 ? { w: wd } : {}) });
+  }
+  // One output port per inside source used outside: named after the LED/display it drove, if any
+  const outs = new Map<string, Part>();
+  for (const w of [...crossingOut].sort((x, y) => at(x.from) - at(y.from))) {
+    if (outs.has(k(w.from))) continue;
+    const sink = byId.get(w.to.part)!, wd = pinWidth(byId.get(w.from.part)!, w.from.pin);
+    const want = OUTPUT_KINDS.includes(sink.kind) ? sink.label : `${pinName(w.from)}_out`;
+    outs.set(k(w.from), { id: uid("p"), kind: wd > 1 ? "hexout" : "led", label: portName(want), x: b.x + b.w + 80, y: b.y + outs.size * 60, ...(wd > 1 ? { w: wd } : {}) });
+  }
+  const split = (key: string): PinRef => { const i = key.lastIndexOf("."); return { part: key.slice(0, i), pin: key.slice(i + 1) }; };
+
+  const def: Circuit = {
+    module: name,
+    parts: [...ins.values(), ...inside, ...outs.values()],
+    wires: [
+      ...c.wires.filter((w) => ps.has(w.from.part) && ps.has(w.to.part)),
+      ...crossingIn.map((w) => ({ id: uid("w"), from: { part: ins.get(k(w.from))!.id, pin: "out" }, to: w.to })),
+      ...[...outs].map(([src, o]) => ({ id: uid("w"), from: split(src), to: { part: o.id, pin: "in" } })),
+    ],
+    notes: (c.notes ?? []).filter((n) => s.notes.includes(n.id)),
+  };
+
+  const outer = new Set(c.parts.filter((p) => !ps.has(p.id)).map((p) => p.label));
+  const inst: Part = { id: uid("p"), kind: "block", block: name, ports: blockPorts(def), label: nextLabel(`${name}1`, outer), x: 0, y: 0 };
+  const sz = size(inst);
+  inst.x = Math.round((b.x + b.w / 2 - sz.w / 2) / SNAP) * SNAP;
+  inst.y = Math.round((b.y + b.h / 2 - sz.h / 2) / SNAP) * SNAP;
+  const circuit: Circuit = {
+    ...c,
+    parts: [...c.parts.filter((p) => !ps.has(p.id)), inst],
+    wires: [
+      ...c.wires.filter((w) => !ps.has(w.from.part) && !ps.has(w.to.part)),
+      ...[...ins].map(([src, i]) => ({ id: uid("w"), from: split(src), to: { part: inst.id, pin: i.label } })),
+      ...crossingOut.map((w) => ({ id: uid("w"), from: { part: inst.id, pin: outs.get(k(w.from))!.label }, to: w.to })),
+    ],
+    notes: (c.notes ?? []).filter((n) => !s.notes.includes(n.id)),
+  };
+  return { circuit, def, instance: inst.id };
+}
+
+/**
+ * `top` with block `name` set to `def`: every instance of it (in the top circuit and in
+ * other blocks) gets its new pins, and wires to pins it no longer has are dropped.
+ */
+export function withBlock(top: Circuit, name: string, def: Circuit): Circuit {
+  const { blocks: _nested, ...plain } = def;   // the library lives on the top circuit only
+  const ports = blockPorts(plain);
+  const sync = (x: Circuit): Circuit => {
+    if (!x.parts.some((p) => p.kind === "block" && p.block === name)) return x;
+    const parts = x.parts.map((p) => (p.kind === "block" && p.block === name ? { ...p, ports } : p));
+    const byId = new Map(parts.map((p) => [p.id, p]));
+    const has = (r: PinRef, out: boolean) => { const p = byId.get(r.part); return !p || (out ? pins(p).outputs : pins(p).inputs).includes(r.pin); };
+    return { ...x, parts, wires: x.wires.filter((w) => has(w.from, true) && has(w.to, false)) };
+  };
+  const lib: Library = { ...top.blocks, [name]: { ...plain, module: name } };
+  return { ...sync(top), blocks: Object.fromEntries(Object.entries(lib).map(([n, d]) => [n, sync(d)])) };
+}
+
+/** Rename block `from` to `to` everywhere it is used. */
+export function renameBlock(top: Circuit, from: string, to: string): Circuit {
+  const re = (x: Circuit): Circuit => ({ ...x, parts: x.parts.map((p) => (p.kind === "block" && p.block === from ? { ...p, block: to } : p)) });
+  return {
+    ...re(top),
+    blocks: Object.fromEntries(Object.entries(top.blocks ?? {}).map(([n, d]) => (n === from ? [to, { ...re(d), module: to }] : [n, re(d)]))),
   };
 }
 

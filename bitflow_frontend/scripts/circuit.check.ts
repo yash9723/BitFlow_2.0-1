@@ -8,8 +8,11 @@ import {
   type Circuit, CIRCUIT_EXAMPLES, compile, defaultEvents, expectedOutputs, generateTestbench, generateVerilog, validate,
 } from "../lib/studio/circuit";
 import { tableFromNetlist } from "../lib/studio/logic-min";
-import { History, NONE, copy, inRect, merge, move, nextLabel, paste, remove, selectAll, wirePath } from "../lib/studio/circuit-edit";
-import { toBits } from "../lib/studio/circuit";
+import {
+  type Selection, History, NONE, blockNameIssue, copy, inRect, makeBlock, merge, move, nextLabel, paste, remove, renameBlock, selectAll, usesBlock, withBlock, wirePath,
+} from "../lib/studio/circuit-edit";
+import { netlistToCircuit } from "../lib/studio/circuit-import";
+import { inputParts, outputParts, toBits } from "../lib/studio/circuit";
 import { PART_CASES } from "./circuit-cases";
 import { longestPath, traceToParsed, traceToVcd } from "../lib/studio/circuit-analysis";
 import { parseVcd } from "../lib/vcd-parser";
@@ -223,4 +226,64 @@ assert.match(vcd, /\$var wire 4 " n \$end/);
 assert.match(vcd, /#2\nb0101 "/);
 assert.ok(!/#3\n/.test(vcd), "no entry for a step where nothing changed");
 assert.equal(parseVcd(vcd).signals[1].changes.length, 3, "our own parser reads it back");
+
+// Blocks: every example and part case, with all its logic moved into a block, behaves the same
+const ALL: [string, Circuit][] = [...CIRCUIT_EXAMPLES.map((e) => [e.label, e.circuit] as [string, Circuit]), ...Object.entries(PART_CASES)];
+const logicOf = (c: Circuit): Selection => ({ ...NONE, parts: c.parts.filter((p) => !inputParts(c).includes(p) && !outputParts(c).includes(p)).map((p) => p.id) });
+const sameOutputs = (a: Circuit, b: Circuit, label: string) => {
+  const ev = defaultEvents(a, 40);
+  assert.deepEqual(expectedOutputs(b, ev), expectedOutputs(a, ev), label);
+};
+const uid2 = (p: string) => `${p}_${++uidN}`;
+const blocked = (c: Circuit, name = "blk"): Circuit => {
+  const r = makeBlock(c, logicOf(c), name, uid2);
+  if (typeof r === "string") throw new Error(r);
+  return { ...r.circuit, blocks: { ...c.blocks, [name]: r.def } };
+};
+for (const [label, c] of ALL) {
+  const top = blocked(c);
+  assert.deepEqual(validate(top).filter((i) => i.level === "error"), [], `block: ${label}`);
+  assert.equal(top.parts.filter((p) => p.kind === "block").length, 1);
+  sameOutputs(c, top, `block: ${label}`);
+  assert.match(generateVerilog(top), /^module blk \(/m);
+  assert.match(generateVerilog(top), /\n {4}blk u_blk1 \(/);
+}
+assert.match(makeBlock(half, { ...NONE, parts: ["p1", "p3"] }, "x", uid2) as string, /Leave switches/);
+// Nested: the block instance itself put in a block; Verilog lists the inner module first
+const add4b = blocked(ex("4-bit adder"));
+const nested = blocked(add4b, "outer");
+assert.deepEqual(validate(nested).filter((i) => i.level === "error"), []);
+sameOutputs(ex("4-bit adder"), nested, "nested blocks");
+const nv = generateVerilog(nested);
+assert.ok(nv.indexOf("module blk (") < nv.indexOf("module outer (") && nv.indexOf("module outer (") < nv.indexOf("module add4 ("));
+assert.ok(usesBlock(nested.blocks!, "outer", "blk") && !usesBlock(nested.blocks!, "blk", "outer"));
+// Renaming follows every instance; editing a block's ports updates its instances and drops their stale wires
+const renamed = renameBlock(nested, "blk", "core");
+assert.deepEqual(Object.keys(renamed.blocks!).sort(), ["core", "outer"]);
+assert.match(generateVerilog(renamed), /module core \(/);
+sameOutputs(nested, renamed, "renamed block");
+const def = add4b.blocks!.blk, carryOut = outputParts(def).find((p) => /carry/.test(p.label))!;
+const slim = withBlock(add4b, "blk", { ...def, parts: def.parts.filter((p) => p.id !== carryOut.id), wires: def.wires.filter((w) => w.to.part !== carryOut.id) });
+const inst = slim.parts.find((p) => p.kind === "block")!;
+assert.ok(!inst.ports!.outputs.some((o) => o.name === carryOut.label));
+assert.ok(!slim.wires.some((w) => w.from.part === inst.id && w.from.pin === carryOut.label), "the wire from the removed pin is gone");
+assert.equal(blockNameIssue(add4b, "blk"), `"blk" is already used.`);
+assert.equal(blockNameIssue(add4b, "add4"), `"add4" is already used.`);
+assert.equal(blockNameIssue(add4b, "fresh"), null);
+// A block containing itself is reported, not a hang
+const selfish: Circuit = { ...add4b, blocks: { blk: { ...def, parts: [...def.parts, { id: "me", kind: "block", block: "blk", ports: inst.ports, label: "me", x: 0, y: 0 }] } } };
+assert.ok(validate(selfish).some((i) => i.level === "error" && /nested too deeply/.test(i.msg)));
+
+// Import: a netlist (here our own compile() output) drawn as a circuit behaves the same
+for (const [label, c] of ALL) {
+  const back = netlistToCircuit(compile(c).net, c.module);
+  if (typeof back === "string") throw new Error(`${label}: ${back}`);
+  assert.deepEqual(validate(back).filter((i) => i.level === "error"), [], `import: ${label}`);
+  sameOutputs(c, back, `import: ${label}`);
+}
+const imported = netlistToCircuit(compile(nested).net, "flat") as Circuit;
+sameOutputs(nested, imported, "import flattens blocks");
+assert.ok(imported.parts.every((p) => p.x >= 40 && p.y >= 40), "laid out on the canvas");
+assert.match(netlistToCircuit({ ports: {}, cells: [{ type: "$_DFF_PP1_", conn: { C: [2], D: [3], Q: [4], R: [5] } }] }, "m") as string, /reset to 1/);
+assert.match(netlistToCircuit({ ports: {}, cells: [{ type: "$_AOI3_", conn: {} }] }, "m") as string, /no part for/);
 console.log("circuit: all checks passed");

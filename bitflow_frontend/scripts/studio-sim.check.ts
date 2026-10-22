@@ -10,7 +10,10 @@ import { type Cell, type TruthTable, generateVerilog } from "../lib/studio/logic
 import { type FsmModel, FSM_EXAMPLES, generateTestbench as fsmTestbench, generateVerilog as fsmVerilog, guidedWalk } from "../lib/studio/fsm";
 import { WAVE_EXAMPLES, fromVcd, generateTestbench as waveTestbench, nsPerUnit, setDir } from "../lib/studio/wave";
 import { parseVcd } from "../lib/vcd-parser";
-import { CIRCUIT_EXAMPLES, defaultEvents as circuitEvents, generateTestbench as circuitTestbench, generateVerilog as circuitVerilog } from "../lib/studio/circuit";
+import {
+  CIRCUIT_EXAMPLES, defaultEvents as circuitEvents, generateTestbench as circuitTestbench, generateVerilog as circuitVerilog, inputParts, outputParts,
+} from "../lib/studio/circuit";
+import { NONE, makeBlock } from "../lib/studio/circuit-edit";
 import { TEMPLATES } from "../lib/templates";
 import { PART_CASES } from "./circuit-cases";
 
@@ -73,6 +76,12 @@ for (const { label, diagram } of WAVE_EXAMPLES) {
 // Circuits: every example, testbench from its default walk (exhaustive Gray walk or clocked random walk)
 for (const { label, circuit } of [...CIRCUIT_EXAMPLES, ...Object.entries(PART_CASES).map(([label, circuit]) => ({ label, circuit }))]) {
   cases.push([`circuit: ${label}`, { design: circuitVerilog(circuit), testbench: circuitTestbench(circuit, circuitEvents(circuit, 64, 5)) }]);
+  // ...and with its logic in a block (a second module, instantiated)
+  const r = makeBlock(circuit, { ...NONE, parts: circuit.parts.filter((p) => !inputParts(circuit).includes(p) && !outputParts(circuit).includes(p)).map((p) => p.id) },
+    "core", (p) => `${p}_${Math.random().toString(36).slice(2, 8)}`);
+  if (typeof r === "string") throw new Error(`${label}: ${r}`);
+  const top = { ...r.circuit, blocks: { core: r.def } };
+  cases.push([`circuit block: ${label}`, { design: circuitVerilog(top), testbench: circuitTestbench(top, circuitEvents(circuit, 64, 5)) }]);
 }
 
 (async () => {

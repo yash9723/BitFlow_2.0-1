@@ -938,7 +938,7 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
     const xOf  = (t: number) => t * pxPerUnit;
     const step = niceTimeStep(maxTime);
     const ticks: number[] = [];
-    for (let t = 0; t <= maxTime; t += step) ticks.push(t);
+    for (let i = 0; i * step <= maxTime; i++) ticks.push(Number((i * step).toPrecision(12)));
 
     const tickLines = ticks.map((t) => (
       <line

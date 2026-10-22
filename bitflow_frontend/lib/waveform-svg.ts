@@ -70,7 +70,8 @@ export function waveformSvg(vcd: ParsedVcd, view: WaveView = {}, opts: WaveSvgOp
   out.push(`<rect x="${LABEL_W}" width="${W - LABEL_W}" height="${AXIS_H}" fill="${T.axis}"/>`);
   out.push(`<text x="6" y="14" font-size="9" fill="${T.dim}" ${font}>time (${esc(vcd.timescale || "units")})</text>`);
   const step = niceTimeStep(end);
-  for (let t = 0; t <= end; t += step) {
+  for (let i = 0; i * step <= end; i++) {
+    const t = Number((i * step).toPrecision(12));        // no 0.30000000000000004 labels
     out.push(`<line x1="${x(t)}" y1="${AXIS_H - 4}" x2="${x(t)}" y2="${H}" stroke="${T.grid}" stroke-width="0.6"/>`);
     out.push(`<text x="${x(t) + 2}" y="13" font-size="8.5" fill="${T.dim}" ${font}>${t}</text>`);
   }

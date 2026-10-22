@@ -11,22 +11,30 @@
  * adds to the selection; drag pin to pin to wire; drag a wire to bend it. Ctrl+wheel
  * zooms, Space+drag or the middle button pans. Keys work while the canvas has focus:
  * undo/redo, copy/cut/paste/duplicate, select all, delete, arrow nudges.
+ *
+ * Blocks (subcircuits): Ctrl+G turns the selection into a block (a Verilog module of its
+ * own) whose pins are the wires crossing the selection. Double-click an instance to open its
+ * definition; edits apply to every instance. The library lives on the top circuit (blocks).
+ * Import Verilog synthesizes a module in the browser and draws it (lib/studio/circuit-import.ts).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GeneratedCode from "@/components/studio/GeneratedCode";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { GateSim, toNumber } from "@/lib/gate-sim";
 import {
-  type Circuit, type InputEvent, type Note, type Part, type PartKind, type PinRef, type Wire, CIRCUIT_EXAMPLES, INPUT_KINDS, MAX_WIDTH,
-  MAX_EXHAUSTIVE_INPUTS, compile, constValue, defaultEvents, generateTestbench, generateVerilog, inputParts, isSequential, outputParts,
-  pinWidth, pins, portWidth, toBits, validate, width,
+  type Circuit, type InputEvent, type Library, type Note, type Part, type PartKind, type PinRef, type Wire, CIRCUIT_EXAMPLES, INPUT_KINDS,
+  MAX_WIDTH, MAX_EXHAUSTIVE_INPUTS, blockPorts, compile, constValue, defaultEvents, generateTestbench, generateVerilog, hasState, inputParts,
+  outputParts, pinWidth, pins, portWidth, toBits, validate, width,
 } from "@/lib/studio/circuit";
 import {
-  type Clip, type Selection, History, NONE, SNAP, bounds, copy, forward, inRect, isEmpty, merge, move, noteLines, noteSize,
-  paste, pinPos, remove, selectAll, size, wirePath,
+  type Clip, type Selection, History, NONE, SNAP, blockNameIssue, bounds, copy, forward, inRect, isEmpty, makeBlock, merge, move, nextLabel,
+  noteLines, noteSize, paste, pinPos, remove, renameBlock, selectAll, size, usesBlock, wirePath, wirePoints, withBlock,
 } from "@/lib/studio/circuit-edit";
+import { MAX_IMPORT_CELLS, netlistToCircuit } from "@/lib/studio/circuit-import";
+import { synthesizeDesign } from "@/lib/synth/client";
+import type { BoardNetlist } from "@/lib/gate-sim";
 import { tableFromNetlist } from "@/lib/studio/logic-min";
 import { type Trace, longestPath, traceToParsed, traceToVcd } from "@/lib/studio/circuit-analysis";
 import { waveformSvg } from "@/lib/waveform-svg";
@@ -61,7 +69,7 @@ const LABEL_POOL: Partial<Record<PartKind, string[]>> = {
 const PREFIX: Record<PartKind, string> = {
   switch: "sw", button: "btn", clock: "clk", hexin: "in", const0: "zero", const1: "one", const: "k", not: "n", and: "g", or: "g", xor: "g",
   nand: "g", nor: "g", xnor: "g", mux2: "m", dff: "q", tff: "t", jkff: "jk", reg: "r", counter: "cnt",
-  adder: "add", cmp: "cmp", decoder: "dec", split: "sp", merge: "mg", led: "led", seg7: "seg", hexout: "hex",
+  adder: "add", cmp: "cmp", decoder: "dec", split: "sp", merge: "mg", led: "led", seg7: "seg", hexout: "hex", block: "blk",
 };
 /** Widths and options a new part starts with. */
 const DEFAULTS: Partial<Record<PartKind, Partial<Part>>> = {
@@ -100,6 +108,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+A", "select all"], ["Delete", "delete the selection"], ["Arrows (Shift: ×5)", "nudge the selection"],
   ["Shift+click", "add to / remove from the selection"], ["Drag empty space", "box select"], ["Drag a wire", "bend it"],
   ["Ctrl+wheel", "zoom"], ["Space+drag, middle button", "pan"], ["Esc", "clear the selection"],
+  ["Ctrl+G", "make a block from the selection"], ["Double-click a block", "open it to edit or test it"],
 ];
 
 function valid(c: Circuit | null): c is Circuit {
@@ -127,37 +136,54 @@ type View = { x: number; y: number; z: number };
 export default function CircuitTool() {
   const router = useRouter();
   const [stored, setStored] = useLocalStorage<Circuit>("bitflow_studio_circuit", CIRCUIT_EXAMPLES[0].circuit);
-  const c = valid(stored) ? stored : CIRCUIT_EXAMPLES[0].circuit;
+  const top = valid(stored) ? stored : CIRCUIT_EXAMPLES[0].circuit;
+  const lib: Library = top.blocks ?? {};
+  // The block being edited (and the blocks it was opened from); [] = the top circuit
+  const [openPath, setPath] = useState<string[]>([]);
+  const path: string[] = [];
+  for (const n of openPath) { if (!lib[n]) break; path.push(n); }       // undo can delete a block that is open
+  const cur = path[path.length - 1];
+  const c: Circuit = cur ? { ...lib[cur], module: cur } : top;
   const [sel, setSel] = useState<Selection>(NONE);
   const [view, setView] = useState<View>({ x: 0, y: 0, z: 1 });
   const [help, setHelp] = useState(false);
 
-  // Undo history: every edit goes through edit(), which records the state before it
+  // Undo history (of the top circuit, library included): every change goes through commit(), which
+  // records the state before it; edit() changes the circuit on screen, the top one or an open block
   const cRef = useRef(c);
   cRef.current = c;
+  const topRef = useRef(top);
+  topRef.current = top;
+  const curRef = useRef(cur);
+  curRef.current = cur;
   const hist = useRef(new History());
   const [, setHistTick] = useState(0);
-  const edit = useCallback((next: Circuit, group = "") => {
-    hist.current.push(cRef.current, group);
-    setStored(next);
+  const commit = useCallback((nextTop: Circuit, group = "") => {
+    hist.current.push(topRef.current, group);
+    setStored(nextTop);
     setHistTick((t) => t + 1);
   }, [setStored]);
+  const edit = useCallback((next: Circuit, group = "") => {
+    const name = curRef.current;
+    commit(name ? withBlock(topRef.current, name, next) : next, group);
+  }, [commit]);
   const undo = useCallback(() => {
-    const prev = hist.current.undo(cRef.current);
+    const prev = hist.current.undo(topRef.current);
     if (prev) { setStored(prev); setSel(NONE); setHistTick((t) => t + 1); }
   }, [setStored]);
   const redo = useCallback(() => {
-    const next = hist.current.redo(cRef.current);
+    const next = hist.current.redo(topRef.current);
     if (next) { setStored(next); setSel(NONE); setHistTick((t) => t + 1); }
   }, [setStored]);
 
   // Positions, bends and notes don't change the logic, so editing them doesn't rebuild the simulation or the checks
-  const logicKey = JSON.stringify({
-    m: c.module, p: c.parts.map((p) => ({ id: p.id, kind: p.kind, label: p.label, n: p.n, reset: p.reset, w: p.w, value: p.value })),
-    w: c.wires.map((w) => [w.id, w.from, w.to]),
+  const logicOf = (x: Circuit) => ({
+    p: x.parts.map((p) => ({ id: p.id, kind: p.kind, label: p.label, n: p.n, reset: p.reset, w: p.w, value: p.value, block: p.block, ports: p.ports })),
+    w: x.wires.map((w) => [w.id, w.from, w.to]),
   });
+  const logicKey = JSON.stringify({ m: c.module, ...logicOf(c), lib: Object.entries(lib).map(([n, d]) => [n, logicOf(d)]) });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const issues = useMemo(() => validate(c), [logicKey]);
+  const issues = useMemo(() => validate(c, lib), [logicKey]);
   const ok = !issues.some((i) => i.level === "error");
 
   // Live simulation: rebuilt when the logic changes; inputs keep their values, flip-flops restart at 0
@@ -191,7 +217,7 @@ export default function CircuitTool() {
 
   useEffect(() => {
     if (!ok) { simRef.current = null; redraw(); return; }
-    const { net, bitsOf } = compile(c);
+    const { net, bitsOf } = compile(c, lib);
     const sim = new GateSim(net);
     for (const p of inputParts(c)) {
       const v = (inputsRef.current[p.label] ?? 0) % 2 ** portWidth(p);
@@ -223,7 +249,7 @@ export default function CircuitTool() {
   }, [drive]);
   const powerUp = () => {
     for (const p of inputParts(c)) inputsRef.current[p.label] = 0;
-    if (ok) { const { net, bitsOf } = compile(c); simRef.current = { sim: new GateSim(net), bitsOf }; }
+    if (ok) { const { net, bitsOf } = compile(c, lib); simRef.current = { sim: new GateSim(net), bitsOf }; }
     setRecorded([]);
     restartTrace();
     redraw();
@@ -237,7 +263,7 @@ export default function CircuitTool() {
   const [showPath, setShowPath] = useState(false);
   const timing = useMemo(() => {
     if (!ok) return null;
-    const { net, bitsOf } = compile(c);
+    const { net, bitsOf } = compile(c, lib);
     const lp = longestPath(net);
     const onPath = new Set(lp.nets);
     const netPart = new Map<number, Part>();
@@ -288,6 +314,52 @@ export default function CircuitTool() {
     pasteCount.current = 0;
     pasteClip(copy(cRef.current, sel));
   }, [sel, pasteClip]);
+  const blockFromSel = () => {
+    if (!sel.parts.length) { window.alert("Select the parts to put in the block first (drag a box around them)."); return; }
+    let i = 1;
+    while (lib[`block${i}`]) i++;
+    const name = window.prompt("Name the new block (it becomes a Verilog module):", `block${i}`)?.trim();
+    if (!name) return;
+    const bad = blockNameIssue(top, name);
+    if (bad) { window.alert(bad); return; }
+    const r = makeBlock(c, sel, name, uid);
+    if (typeof r === "string") { window.alert(r); return; }
+    const blocks = { ...lib, [name]: r.def };
+    commit(cur ? withBlock({ ...top, blocks }, cur, r.circuit) : { ...r.circuit, blocks });
+    setSel({ ...NONE, parts: [r.instance] });
+  };
+  const openBlock = (name: string, nested = false) => {
+    setPath(nested ? [...path, name] : [name]);
+    setSel(NONE);
+    requestAnimationFrame(fit);
+  };
+  const leaveTo = (depth: number) => { setPath(path.slice(0, depth)); setSel(NONE); requestAnimationFrame(fit); };
+  const renameCurrent = () => {
+    const name = window.prompt("New name for this block:", cur)?.trim();
+    if (!cur || !name || name === cur) return;
+    const bad = blockNameIssue(top, name);
+    if (bad) { window.alert(bad); return; }
+    commit(renameBlock(top, cur, name));
+    setPath(path.map((n) => (n === cur ? name : n)));
+  };
+  const uses = (name: string) => [top, ...Object.values(lib)].reduce((n, x) => n + x.parts.filter((p) => p.kind === "block" && p.block === name).length, 0);
+  const deleteBlock = (name: string) => {
+    const { [name]: _gone, ...rest } = lib;
+    commit({ ...top, blocks: rest });
+  };
+  const [importing, setImporting] = useState(false);
+  const imported = (circuit: Circuit, asBlock: boolean) => {
+    setImporting(false);
+    if (!asBlock) { load(circuit); return; }
+    const name = nextLabel(circuit.module, new Set([top.module, ...Object.keys(lib)]));
+    const blocks = { ...lib, [name]: { ...circuit, module: name } };
+    const ctr = visibleCentre();
+    const inst: Part = { id: uid("p"), kind: "block", block: name, ports: blockPorts(circuit), label: nextLabel(`${name}1`, new Set(c.parts.map((x) => x.label))),
+      x: snap(ctr.x - 50), y: snap(ctr.y - 40) };
+    const next = { ...c, parts: [...c.parts, inst] };
+    commit(cur ? withBlock({ ...top, blocks }, cur, next) : { ...next, blocks });
+    setSel({ ...NONE, parts: [inst.id] });
+  };
   const nudge = useCallback((dx: number, dy: number) => {
     if (!sel.parts.length && !sel.notes.length) return;
     edit(move(cRef.current, sel, dx, dy), "nudge");
@@ -305,6 +377,7 @@ export default function CircuitTool() {
     else if (mod && k === "v") pasteClip();
     else if (mod && k === "d") duplicate();
     else if (mod && k === "a") setSel(selectAll(cRef.current));
+    else if (mod && k === "g") blockFromSel();
     else if (k === "delete" || k === "backspace") deleteSel();
     else if (k === "escape") { setSel(NONE); setHelp(false); }
     else if (k === "?") setHelp((h) => !h);
@@ -326,6 +399,13 @@ export default function CircuitTool() {
     edit({ ...c, parts: [...c.parts, p] });
     setSel({ ...NONE, parts: [p.id] });
   };
+  const addBlock = (name: string) => {
+    const ctr = visibleCentre();
+    const p: Part = { id: uid("p"), kind: "block", block: name, ports: blockPorts(lib[name]), label: nextLabel(`${name}1`, new Set(c.parts.map((x) => x.label))),
+      x: snap(ctr.x - 50), y: snap(ctr.y - 40) };
+    edit({ ...c, parts: [...c.parts, p] });
+    setSel({ ...NONE, parts: [p.id] });
+  };
   const addNote = () => {
     const ctr = visibleCentre();
     const n: Note = { id: uid("n"), x: snap(ctr.x - 60), y: snap(ctr.y - 20), text: "Note: describe this part of the circuit" };
@@ -338,9 +418,11 @@ export default function CircuitTool() {
     const z = Math.max(ZOOM.min, Math.min(1.5, VIEW.w / (b.w + 80), VIEW.h / (b.h + 80)));
     setView({ x: b.x - (VIEW.w / z - b.w) / 2, y: b.y - (VIEW.h / z - b.h) / 2, z });
   }, []);
+  /** Replace the whole design (examples, New, import): always at the top level. */
   const load = (circuit: Circuit) => {
     inputsRef.current = {};
-    edit(circuit);
+    commit(circuit);
+    setPath([]);
     setSel(NONE);
     setHz(0);
     requestAnimationFrame(fit);
@@ -355,15 +437,15 @@ export default function CircuitTool() {
   const events = tbSource === "mine" && recorded.length ? recorded : null;
   const notesKey = JSON.stringify(c.notes ?? []);
   const code = useMemo(
-    () => (ok ? { design: generateVerilog(c), testbench: generateTestbench(c, events ?? defaultEvents(c)) } : null),
+    () => (ok ? { design: generateVerilog(c, lib), testbench: generateTestbench(c, events ?? defaultEvents(c, 48, 1, lib), lib) } : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [logicKey, ok, events, notesKey],
   );
-  const sequential = c.parts.some(isSequential);
+  const sequential = hasState(c, lib);
   const inputBits = inputParts(c).reduce((n, p) => n + portWidth(p), 0);
   const tableable = ok && !sequential && inputBits > 0 && inputBits <= 6 && outputParts(c).length > 0;
   const toTable = () => {
-    const t = tableFromNetlist(compile(c).net);
+    const t = tableFromNetlist(compile(c, lib).net);
     if (typeof t === "string") { window.alert(t); return; }
     try { localStorage.setItem("bitflow_studio_logic", JSON.stringify(t)); } catch { window.alert("Your browser blocked local storage."); return; }
     router.push("/studio/logic");
@@ -390,10 +472,15 @@ export default function CircuitTool() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
-        <label className="flex items-center gap-2 text-dim">module
-          <input value={c.module} onChange={(e) => edit({ ...c, module: e.target.value.trim() }, "module")} aria-label="Module name"
-                 className="w-36 bg-pit border border-rim/60 rounded px-2 py-1 text-[12px] text-pale" />
-        </label>
+        {cur ? (
+          <span className="flex items-center gap-2 text-dim">block <span className="text-info text-[12px]">{cur}</span>
+            <button className="text-dim hover:text-bright underline" onClick={renameCurrent}>rename</button></span>
+        ) : (
+          <label className="flex items-center gap-2 text-dim">module
+            <input value={c.module} onChange={(e) => edit({ ...c, module: e.target.value.trim() }, "module")} aria-label="Module name"
+                   className="w-36 bg-pit border border-rim/60 rounded px-2 py-1 text-[12px] text-pale" />
+          </label>
+        )}
         <span className="text-rim">|</span>
         <button className={btn} onClick={undo} disabled={!hist.current.canUndo} title="Undo (Ctrl+Z)">↶ Undo</button>
         <button className={btn} onClick={redo} disabled={!hist.current.canRedo} title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
@@ -414,7 +501,12 @@ export default function CircuitTool() {
         {tableable && <button className={btn} onClick={toTable} title="Open this circuit's truth table and K-map">Truth table →</button>}
         <button className={`${btn} ${showPath ? "border-warn/60 text-warn" : ""}`} disabled={!timing} onClick={() => setShowPath((s) => !s)}
                 title="Highlight the longest chain of gates between inputs/flip-flops and outputs/flip-flops">Longest path</button>
+        <span className="text-rim">|</span>
+        <button className={btn} onClick={blockFromSel} disabled={!sel.parts.length} title="Turn the selected parts into a reusable block (Ctrl+G)">⧉ Make block</button>
+        <button className={`${btn} ${importing ? "border-info/60 text-info" : ""}`} onClick={() => setImporting((v) => !v)}
+                title="Draw a circuit from a Verilog module">⇣ Import Verilog</button>
       </div>
+      {importing && <ImportPanel onCancel={() => setImporting(false)} onImport={imported} />}
       {showPath && timing && (
         <p className="font-mono text-[11px] text-warn -mt-2">
           {timing.delay === 0
@@ -437,11 +529,42 @@ export default function CircuitTool() {
               ))}
             </div>
           ))}
+          <div className="contents xl:block xl:space-y-1">
+            <div className="hidden xl:block text-[9px] uppercase tracking-wider text-dim pt-1">Blocks</div>
+            {Object.keys(lib).map((name) => {
+              const loops = !!cur && usesBlock(lib, name, cur);                  // a block can't contain itself
+              const n = uses(name);
+              return (
+                <div key={name} className="flex gap-1 xl:w-full">
+                  <button onClick={() => addBlock(name)} disabled={loops} title={loops ? "A block can't contain itself" : `Place a ${name}`}
+                          className="flex-1 min-w-0 truncate px-2 py-1 rounded border border-info/40 text-info/90 hover:text-bright text-left disabled:opacity-40">+ {name}</button>
+                  <button onClick={() => openBlock(name)} title={`Open ${name} to edit or test it`} aria-label={`Open ${name}`}
+                          className="px-1.5 rounded border border-rim/60 text-dim hover:text-bright">✎</button>
+                  {!n && <button onClick={() => deleteBlock(name)} title={`Delete ${name} (unused)`} aria-label={`Delete ${name}`}
+                                 className="px-1.5 rounded border border-rim/60 text-dim hover:text-danger">×</button>}
+                </div>
+              );
+            })}
+            {!Object.keys(lib).length && <div className="hidden xl:block text-[10px] text-dim leading-snug">Select some parts and press Ctrl+G to make a reusable block.</div>}
+          </div>
           <button onClick={addNote} className="px-2 py-1.5 rounded border border-dashed border-warn/40 text-ghost hover:text-bright text-left">+ Note</button>
         </div>
         <div className="relative min-w-0">
+          {path.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mb-2 px-3 py-1.5 rounded-lg border border-info/30 bg-info/5 font-mono text-[11px]">
+              <button onClick={() => leaveTo(0)} className="text-info hover:underline">{top.module}</button>
+              {path.map((n, i) => (
+                <Fragment key={`${n}${i}`}>
+                  <span className="text-dim">›</span>
+                  {i === path.length - 1 ? <span className="text-bright">{n}</span> : <button onClick={() => leaveTo(i + 1)} className="text-info hover:underline">{n}</button>}
+                </Fragment>
+              ))}
+              <span className="text-dim">· editing a block: changes apply to all {uses(cur!)} instance{uses(cur!) === 1 ? "" : "s"}; its switches and LEDs are its pins</span>
+              <button onClick={() => leaveTo(path.length - 1)} className="ml-auto px-2 py-0.5 rounded border border-rim/60 text-ghost hover:text-bright">↑ Back</button>
+            </div>
+          )}
           <Canvas c={c} edit={edit} sel={sel} setSel={setSel} live={simRef.current} inputs={inputsRef.current} drive={drive} pulse={pulse}
-                  view={view} setView={setView} onKey={onKey} hot={showPath && timing ? timing : null} />
+                  view={view} setView={setView} onKey={onKey} hot={showPath && timing ? timing : null} onOpen={(name) => openBlock(name, true)} />
           {help && (
             <div className="absolute top-2 right-2 z-10 w-72 rounded-lg border border-rim bg-pit/95 p-3 font-mono text-[10px] shadow-xl">
               <div className="flex justify-between mb-1.5"><span className="text-pale uppercase tracking-wider">Shortcuts</span>
@@ -452,7 +575,7 @@ export default function CircuitTool() {
         </div>
         <div className="space-y-4 min-w-0">
           <Inspector c={c} edit={edit} sel={sel} onDelete={deleteSel} onDuplicate={duplicate} onHelp={() => setHelp(true)}
-                     probes={probes} onProbe={toggleProbe} />
+                     probes={probes} onProbe={toggleProbe} onOpen={(name) => openBlock(name, true)} onMakeBlock={blockFromSel} />
           <Issues issues={issues} onPick={(id) => setSel({ ...NONE, parts: [id] })} />
         </div>
       </div>
@@ -491,12 +614,14 @@ type Drag =
   | { kind: "pan"; cx: number; cy: number; view: View }
   | null;
 
-function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setView, onKey, hot }: {
+function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setView, onKey, hot, onOpen }: {
   c: Circuit; edit: (c: Circuit, group?: string) => void; sel: Selection; setSel: (s: Selection) => void; live: Live;
   inputs: Record<string, number>; drive: (label: string, v: number) => void; pulse: (labels: string[]) => void;
   view: View; setView: (v: View | ((v: View) => View)) => void; onKey: (e: React.KeyboardEvent) => void;
   /** The longest path, highlighted. */
   hot: { parts: Set<string>; wires: Set<string> } | null;
+  /** Open a block instance's definition. */
+  onOpen: (block: string) => void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -537,17 +662,24 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
     return () => el.removeEventListener("wheel", onWheel);
   }, [setView]);
 
-  /** The pin under (x, y), within 9 px. */
-  const pinAt = (x: number, y: number): { ref: PinRef; isOutput: boolean } | null => {
+  /** The nearest pin within `r` px of (x, y), optionally only those `ok` accepts. */
+  const pinAt = (x: number, y: number, r = 9, ok?: (ref: PinRef, isOutput: boolean) => boolean): { ref: PinRef; isOutput: boolean } | null => {
+    let best: { ref: PinRef; isOutput: boolean } | null = null, bestD = r;
     for (const p of c.parts) {
       const { inputs: ins, outputs: outs } = pins(p);
       for (const pin of [...ins, ...outs]) {
-        const q = pinPos(p, pin);
-        if (Math.hypot(q.x - x, q.y - y) <= 9) return { ref: { part: p.id, pin }, isOutput: outs.includes(pin) };
+        const q = pinPos(p, pin), d = Math.hypot(q.x - x, q.y - y), isOutput = outs.includes(pin);
+        if (d <= bestD && (!ok || ok({ part: p.id, pin }, isOutput))) { best = { ref: { part: p.id, pin }, isOutput }; bestD = d; }
       }
     }
-    return null;
+    return best;
   };
+  /** While wiring: the pins the wire can end on (other direction, another part), and the one it snaps to. */
+  const wiring = drag?.kind === "wire" ? { part: drag.from.part, isOutput: drag.isOutput, width: pinWidth(byId.get(drag.from.part)!, drag.from.pin) } : null;
+  const canEnd = (ref: PinRef, isOutput: boolean) => !!wiring && isOutput !== wiring.isOutput && ref.part !== wiring.part;
+  const snapTo = drag?.kind === "wire" ? pinAt(drag.x, drag.y, 16, canEnd) : null;
+  /** What drives each input pin, for tooltips. */
+  const driverOf = new Map(c.wires.map((w) => [`${w.to.part}.${w.to.pin}`, w.from]));
 
   /** Pointer down on a part or note: select it (shift toggles) and start moving the selection. */
   const startMove = (e: React.PointerEvent, kind: "parts" | "notes", id: string) => {
@@ -605,8 +737,8 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
   const onUp = (e: React.PointerEvent) => {
     if (drag?.kind === "wire") {
       const p = toSvg(e);
-      const hit = pinAt(p.x, p.y);
-      if (hit && hit.isOutput !== drag.isOutput && hit.ref.part !== drag.from.part) {
+      const hit = pinAt(p.x, p.y, 16, canEnd);
+      if (hit) {
         const from = drag.isOutput ? drag.from : hit.ref, to = drag.isOutput ? hit.ref : drag.from;
         const w: Wire = { id: uid("w"), from, to };
         edit({ ...c, wires: [...c.wires.filter((x) => !(x.to.part === to.part && x.to.pin === to.pin)), w] });   // one driver per input
@@ -618,6 +750,24 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
 
   const pendingFrom = drag?.kind === "wire" ? byId.get(drag.from.part) : undefined;
   const pending = drag?.kind === "wire" && pendingFrom ? pinPos(pendingFrom, drag.from.pin) : null;
+  const pendingEnd = snapTo ? pinPos(byId.get(snapTo.ref.part)!, snapTo.ref.pin) : drag?.kind === "wire" ? { x: drag.x, y: drag.y } : null;
+  const fmt = (v: number, w: number) => (w > 1 ? `${w}'h${hex(v, w)} (${v})` : `${v}`);
+
+  // Junction dots: where wires from one output branch off their shared first segment
+  const fan = new Map<string, number[]>();
+  c.wires.forEach((w, i) => {
+    const a = byId.get(w.from.part), b = byId.get(w.to.part);
+    if (!a || !b) return;
+    const k = `${w.from.part}.${w.from.pin}`;
+    fan.set(k, [...(fan.get(k) ?? []), wirePoints(pinPos(a, w.from.pin), pinPos(b, w.to.pin), ((i % 5) - 2) * 7, w.bend)[1][0]]);
+  });
+  const dots: { x: number; y: number; on: boolean; bus: boolean }[] = [];
+  for (const [k, xs] of fan) {
+    if (xs.length < 2) continue;
+    const ref = { part: k.slice(0, k.lastIndexOf(".")), pin: k.slice(k.lastIndexOf(".") + 1) };
+    const from = byId.get(ref.part)!, q = pinPos(from, ref.pin), bw = pinWidth(from, ref.pin), far = Math.max(...xs);
+    for (const x of new Set(xs.filter((x) => x < far))) dots.push({ x, y: q.y, on: bw === 1 && valueOf(ref) === 1, bus: bw > 1 });
+  }
 
   return (
     <div ref={box} tabIndex={0} onKeyDown={onKey}
@@ -654,6 +804,7 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
                  setSel(one);
                  setDrag({ kind: "bend", group: `bend${++gesture.current}`, id: w.id, base: c });
                }}>
+              <title>{`${a.label}.${w.from.pin} → ${b.label}.${w.to.pin}${live ? ` = ${fmt(v, bw)}` : ""}${bad ? " (width mismatch)" : ""}`}</title>
               <path d={d} stroke="transparent" strokeWidth={10} fill="none" />
               <path d={d} stroke={colour} strokeWidth={(bw > 1 ? 3.5 : 2) + (selected ? 0.5 : 0)} fill="none" strokeLinejoin="round"
                     strokeDasharray={bad ? "6 4" : undefined} />
@@ -666,8 +817,17 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
           );
         })}
 
+        {dots.map((j, i) => <circle key={i} cx={j.x} cy={j.y} r={j.bus ? 3.6 : 3} fill={j.bus ? "#5aa9e6" : j.on ? "#00e87a" : "#6b6f85"} style={{ pointerEvents: "none" }} />)}
+
         {c.parts.map((p) => (
           <PartView key={p.id} p={p} selected={has(sel.parts, p.id)} hot={!!hot?.parts.has(p.id)} valueOf={valueOf}
+                    wiring={wiring && wiring.part !== p.id ? { isOutput: wiring.isOutput, width: wiring.width } : null}
+                    snapPin={snapTo?.ref.part === p.id ? snapTo.ref.pin : null}
+                    pinTitle={(pin, isOutput) => {
+                      const w = pinWidth(p, pin), src = isOutput ? { part: p.id, pin } : driverOf.get(`${p.id}.${pin}`);
+                      return `${p.label}.${pin} · ${w} bit${w === 1 ? "" : "s"}${!live ? "" : src ? ` = ${fmt(valueOf(src), w)}` : " · not connected"}`;
+                    }}
+                    onOpen={p.kind === "block" && p.block ? () => onOpen(p.block!) : undefined}
                     inputValue={inputs[p.label] ?? 0} outputBits={live && (p.kind === "led" || p.kind === "seg7" || p.kind === "hexout") ? live.sim.get(p.label) : null}
                     onBodyDown={(e) => startMove(e, "parts", p.id)}
                     onPinDown={(e, pin, isOutput) => {
@@ -687,8 +847,8 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
                     }} />
         ))}
 
-        {pending && drag?.kind === "wire" && (
-          <line x1={pending.x} y1={pending.y} x2={drag.x} y2={drag.y} stroke="#00e87a" strokeDasharray="5 4" strokeWidth={1.5} />
+        {pending && pendingEnd && (
+          <line x1={pending.x} y1={pending.y} x2={pendingEnd.x} y2={pendingEnd.y} stroke={snapTo ? "#00e87a" : "#5aa9e6"} strokeDasharray={snapTo ? undefined : "5 4"} strokeWidth={snapTo ? 2 : 1.5} />
         )}
         {drag?.kind === "box" && (
           <rect x={Math.min(drag.x1, drag.x2)} y={Math.min(drag.y1, drag.y2)} width={Math.abs(drag.x2 - drag.x1)} height={Math.abs(drag.y2 - drag.y1)}
@@ -714,12 +874,33 @@ function NoteView({ n, selected, onDown }: { n: Note; selected: boolean; onDown:
   );
 }
 
-const GATE_SYMBOL: Record<string, string> = { and: "&", or: "≥1", xor: "=1", nand: "&", nor: "≥1", xnor: "=1", not: "1" };
+/** Distinctive-shape gate outline (ANSI/IEEE 91) in a gw × h box; OR/XOR have a curved back, so input pins get stubs. */
+function gateShape(kind: PartKind, x: number, y: number, gw: number, h: number): { body: string; back?: string; inset: (py: number) => number } {
+  const core = kind === "nand" ? "and" : kind === "nor" ? "or" : kind === "xnor" ? "xor" : kind;
+  if (core === "not") return { body: `M ${x} ${y + 3} L ${x + gw} ${y + h / 2} L ${x} ${y + h - 3} Z`, inset: () => 0 };
+  if (core === "and") {
+    const rx = Math.min(h / 2, gw * 0.55);
+    return { body: `M ${x} ${y} H ${x + gw - rx} A ${rx} ${h / 2} 0 0 1 ${x + gw - rx} ${y + h} H ${x} Z`, inset: () => 0 };
+  }
+  const xo = core === "xor" ? 7 : 0, X = x + xo, W = gw - xo, bow = W * 0.3;
+  const inset = (py: number) => { const t = Math.max(0, Math.min(1, (py - y) / h)); return xo + 2 * t * (1 - t) * bow; };
+  return {
+    body: `M ${X} ${y} Q ${X + W * 0.62} ${y} ${x + gw} ${y + h / 2} Q ${X + W * 0.62} ${y + h} ${X} ${y + h} Q ${X + bow} ${y + h / 2} ${X} ${y} Z`,
+    back: core === "xor" ? `M ${x} ${y} Q ${x + bow} ${y + h / 2} ${x} ${y + h}` : undefined,
+    inset,
+  };
+}
 
-function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDown, onPinDown, onKnob }: {
+function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDown, onPinDown, onKnob, wiring, snapPin, pinTitle, onOpen }: {
   p: Part; selected: boolean; hot: boolean; valueOf: (r: PinRef) => number; inputValue: number; outputBits: number[] | null;
   onBodyDown: (e: React.PointerEvent) => void; onPinDown: (e: React.PointerEvent, pin: string, isOutput: boolean) => void;
   onKnob: (down: boolean, back?: boolean) => void;
+  /** A wire being drawn from another part: its direction and width (pins it can end on glow). */
+  wiring: { isOutput: boolean; width: number } | null;
+  /** The pin of this part the wire would snap to. */
+  snapPin: string | null;
+  pinTitle: (pin: string, isOutput: boolean) => string;
+  onOpen?: () => void;
 }) {
   const { w, h } = size(p);
   const { inputs, outputs } = pins(p);
@@ -727,11 +908,18 @@ function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDow
   const outOn = outputs.length && pinWidth(p, outputs[0]) === 1 ? valueOf({ part: p.id, pin: outputs[0] }) === 1 : false;
   const inverted = ["nand", "nor", "xnor", "not"].includes(p.kind);
   const showPinNames = !["switch", "button", "clock", "hexin", "const0", "const1", "const", "led", "hexout", "not", "and", "or", "xor", "nand", "nor", "xnor"].includes(p.kind);
+  const isGate = ["not", "and", "or", "xor", "nand", "nor", "xnor"].includes(p.kind);
+  const shape = isGate ? gateShape(p.kind, p.x, p.y, w - (inverted ? 8 : 0), h) : null;
   const box = (title: string, sub?: string) => <>
     <rect x={p.x} y={p.y} width={w} height={h} rx={4} fill="#13141a" stroke={stroke} />
     <text x={p.x + w / 2} y={p.y + 13} textAnchor="middle" fontSize={9} fontWeight={700} fill="#c8cad6" fontFamily="monospace">{title}</text>
     {sub && <text x={p.x + w / 2} y={p.y + h - 6} textAnchor="middle" fontSize={8} fill="#6b6f85" fontFamily="monospace">{sub}</text>}
   </>;
+  /** A pin a wire being drawn could end on: green if the widths match, amber if not; brighter where it would snap. */
+  const glow = (q: { x: number; y: number }, pin: string) => {
+    const match = pinWidth(p, pin) === wiring!.width, snap = snapPin === pin, colour = match ? "#00e87a" : "#ffb547";
+    return <circle cx={q.x} cy={q.y} r={snap ? 8 : 6.5} fill={snap ? `${colour}33` : "none"} stroke={colour} strokeWidth={snap ? 2 : 1.2} opacity={snap ? 1 : 0.55} style={{ pointerEvents: "none" }} />;
+  };
   const clkMark = inputs.includes("clk") ? (() => { const cy = pinPos(p, "clk").y; return <path d={`M ${p.x} ${cy - 5} L ${p.x + 7} ${cy} L ${p.x} ${cy + 5}`} fill="none" stroke="#8b8fa3" />; })() : null;
 
   let body: React.ReactNode;
@@ -827,23 +1015,38 @@ function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDow
       <path d={`M ${p.x} ${cy - 5} L ${p.x + 7} ${cy} L ${p.x} ${cy + 5}`} fill="none" stroke="#8b8fa3" />
       <text x={p.x + w - 6} y={p.y + h / 2 + 4} textAnchor="end" fontSize={10} fill="#8b8fa3" fontFamily="monospace">Q</text>
     </>;
-  } else {
+  } else if (p.kind === "block") {
     body = <>
-      <rect x={p.x} y={p.y} width={w - (inverted ? 8 : 0)} height={h} rx={4} fill="#13141a" stroke={stroke} />
-      <text x={p.x + (w - 8) / 2} y={p.y + h / 2 + 4} textAnchor="middle" fontSize={12} fontWeight={700} fill="#c8cad6" fontFamily="monospace">{GATE_SYMBOL[p.kind]}</text>
-      {inverted && <circle cx={p.x + w - 4} cy={p.y + h / 2} r={4} fill="#13141a" stroke={stroke} />}
+      <rect x={p.x} y={p.y} width={w} height={h} rx={5} fill="#0f1724" stroke={selected || hot ? stroke : "#3d6a93"} strokeWidth={1.5} />
+      <rect x={p.x + 1} y={p.y + 1} width={w - 2} height={17} rx={4} fill="rgba(90,169,230,0.14)" />
+      <text x={p.x + w / 2} y={p.y + 13} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#9fd0ff" fontFamily="monospace">{p.block}</text>
+      <text x={p.x + w - 5} y={p.y + h - 5} textAnchor="end" fontSize={8} fill="#4f6f8f" fontFamily="monospace">⧉</text>
+    </>;
+  } else if (shape) {
+    const W = width(p);
+    body = <>
+      <path d={shape.body} fill={outOn ? "#122419" : "#13141a"} stroke={stroke} strokeWidth={1.3} strokeLinejoin="round" />
+      {shape.back && <path d={shape.back} fill="none" stroke={stroke} strokeWidth={1.3} />}
+      {inputs.map((pin) => { const q = pinPos(p, pin), d = shape.inset(q.y); return d > 0.5 ? <line key={pin} x1={q.x} y1={q.y} x2={q.x + d} y2={q.y} stroke="#5a5e74" /> : null; })}
+      {inverted && <circle cx={p.x + w - 4} cy={p.y + h / 2} r={4} fill="#13141a" stroke={stroke} strokeWidth={1.3} />}
+      {W > 1 && <text x={p.x + (w - 8) / 2 - 2} y={p.y + h / 2 + 3} textAnchor="middle" fontSize={8} fill="#6b8fb3" fontFamily="monospace">{W}b</text>}
     </>;
   }
 
   return (
     <g data-part={p.label}>
-      <g onPointerDown={onBodyDown} style={{ cursor: "grab" }}>{body}</g>
+      <g onPointerDown={onBodyDown} onDoubleClick={onOpen} style={{ cursor: "grab", filter: selected ? "drop-shadow(0 0 4px rgba(77,184,255,0.55))" : undefined }}>
+        {onOpen && <title>{`${p.block}: double-click to open`}</title>}
+        {body}
+      </g>
       <text x={p.x + w / 2} y={p.y - 5} textAnchor="middle" fontSize={10} fill={selected ? "#4db8ff" : "#8b8fa3"} fontFamily="monospace">{p.label}</text>
       {inputs.map((pin) => {
         const q = pinPos(p, pin);
         return (
           <g key={pin} data-pin={`${p.label}.${pin}`} onPointerDown={(e) => onPinDown(e, pin, false)} style={{ cursor: "crosshair" }}>
+            <title>{pinTitle(pin, false)}</title>
             <circle cx={q.x} cy={q.y} r={8} fill="transparent" />
+            {wiring?.isOutput && glow(q, pin)}
             {pinWidth(p, pin) > 1
               ? <rect x={q.x - 4} y={q.y - 4} width={8} height={8} rx={1.5} fill="#0d0e11" stroke="#5aa9e6" />
               : <circle cx={q.x} cy={q.y} r={3.5} fill="#0d0e11" stroke="#8b8fa3" />}
@@ -855,12 +1058,14 @@ function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDow
         const q = pinPos(p, pin);
         return (
           <g key={pin} data-pin={`${p.label}.${pin}`} onPointerDown={(e) => onPinDown(e, pin, true)} style={{ cursor: "crosshair" }}>
+            <title>{pinTitle(pin, true)}</title>
             <circle cx={q.x} cy={q.y} r={8} fill="transparent" />
+            {wiring && !wiring.isOutput && glow(q, pin)}
             {pinWidth(p, pin) > 1
               ? <rect x={q.x - 4} y={q.y - 4} width={8} height={8} rx={1.5} fill="#0d0e11" stroke="#5aa9e6" />
               : (() => { const lit = outputs.length > 1 ? valueOf({ part: p.id, pin }) === 1 : outOn;
                          return <circle cx={q.x} cy={q.y} r={3.5} fill={lit ? "#00e87a" : "#0d0e11"} stroke={lit ? "#00e87a" : "#8b8fa3"} />; })()}
-            {showPinNames && outputs.length > 1 && <text x={q.x - 6} y={q.y + 3} textAnchor="end" fontSize={8} fill="#6b6f85" fontFamily="monospace">{pin}</text>}
+            {showPinNames && (outputs.length > 1 || p.kind === "block") && <text x={q.x - 6} y={q.y + 3} textAnchor="end" fontSize={8} fill="#6b6f85" fontFamily="monospace">{pin}</text>}
           </g>
         );
       })}
@@ -870,9 +1075,9 @@ function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDow
 
 // ── Side panels ────────────────────────────────────────────────────────────────
 
-function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProbe }: {
+function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProbe, onOpen, onMakeBlock }: {
   c: Circuit; edit: (c: Circuit, group?: string) => void; sel: Selection; onDelete: () => void; onDuplicate: () => void; onHelp: () => void;
-  probes: PinRef[]; onProbe: (r: PinRef) => void;
+  probes: PinRef[]; onProbe: (r: PinRef) => void; onOpen: (block: string) => void; onMakeBlock: () => void;
 }) {
   const box = "p-3 rounded-xl border border-rim/60 bg-surface/30 space-y-2 font-mono text-[11px]";
   const field = "w-full bg-pit border border-rim/60 rounded px-2 py-1 text-[12px] text-pale";
@@ -910,6 +1115,7 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProb
         <div className="flex items-center justify-between"><span className="text-ghost uppercase tracking-wider">Selection</span>{actions()}</div>
         <div className="text-pale">{[many(sel.parts.length, "part"), many(sel.wires.length, "wire"), many(sel.notes.length, "note")].filter(Boolean).join(", ")}</div>
         <div className="text-dim">Drag one of them to move them all; arrows nudge; Ctrl+C copies.</div>
+        {sel.parts.length > 0 && <button onClick={onMakeBlock} className="text-info hover:underline" title="Ctrl+G">⧉ Make a block from these parts</button>}
       </div>
     );
   }
@@ -982,6 +1188,14 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProb
         </label>
       )}
       {p.kind === "hexin" && <div className="text-dim">Click its display to count up, shift-click to count down.</div>}
+      {p.kind === "block" && p.block && (
+        <div className="space-y-1.5">
+          <div className="text-dim">An instance of block <span className="text-info">{p.block}</span> (Verilog: <span className="text-pale">{p.block} u_{p.label}</span>).</div>
+          <div className="text-dim">in: <span className="text-pale">{(p.ports?.inputs ?? []).map((x) => (x.width > 1 ? `${x.name}[${x.width}]` : x.name)).join(", ") || "none"}</span></div>
+          <div className="text-dim">out: <span className="text-pale">{(p.ports?.outputs ?? []).map((x) => (x.width > 1 ? `${x.name}[${x.width}]` : x.name)).join(", ") || "none"}</span></div>
+          <button onClick={() => onOpen(p.block!)} className="text-info hover:underline">Open {p.block} (or double-click it) →</button>
+        </div>
+      )}
       {resettable && (
         <label className="flex items-center gap-2 text-ghost">
           <input type="checkbox" checked={!!p.reset} onChange={(e) => set({ reset: e.target.checked })} /> asynchronous reset input
@@ -991,6 +1205,58 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProb
       {["led", "seg7", "hexout"].includes(p.kind) ? probe({ part: p.id, pin: "in" })
         : pins(p).outputs.length === 1 ? probe({ part: p.id, pin: pins(p).outputs[0] })
         : pins(p).outputs.map((o) => probe({ part: p.id, pin: o }, `Probe ${o}`))}
+    </div>
+  );
+}
+
+const IMPORT_EXAMPLE = `module full_adder (
+    input  wire a, b, cin,
+    output wire sum, cout
+);
+    assign sum  = a ^ b ^ cin;
+    assign cout = (a & b) | (cin & (a ^ b));
+endmodule
+`;
+
+/** Paste Verilog, synthesize it in the browser (lib/synth/client.ts), and draw it. */
+function ImportPanel({ onCancel, onImport }: { onCancel: () => void; onImport: (c: Circuit, asBlock: boolean) => void }) {
+  const [src, setSrc] = useState(IMPORT_EXAMPLE);
+  const [asBlock, setAsBlock] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const go = async () => {
+    setBusy(true); setError(null);
+    try {
+      const name = /\bmodule\s+([A-Za-z_]\w*)/.exec(src)?.[1] ?? "imported";
+      const net = await synthesizeDesign("board", src, "verilog");
+      if (!net?.ok) throw new Error(net?.error ?? "Synthesis failed.");
+      const circuit = netlistToCircuit(net as BoardNetlist, name);
+      if (typeof circuit === "string") throw new Error(circuit);
+      onImport(circuit, asBlock);
+    } catch (e) {
+      setError((e as Error).message || "Synthesis failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-xl border border-info/30 bg-info/5 p-3 space-y-2 font-mono text-[11px]">
+      <div className="text-ghost">
+        Paste a Verilog module. It is synthesized to gates in your browser (the first run downloads the tools) and drawn as a circuit:
+        up to {MAX_IMPORT_CELLS} gates; flip-flops must reset to 0. Ports named <span className="text-pale">clk</span> become clocks.
+      </div>
+      <textarea value={src} onChange={(e) => setSrc(e.target.value)} spellCheck={false} rows={9} aria-label="Verilog to import"
+                className="w-full bg-pit border border-rim/60 rounded px-2 py-1.5 text-[12px] text-pale" />
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={go} disabled={busy} className="px-3 py-1 rounded bg-info/20 border border-info/50 text-info hover:text-bright disabled:opacity-50">
+          {busy ? "Synthesizing…" : "Import"}
+        </button>
+        <label className="flex items-center gap-1.5 text-ghost">
+          <input type="checkbox" checked={asBlock} onChange={(e) => setAsBlock(e.target.checked)} /> as a block in this circuit (else replace it; Ctrl+Z undoes)
+        </label>
+        <button onClick={onCancel} className="text-dim hover:text-bright">cancel</button>
+        {error && <span className="text-danger">{error}</span>}
+      </div>
     </div>
   );
 }
