@@ -8,6 +8,7 @@ import {
   type Circuit, CIRCUIT_EXAMPLES, compile, defaultEvents, expectedOutputs, generateTestbench, generateVerilog, validate,
 } from "../lib/studio/circuit";
 import { tableFromNetlist } from "../lib/studio/logic-min";
+import { History, NONE, copy, inRect, merge, move, nextLabel, paste, remove, selectAll, wirePath } from "../lib/studio/circuit-edit";
 
 const ex = (label: string) => CIRCUIT_EXAMPLES.find((e) => e.label === label)!.circuit;
 for (const { label, circuit } of CIRCUIT_EXAMPLES) {
@@ -95,4 +96,46 @@ assert.match(cv, /assign x1 = q1 \^ q0;/);
 const tb = generateTestbench(ex("Half adder"), defaultEvents(ex("Half adder")));
 assert.match(tb, /a = 1'b1; #5;   \/\/ step 1/);
 assert.match(tb, /if \(sum !== 1'd1\)/);
+
+// Editing (lib/studio/circuit-edit.ts)
+const half = ex("Half adder");
+const boxed = inRect(half, { x1: 60, y1: 100, x2: 160, y2: 300 });
+assert.deepEqual(boxed.parts, ["p1", "p2"], "box select: the two switches");
+assert.deepEqual(boxed.wires, []);
+assert.equal(selectAll(half).wires.length, 6);
+// Copying the XOR with both switches brings the wires between them
+const clip = copy(half, { ...NONE, parts: ["p1", "p2", "p3"] });
+assert.equal(clip.wires.length, 2);
+let uidN = 0;
+const { circuit: pasted, sel: pastedSel } = paste(half, clip, 20, 20, (p) => `${p}_${++uidN}`);
+assert.equal(pasted.parts.length, 9);
+assert.equal(pasted.wires.length, 8);
+assert.deepEqual(pasted.parts.slice(6).map((p) => p.label), ["a2", "b2", "s_xor2"], "pasted labels don't clash");
+assert.deepEqual(validate(pasted).filter((i) => i.level === "error"), []);
+assert.ok(pasted.wires.slice(6).every((w) => pastedSel.parts.includes(w.from.part) && pastedSel.parts.includes(w.to.part)));
+assert.deepEqual([pasted.parts[6].x, pasted.parts[6].y], [100, 140]);
+// Move and delete (deleting a part takes its wires)
+const moved = move(half, { ...NONE, parts: ["p1"] }, 10, -20);
+assert.deepEqual([moved.parts[0].x, moved.parts[0].y], [90, 100]);
+const removed = remove(half, { ...NONE, parts: ["p1"] });
+assert.equal(removed.parts.length, 5);
+assert.equal(removed.wires.length, 4);
+assert.equal(nextLabel("a", new Set(["a", "a2"])), "a3");
+assert.equal(nextLabel("sw3", new Set(["sw3"])), "sw4");
+assert.deepEqual(merge({ ...NONE, parts: ["x", "y"] }, { ...NONE, parts: ["y", "z"] }, true).parts, ["x", "z"], "shift-click toggles");
+// Undo history: one entry per edit, one per group (a drag)
+const h = new History();
+h.push(half, "", 0); h.push(moved, "", 1);
+assert.equal(h.undo(removed), moved);
+assert.equal(h.undo(moved), half);
+assert.equal(h.undo(half), null);
+assert.equal(h.redo(half), moved);
+const g = new History();
+g.push(half, "drag1", 0); g.push(moved, "drag1", 100);
+assert.equal(g.undo(removed), half, "a drag is one undo step");
+assert.equal(g.undo(half), null);
+// A bent wire runs through its bend; notes become comments and don't change the logic
+assert.equal(wirePath({ x: 0, y: 0 }, { x: 100, y: 50 }, 0, 30), "M 0 0 H 30 V 50 H 100");
+const noted = { ...half, notes: [{ id: "n1", x: 0, y: 0, text: "sum is a XOR b\ncarry is a AND b" }] };
+assert.match(generateVerilog(noted), /\/\/ Note: sum is a XOR b carry is a AND b\nmodule half_adder/);
 console.log("circuit: all checks passed");
