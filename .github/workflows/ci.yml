@@ -45,6 +45,7 @@ jobs:
       - run: npm run check-similarity
       - run: npm run check-radix
       - run: npm run check-plot
+      - run: npm run check-logic
 
   web:
     name: Frontend type-check + build

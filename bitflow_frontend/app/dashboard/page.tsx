@@ -224,6 +224,17 @@ const MODULES = [
       </svg>
     ),
   },
+  {
+    title: "Studio",
+    href: "/studio",
+    body: "Design visually: truth tables and K-maps to Verilog.",
+    color: "info",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z" />
+      </svg>
+    ),
+  },
 ];
 
 const CARD_STYLES: Record<string, { text: string; bg: string; border: string; shadow: string }> = {
@@ -718,7 +729,7 @@ function DashboardContent() {
               Save a recovery code so you can reset your password if you forget it. Profile → Account security →
             </Link>
           )}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
             {MODULES.map((m) => {
               const s = CARD_STYLES[m.color];
               return (

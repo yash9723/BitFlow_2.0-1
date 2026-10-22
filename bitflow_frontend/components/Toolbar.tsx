@@ -125,6 +125,7 @@ export default function Toolbar({
             { href: "/learn", label: "Learn" },
             { href: "/arena", label: "Arena" },
             { href: "/academy", label: "Academy" },
+            { href: "/studio", label: "Studio" },
             { href: "/classes", label: "Classes" },
             { href: "/contests", label: "Contests" },
             ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
