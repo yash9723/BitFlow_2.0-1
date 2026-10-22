@@ -6,7 +6,7 @@ import { STUDIO_TOOLS } from "@/lib/studio/tools";
 
 export const metadata = {
   title: "Design Studio",
-  description: "Visual digital-design tools: truth tables and K-maps that turn into Verilog with a self-checking testbench, ready to run in the BitFlow Sandbox.",
+  description: "Visual digital-design tools: state machines, truth tables and K-maps that turn into Verilog with a self-checking testbench, ready to run in the BitFlow Sandbox.",
 };
 
 export default function StudioPage() {

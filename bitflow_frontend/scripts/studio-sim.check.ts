@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { simulateOnBackend } from "../lib/backend";
 import { type Cell, type TruthTable, generateVerilog } from "../lib/studio/logic-min";
+import { type FsmModel, FSM_EXAMPLES, generateTestbench as fsmTestbench, generateVerilog as fsmVerilog, guidedWalk } from "../lib/studio/fsm";
 
 if (!process.env.BACKEND_URL || !process.env.JWT_SECRET) {
   console.log("studio-sim: skipped (set BACKEND_URL and JWT_SECRET to run against a backend)");
@@ -31,6 +32,25 @@ const tables: [string, TruthTable][] = [
   ["constant 0 and 1", { inputs: ["a", "b"], outputs: [{ name: "lo", cells: [0, 0, 0, 0] }, { name: "hi", cells: [1, 1, 1, 1] }] }],
 ];
 for (const [name, t] of tables) for (const form of ["sop", "pos"] as const) cases.push([`logic: ${name} (${form})`, generateVerilog(t, form)]);
+
+// FSMs: every example in both encodings, plus one that leans on Verilog's width rules,
+// so the stepper (lib/studio/expr.ts) is checked against Icarus itself.
+const widthy: FsmModel = {
+  module: "widths", kind: "mealy", encoding: "binary", reset: "s0",
+  inputs: [{ name: "a", width: 4 }, { name: "b", width: 4 }], outputs: [{ name: "sum", width: 5 }, { name: "hit", width: 1 }, { name: "low", width: 3 }],
+  states: [{ id: "s0", name: "A", x: 0, y: 0, outputs: { sum: "a + b", low: "~a" } }, { id: "s1", name: "B", x: 0, y: 0, outputs: { sum: "a - b", low: "a[3:1] ^ 3'b101" } }],
+  transitions: [
+    { id: "t0", from: "s0", to: "s1", cond: "(a + b) == 5'd16 || a - 1 == 15", outputs: { hit: "1" } },
+    { id: "t1", from: "s1", to: "s0", cond: "a > b && !(b == 0)", outputs: { hit: "a[0] & b[0]" } },
+    { id: "t2", from: "s1", to: "s0", cond: "a == 4'hF", outputs: {} },
+  ],
+};
+for (const { label, model } of [...FSM_EXAMPLES, { label: "width rules", model: widthy }]) {
+  for (const encoding of ["binary", "onehot"] as const) {
+    const m = { ...model, encoding };
+    cases.push([`fsm: ${label} (${encoding})`, { design: fsmVerilog(m), testbench: fsmTestbench(m, guidedWalk(m, 60, 3)) }]);
+  }
+}
 
 (async () => {
   for (const [name, { design, testbench }] of cases) {

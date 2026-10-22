@@ -7,9 +7,8 @@
  */
 
 import { useMemo, useState } from "react";
-import ForkButton from "@/components/ForkButton";
+import GeneratedCode from "@/components/studio/GeneratedCode";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { downloadBlob } from "@/lib/api";
 import type { BoardNetlist } from "@/lib/gate-sim";
 import { synthesizeDesign } from "@/lib/synth/client";
 import {
@@ -165,22 +164,7 @@ export default function LogicTool() {
           {moduleProblem && <span className="text-[12px] text-danger">module name {moduleProblem}</span>}
         </div>
         {code ? (
-          <>
-            <div className="flex flex-wrap gap-2">
-              <ForkButton designCode={code.design} testbenchCode={code.testbench} label="Open in Sandbox"
-                          confirmText="Open this design and its testbench in your Sandbox? It replaces the code in your Sandbox editors." />
-              <button onClick={() => downloadBlob(`${moduleName}.v`, code.design, "text/plain")} className="px-3 py-2 rounded-lg border border-rim/60 font-mono text-[12px] text-ghost hover:text-bright">
-                Download {moduleName}.v
-              </button>
-              <button onClick={() => downloadBlob(`tb_${moduleName}.v`, code.testbench, "text/plain")} className="px-3 py-2 rounded-lg border border-rim/60 font-mono text-[12px] text-ghost hover:text-bright">
-                Download testbench
-              </button>
-            </div>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <CodeBlock title={`${moduleName}.v`} code={code.design} />
-              <CodeBlock title={`tb_${moduleName}.v`} code={code.testbench} collapsed />
-            </div>
-          </>
+          <GeneratedCode module={moduleName} design={code.design} testbench={code.testbench} />
         ) : (
           <p className="text-[12px] text-dim">Fix the names above to generate Verilog.</p>
         )}
@@ -361,21 +345,6 @@ function Expressions({ names, out, sop, pos, form, n }: {
     );
   };
   return <div className="space-y-2">{row("Sum of products", sop, "sop")}{row("Product of sums", pos, "pos")}</div>;
-}
-
-function CodeBlock({ title, code, collapsed }: { title: string; code: string; collapsed?: boolean }) {
-  const [open, setOpen] = useState(!collapsed);
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="border border-rim/60 rounded-xl overflow-hidden min-w-0">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-surface/70 font-mono text-[11px]">
-        <button onClick={() => setOpen((v) => !v)} className="text-pale">{open ? "▾" : "▸"} {title}</button>
-        <button onClick={() => navigator.clipboard?.writeText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); })}
-                className="text-dim hover:text-bright">{copied ? "copied" : "copy"}</button>
-      </div>
-      {open && <pre className="p-3 text-[11px] leading-relaxed text-ghost overflow-auto max-h-80">{code}</pre>}
-    </div>
-  );
 }
 
 function FromDesign({ onTable }: { onTable: (t: TruthTable) => void }) {

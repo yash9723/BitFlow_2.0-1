@@ -9,3 +9,4 @@ import dynamic from "next/dynamic";
 const loading = () => <p className="font-mono text-[12px] text-dim animate-pulse">Loading the tool…</p>;
 
 export const LogicTool = dynamic(() => import("./LogicTool"), { ssr: false, loading });
+export const FsmTool = dynamic(() => import("./FsmTool"), { ssr: false, loading });
