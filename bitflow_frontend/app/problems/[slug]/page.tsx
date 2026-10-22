@@ -375,7 +375,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
                   isDragging={wfSplitter.isDragging}
                 />
                 <div className="shrink-0 overflow-hidden" style={{ height: waveH }}>
-                  <WaveformPanel parsedVcd={parsedVcd} result={runResult} />
+                  <WaveformPanel parsedVcd={parsedVcd} result={runResult} viewKey={`/problems/${problem.slug}`} />
                 </div>
               </>
             )}

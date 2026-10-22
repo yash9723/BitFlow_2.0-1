@@ -887,7 +887,8 @@ function SandboxContent() {
           {/*
            * WaveformPanel + its own splitter — only rendered when VCD is ready.
            * Unmounting on clearResult resets WaveformPanel's internal zoom/scroll
-           * so every new simulation auto-fits to viewport width.
+           * so every new simulation auto-fits to viewport width (hidden rows, order,
+           * radix and markers survive: they are kept under viewKey).
            */}
           {parsedVcd && result && (
             <>
@@ -901,7 +902,7 @@ function SandboxContent() {
                 className="flex-none overflow-hidden"
                 style={{ height: waveformH }}
               >
-                <WaveformPanel parsedVcd={parsedVcd} result={result} />
+                <WaveformPanel parsedVcd={parsedVcd} result={result} viewKey="/sandbox" />
               </div>
             </>
           )}

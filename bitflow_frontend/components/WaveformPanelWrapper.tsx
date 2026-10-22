@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { usePathname } from "next/navigation";
 import type { SimulateResponse } from "@/lib/types";
 import { parseVcd } from "@/lib/vcd-parser";
 import WaveformPanel from "./WaveformPanel";
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function WaveformPanelWrapper({ vcdBase64, result }: Props) {
+  const page = usePathname();
   // Parse VCD from base64 — memoized so it only runs once per base64 change
   const parsedVcd = useMemo(() => {
     try {
@@ -35,5 +37,5 @@ export function WaveformPanelWrapper({ vcdBase64, result }: Props) {
     );
   }
 
-  return <WaveformPanel parsedVcd={parsedVcd} result={result} />;
+  return <WaveformPanel parsedVcd={parsedVcd} result={result} viewKey={page} />;
 }

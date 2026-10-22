@@ -56,6 +56,7 @@ import React, {
 import type { ParsedVcd, VcdSignal, VcdChange } from "@/lib/vcd-parser";
 import { binToHex, niceTimeStep } from "@/lib/vcd-parser";
 import { downloadVcd } from "@/lib/api";
+import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
 import type { SimulateResponse } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ import type { SimulateResponse } from "@/lib/types";
 const LABEL_W   = 136;   // px — fixed label column width (sticky left)
 const ROW_H     = 40;    // px — height per signal row (labels + SVG must match)
 const AXIS_H    = 26;    // px — time axis band above row 0
+const MARKER_COLOR = { a: "#ffb547", b: "#5ab0ff" } as const;   // pinned markers A / B
 const SIG_PAD   = 8;     // px — top/bottom inset for waveform within row
 const CROSS_W   = 5;     // px — half-width of bus transition chevrons
 const PAD_RIGHT = 32;    // px — breathing room after the last timestamp
@@ -82,7 +84,18 @@ interface WaveformPanelProps {
   result?   : SimulateResponse;
   /** Time ranges to shade red (e.g. where "yours" differs from "expected"). */
   highlights?: { from: number; to: number }[];
+  /** Keep hidden rows, order, radix and markers across re-runs (which remount the panel) under this key. */
+  viewKey?: string;
 }
+
+interface SavedView {
+  hidden  : string[];
+  order   : string[];
+  radixMap: Record<string, Radix>;
+  markers : { a: number | null; b: number | null };
+}
+// ponytail: in-memory only, so views reset on reload; move to sessionStorage if people ask.
+const savedViews = new Map<string, SavedView>();
 
 /** Captured on every mouse-move; drives the label-column value badges. */
 interface HoverInfo {
@@ -113,54 +126,6 @@ function getValueAtTime(changes: VcdChange[], time: number): string | null {
   }
   return changes[lo].value;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Radix types and formatting
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Display radix for a signal. Persisted per-signal in radixMap state. */
-export type Radix = "bin" | "dec" | "hex";
-
-/** Default radix by signal width: buses → hex, 1-bit → binary. */
-function defaultRadix(width: number): Radix {
-  return width > 1 ? "hex" : "bin";
-}
-
-/**
- * Format a raw VCD binary value string for display given a radix.
- *
- *   bin: show raw binary string   e.g. "0101"
- *   hex: show prefixed hex        e.g. "h5"  (or "x"/"z" for unknown)
- *   dec: show unsigned decimal    e.g. "5"   (or "x"/"z" for unknown)
- *
- * 1-bit signals: always display raw "0" | "1" | "x" | "z" — radix only
- * applies to buses (width > 1).
- */
-function formatWithRadix(value: string, width: number, radix: Radix): string {
-  // 1-bit: raw value is already the display value regardless of radix
-  if (width === 1) return value;
-
-  // Unknown / high-impedance
-  const isUnknown = /[xXzZ]/.test(value);
-  if (isUnknown) return /^[xX]+$/.test(value) ? "x" : /^[zZ]+$/.test(value) ? "z" : "X";
-
-  const n = parseInt(value, 2);
-  if (isNaN(n)) return "?";
-
-  switch (radix) {
-    case "bin": return value;
-    case "dec": return String(n);
-    case "hex": return `h${n.toString(16).toUpperCase()}`;
-  }
-}
-
-/** Cycle through radix values: bin → dec → hex → bin */
-function nextRadix(current: Radix): Radix {
-  return current === "bin" ? "dec" : current === "dec" ? "hex" : "bin";
-}
-
-/** Short label shown in the radix cycle button */
-const RADIX_LABEL: Record<Radix, string> = { bin: "b", dec: "d", hex: "h" };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SVG waveform renderers
@@ -340,8 +305,13 @@ interface SignalLabelProps {
   sig          : VcdSignal;
   hoverValue   : string | undefined;   // undefined = no cursor; string = live value
   radix        : Radix;
-  onRadixChange: (id: string, radix: Radix) => void;
+  onRadixChange: (key: string, radix: Radix) => void;
   dimmed       : boolean;              // true when search active and signal doesn't match
+  /** Row key: the name, plus "#n" for a repeated name (see WaveformPanel). */
+  rowKey       : string;
+  onHide       : (key: string) => void;
+  /** Drag a label onto another to move it there. */
+  onMove       : (from: string, to: string) => void;
 }
 
 const SignalLabel = React.memo(function SignalLabel({
@@ -350,6 +320,9 @@ const SignalLabel = React.memo(function SignalLabel({
   radix,
   onRadixChange,
   dimmed,
+  rowKey,
+  onHide,
+  onMove,
 }: SignalLabelProps) {
   const isBus = sig.width > 1;
   const display = hoverValue !== undefined
@@ -370,8 +343,13 @@ const SignalLabel = React.memo(function SignalLabel({
 
   return (
     <div
-      className="flex items-center justify-between px-2 border-b border-rim/30 shrink-0 select-none transition-opacity duration-100"
+      className="group flex items-center justify-between px-2 border-b border-rim/30 shrink-0 select-none transition-opacity duration-100 cursor-grab"
       style={{ height: ROW_H, opacity: dimmed ? 0.25 : 1 }}
+      draggable
+      title="Drag to reorder"
+      onDragStart={(e) => { e.dataTransfer.setData("text/x-bitflow-signal", rowKey); e.dataTransfer.effectAllowed = "move"; }}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("text/x-bitflow-signal")) e.preventDefault(); }}
+      onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData("text/x-bitflow-signal"); if (from && from !== rowKey) onMove(from, rowKey); }}
     >
       {/* Signal name — truncated with tooltip for long names */}
       <span
@@ -386,7 +364,7 @@ const SignalLabel = React.memo(function SignalLabel({
         {/* Radix cycle button — only for buses */}
         {isBus && (
           <button
-            onClick={() => onRadixChange(sig.id, nextRadix(radix))}
+            onClick={() => onRadixChange(rowKey, nextRadix(radix))}
             title={`Switch display radix (current: ${radix})`}
             className={[
               "font-mono text-[8px] w-4 h-4 rounded",
@@ -408,6 +386,15 @@ const SignalLabel = React.memo(function SignalLabel({
             {display}
           </span>
         )}
+
+        <button
+          onClick={() => onHide(rowKey)}
+          title={`Hide ${sig.name}`}
+          aria-label={`Hide signal ${sig.name}`}
+          className="font-mono text-[10px] w-3 text-dim hover:text-danger opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        >
+          ×
+        </button>
       </div>
     </div>
   );
@@ -417,7 +404,8 @@ const SignalLabel = React.memo(function SignalLabel({
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function WaveformPanel({ parsedVcd, result, highlights }: WaveformPanelProps) {
+export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }: WaveformPanelProps) {
+  const saved = viewKey ? savedViews.get(viewKey) : undefined;
   const { signals, maxTime, timescale } = parsedVcd;
 
   // ── Refs ──────────────────────────────────────────────────────────────────
@@ -509,6 +497,43 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
   }, [searchQuery, signals]);
 
   /**
+   * hidden / order: row keys — the signal name, plus "#n" for its n-th repeat
+   * (a testbench and its DUT can both have "count"). Unlike VCD id codes these
+   * survive a re-run. Hidden rows are left out; dragged rows follow `order`,
+   * and signals not in it keep their VCD order after the ordered ones.
+   */
+  const [hidden, setHidden] = useState<string[]>(saved?.hidden ?? []);
+  const [order,  setOrder]  = useState<string[]>(saved?.order ?? []);
+
+  const rowKey = useMemo(() => {
+    const seen = new Map<string, number>();
+    const keys = new Map<string, string>();
+    for (const s of signals) {
+      const n = seen.get(s.name) ?? 0;
+      seen.set(s.name, n + 1);
+      keys.set(s.id, n ? `${s.name}#${n}` : s.name);
+    }
+    return keys;
+  }, [signals]);
+
+  const visibleSignals = useMemo<VcdSignal[]>(() => {
+    const rank = new Map(order.map((n, i) => [n, i]));
+    return signals
+      .filter((s) => !hidden.includes(rowKey.get(s.id)!))
+      .map((s, i) => ({ s, r: rank.get(rowKey.get(s.id)!) ?? order.length + i }))
+      .sort((x, y) => x.r - y.r)
+      .map(({ s }) => s);
+  }, [signals, hidden, order, rowKey]);
+
+  const hiddenCount = signals.filter((s) => hidden.includes(rowKey.get(s.id)!)).length;
+  const handleHide  = useCallback((key: string) => setHidden((h) => [...h, key]), []);
+  const handleMove  = useCallback((from: string, to: string) => {
+    const names = visibleSignals.map((s) => rowKey.get(s.id)!).filter((n) => n !== from);
+    names.splice(names.indexOf(to), 0, from);
+    setOrder(names);
+  }, [visibleSignals, rowKey]);
+
+  /**
    * displaySignals: the ordered list of signals actually rendered.
    *
    * When search is active (dimmedIds is non-empty):
@@ -523,31 +548,31 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
    * is never mutated.
    */
   const displaySignals = useMemo<VcdSignal[]>(() => {
-    if (dimmedIds.size === 0) return signals;          // no query → original order
-    const matched  = signals.filter((s) => !dimmedIds.has(s.id));
-    const unmatched = signals.filter((s) =>  dimmedIds.has(s.id));
+    if (dimmedIds.size === 0) return visibleSignals;   // no query → current order
+    const matched  = visibleSignals.filter((s) => !dimmedIds.has(s.id));
+    const unmatched = visibleSignals.filter((s) =>  dimmedIds.has(s.id));
     return [...matched, ...unmatched];
-  }, [signals, dimmedIds]);
+  }, [visibleSignals, dimmedIds]);
 
   // ── Radix state ────────────────────────────────────────────────────────────
 
   /**
-   * radixMap: per-signal display radix, keyed by signal ID.
+   * radixMap: per-signal display radix, keyed by row key (see hidden / order).
    * Missing entry → defaultRadix(sig.width).
    * Only buses (width > 1) use dec/hex; 1-bit signals always show "0"/"1".
    *
    * Deliberately separate from waveformElements memo — radix only affects
    * the label column (SignalLabel), not the SVG path geometry.
    */
-  const [radixMap,       setRadixMap]       = useState<Record<string, Radix>>({});
+  const [radixMap,       setRadixMap]       = useState<Record<string, Radix>>(saved?.radixMap ?? {});
 
   /**
    * handleRadixChange: stable callback passed to each SignalLabel.
    * Only updates the single entry for the changed signal — all other
    * SignalLabel instances are unaffected (React.memo guards them).
    */
-  const handleRadixChange = useCallback((id: string, radix: Radix) => {
-    setRadixMap((prev) => ({ ...prev, [id]: radix }));
+  const handleRadixChange = useCallback((key: string, radix: Radix) => {
+    setRadixMap((prev) => ({ ...prev, [key]: radix }));
   }, []);
 
   // ── Derived geometry ──────────────────────────────────────────────────────
@@ -715,6 +740,27 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
     setHoverInfo(null);
   }, []);
 
+  // ── Pinned markers: click sets A, shift-click sets B ──────────────────────
+
+  const [markers, setMarkers] = useState<SavedView["markers"]>(saved?.markers ?? { a: null, b: null });
+
+  useEffect(() => {
+    if (viewKey) savedViews.set(viewKey, { hidden, order, radixMap, markers });
+  }, [viewKey, hidden, order, radixMap, markers]);
+
+  const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el  = scrollRef.current;
+    const ppu = pxPerUnitRef.current;
+    if (!el || ppu <= 0) return;
+    const rect = el.getBoundingClientRect();
+    const t    = Math.round(Math.max(0, Math.min(maxTimeRef.current, (e.clientX - rect.left + el.scrollLeft) / ppu)));
+    setMarkers((m) => (e.shiftKey ? { ...m, b: t } : { ...m, a: t }));
+  }, []);
+
+  /** "40ns" when the timescale is 1<unit>, else "40 × 10ps". */
+  const unit  = /^1\s*([a-z]+)$/i.exec(timescale.trim())?.[1];
+  const fmtDt = (dt: number) => (unit ? `${dt}${unit}` : `${dt} × ${timescale}`);
+
   // ── Memoised SVG geometry ─────────────────────────────────────────────────
 
   /**
@@ -729,12 +775,12 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
   const waveformElements = useMemo(
     () =>
       displaySignals.map((sig, ri) => {
-        const radix = radixMap[sig.id] ?? defaultRadix(sig.width);
+        const radix = radixMap[rowKey.get(sig.id)!] ?? defaultRadix(sig.width);
         return sig.width === 1
           ? render1bit(sig, ri, pxPerUnit, chartW)
           : renderBus(sig, ri, pxPerUnit, chartW, radix);
       }),
-    [displaySignals, pxPerUnit, chartW, radixMap],
+    [displaySignals, pxPerUnit, chartW, radixMap, rowKey],
   );
 
   /**
@@ -860,6 +906,24 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
               t&thinsp;=&thinsp;{Math.round(hoverInfo.time)}
             </span>
           )}
+
+          {(markers.a !== null || markers.b !== null) && (
+            <span className="flex items-center gap-1.5 font-mono text-[9px] tabular-nums">
+              {markers.a !== null && <span style={{ color: MARKER_COLOR.a }}>A={markers.a}</span>}
+              {markers.b !== null && <span style={{ color: MARKER_COLOR.b }}>B={markers.b}</span>}
+              {markers.a !== null && markers.b !== null && (
+                <span className="text-pale">&Delta;={fmtDt(Math.abs(markers.b - markers.a))}</span>
+              )}
+              <button
+                onClick={() => setMarkers({ a: null, b: null })}
+                title="Clear markers"
+                aria-label="Clear markers"
+                className="text-dim hover:text-ghost"
+              >
+                ×
+              </button>
+            </span>
+          )}
         </div>
 
         {/* Right: zoom indicator + download + collapse */}
@@ -881,8 +945,17 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
           {/* Scroll-to-zoom hint — only shown at fit level */}
           {isAtFit && (
             <span className="hidden sm:block font-mono text-[8px] text-dim/40 select-none">
-              scroll to zoom
+              scroll to zoom · click: marker A · shift-click: B
             </span>
+          )}
+
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setHidden([])}
+              className="font-mono text-[9px] px-1.5 py-px rounded text-dim hover:text-ghost hover:bg-rim/50 transition-colors"
+            >
+              show {hiddenCount} hidden
+            </button>
           )}
 
           {/* Download VCD */}
@@ -978,9 +1051,12 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
                 key={sig.id}
                 sig={sig}
                 hoverValue={hoverInfo?.values[sig.id]}
-                radix={radixMap[sig.id] ?? defaultRadix(sig.width)}
+                radix={radixMap[rowKey.get(sig.id)!] ?? defaultRadix(sig.width)}
                 onRadixChange={handleRadixChange}
                 dimmed={dimmedIds.has(sig.id)}
+                rowKey={rowKey.get(sig.id)!}
+                onHide={handleHide}
+                onMove={handleMove}
               />
             ))}
           </div>
@@ -995,8 +1071,9 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
            */}
           <div
             ref={scrollRef}
-            className="flex-1 overflow-x-auto overflow-y-auto cursor-crosshair"
+            className="flex-1 overflow-x-auto overflow-y-auto cursor-crosshair select-none"
             style={{ scrollbarWidth: "thin", scrollbarColor: "#22232d transparent" }}
+            onClick={handleClick}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             onScroll={(e) => {
@@ -1043,6 +1120,21 @@ export default function WaveformPanel({ parsedVcd, result, highlights }: Wavefor
 
                 {/* ── Signal waveforms ──────────────────────────────────── */}
                 {dimmedWaveformElements}
+
+                {/* ── Pinned markers A / B ──────────────────────────────── */}
+                {(["a", "b"] as const).map((k) => {
+                  const t = markers[k];
+                  if (t === null) return null;
+                  const x = t * pxPerUnit;
+                  return (
+                    <g key={`mk-${k}`} pointerEvents="none">
+                      <line x1={x} x2={x} y1={2} y2={svgH} stroke={MARKER_COLOR[k]} strokeWidth={1.25} />
+                      <text x={x + 3} y={10} fontSize={9} fill={MARKER_COLOR[k]} fontFamily="monospace">
+                        {k.toUpperCase()}
+                      </text>
+                    </g>
+                  );
+                })}
 
                 {/*
                  * ── Vertical cursor line ──────────────────────────────────

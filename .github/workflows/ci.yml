@@ -43,6 +43,7 @@ jobs:
       - run: npm run check-vhdl-starter
       - run: npm run check-bitstream
       - run: npm run check-similarity
+      - run: npm run check-radix
 
   web:
     name: Frontend type-check + build
