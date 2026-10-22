@@ -19,4 +19,8 @@ export const STUDIO_TOOLS: StudioTool[] = [
     href: "/studio/logic", title: "Truth table & K-map", icon: "⊞",
     blurb: "Fill in a truth table to get the K-map groups, the minimal sum-of-products and product-of-sums, and Verilog with a testbench that checks every row.",
   },
+  {
+    href: "/studio/pipeline", title: "CPU pipeline", icon: "⫸",
+    blurb: "Write RISC-V assembly and step a 5-stage pipeline cycle by cycle: forwarding, load-use stalls and branch flushes, with CPI and a check against the ISA.",
+  },
 ];

@@ -50,6 +50,7 @@ jobs:
       - run: npm run check-wave
       - run: npm run check-circuit
       - run: npm run check-pnr
+      - run: npm run check-riscv
 
   web:
     name: Frontend type-check + build

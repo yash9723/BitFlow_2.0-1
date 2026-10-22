@@ -12,3 +12,4 @@ export const LogicTool = dynamic(() => import("./LogicTool"), { ssr: false, load
 export const FsmTool = dynamic(() => import("./FsmTool"), { ssr: false, loading });
 export const TimingTool = dynamic(() => import("./TimingTool"), { ssr: false, loading });
 export const CircuitTool = dynamic(() => import("./CircuitTool"), { ssr: false, loading });
+export const PipelineTool = dynamic(() => import("./PipelineTool"), { ssr: false, loading });
