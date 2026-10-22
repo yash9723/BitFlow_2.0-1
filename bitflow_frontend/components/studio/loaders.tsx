@@ -11,3 +11,4 @@ const loading = () => <p className="font-mono text-[12px] text-dim animate-pulse
 export const LogicTool = dynamic(() => import("./LogicTool"), { ssr: false, loading });
 export const FsmTool = dynamic(() => import("./FsmTool"), { ssr: false, loading });
 export const TimingTool = dynamic(() => import("./TimingTool"), { ssr: false, loading });
+export const CircuitTool = dynamic(() => import("./CircuitTool"), { ssr: false, loading });

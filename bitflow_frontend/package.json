@@ -25,6 +25,7 @@
     "check-logic": "tsx scripts/logic-min.check.ts",
     "check-fsm": "tsx scripts/fsm-gen.check.ts",
     "check-wave": "tsx scripts/wave.check.ts",
+    "check-circuit": "tsx scripts/circuit.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },

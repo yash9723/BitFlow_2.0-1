@@ -227,7 +227,7 @@ const MODULES = [
   {
     title: "Studio",
     href: "/studio",
-    body: "Design visually: state machines, truth tables and K-maps to Verilog.",
+    body: "Design visually: circuits, state machines and timing diagrams to Verilog.",
     color: "info",
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

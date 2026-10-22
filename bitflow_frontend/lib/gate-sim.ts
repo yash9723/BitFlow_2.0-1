@@ -125,6 +125,11 @@ export class GateSim {
     return (this.ports[name]?.bits ?? []).map((b) => this.v[slot(b)]);
   }
 
+  /** Current value of one net (a cell connection), e.g. to colour a wire. */
+  net(b: Bit): number {
+    return this.v[slot(b)] ?? 0;
+  }
+
   private evaluate(): void {
     const v = this.v;
     for (const g of this.gates) v[g.y] = g.op(v[g.a], v[g.b], v[g.s]);

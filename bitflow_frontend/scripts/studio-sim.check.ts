@@ -10,6 +10,7 @@ import { type Cell, type TruthTable, generateVerilog } from "../lib/studio/logic
 import { type FsmModel, FSM_EXAMPLES, generateTestbench as fsmTestbench, generateVerilog as fsmVerilog, guidedWalk } from "../lib/studio/fsm";
 import { WAVE_EXAMPLES, fromVcd, generateTestbench as waveTestbench, nsPerUnit, setDir } from "../lib/studio/wave";
 import { parseVcd } from "../lib/vcd-parser";
+import { CIRCUIT_EXAMPLES, defaultEvents as circuitEvents, generateTestbench as circuitTestbench, generateVerilog as circuitVerilog } from "../lib/studio/circuit";
 import { TEMPLATES } from "../lib/templates";
 
 if (!process.env.BACKEND_URL || !process.env.JWT_SECRET) {
@@ -66,6 +67,11 @@ endmodule`],
 for (const { label, diagram } of WAVE_EXAMPLES) {
   const [mod, design] = WAVE_DESIGNS[label];
   cases.push([`timing: ${label}`, { design, testbench: waveTestbench(diagram, mod) }]);
+}
+
+// Circuits: every example, testbench from its default walk (exhaustive Gray walk or clocked random walk)
+for (const { label, circuit } of CIRCUIT_EXAMPLES) {
+  cases.push([`circuit: ${label}`, { design: circuitVerilog(circuit), testbench: circuitTestbench(circuit, circuitEvents(circuit, 64, 5)) }]);
 }
 
 (async () => {

@@ -4,6 +4,10 @@ export interface StudioTool { href: string; title: string; blurb: string; icon: 
 
 export const STUDIO_TOOLS: StudioTool[] = [
   {
+    href: "/studio/circuit", title: "Circuit editor", icon: "⏚",
+    blurb: "Wire gates, flip-flops, switches and LEDs on a canvas and watch the circuit run live, then export Verilog with a testbench.",
+  },
+  {
     href: "/studio/fsm", title: "FSM designer", icon: "◎",
     blurb: "Draw a Moore or Mealy state machine, step it clock by clock, and get Verilog with a testbench that checks every cycle.",
   },
