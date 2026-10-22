@@ -105,6 +105,7 @@ const Editor = dynamic(() => import("@/components/Editor"), {
 const FormalPanel = dynamic(() => import("@/components/FormalPanel"), { ssr: false });
 const BoardPanel = dynamic(() => import("@/components/BoardPanel"), { ssr: false });
 const SynthesisPanel = dynamic(() => import("@/components/SynthesisPanel"), { ssr: false });
+const LabReport      = dynamic(() => import("@/components/LabReport"), { ssr: false });
 const AIAssistantPanel = dynamic(() => import("@/components/AIAssistantPanel"), { ssr: false });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -394,6 +395,7 @@ function SandboxContent() {
    */
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const diagnostics = useMemo(() => parseDiagnostics(result?.stdout), [result]);
 
@@ -691,6 +693,7 @@ function SandboxContent() {
         isAIOpen={isAIOpen}
         onAIToggle={toggleAI}
         onSynthesize={() => setSynthOpen(true)}
+        onReport={() => setReportOpen(true)}
         onBoard={() => setBoardOpen(true)}
         onProve={() => setProveOpen(true)}
         onShare={handleShare}
@@ -918,6 +921,10 @@ function SandboxContent() {
        * survives open/close cycles.
        */}
       <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={projectDesign} language={designLanguage} />
+      {reportOpen && (
+        <LabReport onClose={() => setReportOpen(false)} result={result} parsedVcd={parsedVcd} viewKey="/sandbox" synthDesign={projectDesign}
+                   files={[{ name: DESIGN_FILES[designLanguage][0], content: designCode }, { name: TESTBENCH_FILES[testbenchLanguage][0], content: testbenchCode }, ...extraFiles]} />
+      )}
       <BoardPanel isOpen={boardOpen} onClose={() => setBoardOpen(false)} designCode={projectDesign} language={designLanguage} />
       <FormalPanel isOpen={proveOpen} onClose={() => setProveOpen(false)} designCode={projectDesign} language={designLanguage}
                    testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""}

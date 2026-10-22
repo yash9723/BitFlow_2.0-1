@@ -9,12 +9,12 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
+import { rememberSynthesis, synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
 import BitstreamTab from "./BitstreamTab";
 import Floorplan from "./Floorplan";
 import type { CriticalPath, PnrSummary } from "@/lib/synth/pnr";
 
-interface Fsm {
+export interface Fsm {
   module:      string;
   stateReg:    string;
   reset?:      string | null;
@@ -23,7 +23,7 @@ interface Fsm {
   svg:         string | null;
 }
 
-interface SynthResult {
+export interface SynthResult {
   ok:              boolean;
   error?:          string;
   top?:            string | null;
@@ -59,7 +59,7 @@ interface PnrResult {
   cells?:       PnrSummary["cells"];
   critical?:    CriticalPath[];
 }
-interface FpgaResult {
+export interface FpgaResult {
   ok: boolean; error?: string; device?: string;
   resources?: { luts: number; lutram: number; ffs: number; carry: number; bram: number; dsp: number; io: number };
   capacity?:  { luts: number; ffs: number; bram: number; dsp: number };
@@ -103,7 +103,9 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
   const run = useCallback(async () => {
     setLoading(true);
     setFpga({});
-    setResult(await synthesizeDesign("synth", designCode, language));
+    const r: SynthResult = await synthesizeDesign("synth", designCode, language);
+    setResult(r);
+    if (r.ok) rememberSynthesis(designCode, { synth: r });
     setLoading(false);
   }, [designCode, language]);
 
@@ -126,7 +128,10 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
         return res.ok ? data : { ok: false, error: data.error ?? `Request failed (${res.status})` };
       })
       .catch(() => ({ ok: false, error: "Network error." }))
-      .then((r: FpgaResult) => setFpga((f) => ({ ...f, [family]: r })));
+      .then((r: FpgaResult) => {
+        setFpga((f) => ({ ...f, [family]: r }));
+        if (r.ok) rememberSynthesis(designCode, { fpga: { [family]: r } });
+      });
   }, [isOpen, tab, family, fpga, designCode, language]);
 
   useEffect(() => {

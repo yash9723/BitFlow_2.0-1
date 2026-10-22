@@ -36,6 +36,7 @@ interface ProblemToolbarProps {
   onSubmit:         () => void;
   onToggleTutor?:   () => void;
   onSynthesize?:    () => void;
+  onReport?:        () => void;
 }
 
 function SubmittingProgress({
@@ -72,6 +73,7 @@ export default function ProblemToolbar({
   onSubmit,
   onToggleTutor,
   onSynthesize,
+  onReport,
 }: ProblemToolbarProps) {
   const isRunning    = runState === "running";
   const isSubmitting = runState === "submitting";
@@ -123,6 +125,16 @@ export default function ProblemToolbar({
         {/* Submission progress */}
         {isSubmitting && (
           <SubmittingProgress index={submittingIndex} total={submittingTotal} />
+        )}
+
+        {onReport && (
+          <button
+            onClick={onReport}
+            title="Lab report: code, simulation output, waveform and synthesis, ready to print or save as PDF"
+            className="px-3 py-1.5 rounded font-mono text-[11px] tracking-wider uppercase border border-rim text-ghost hover:text-bright hover:border-dim transition-colors"
+          >
+            Report
+          </button>
         )}
 
         {onSynthesize && (

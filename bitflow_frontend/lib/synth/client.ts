@@ -135,3 +135,17 @@ export function buildBitstreamInBrowser(board: BoardId, design: string): Promise
     current.worker.postMessage({ id, board, design });
   });
 }
+
+/**
+ * The latest Synth panel results for one design, so the lab report (components/LabReport.tsx)
+ * can include them. In memory only: a reload or a different design clears it.
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let lastSynthesis: { design: string; synth?: any; fpga: Record<string, any> } | null = null;
+export function rememberSynthesis(design: string, part: { synth?: any; fpga?: Record<string, any> }) {
+  if (lastSynthesis?.design !== design) lastSynthesis = { design, fpga: {} };
+  if (part.synth) lastSynthesis.synth = part.synth;
+  Object.assign(lastSynthesis.fpga, part.fpga ?? {});
+}
+export const synthesisFor = (design: string) => (lastSynthesis?.design === design ? lastSynthesis : null);
+/* eslint-enable @typescript-eslint/no-explicit-any */

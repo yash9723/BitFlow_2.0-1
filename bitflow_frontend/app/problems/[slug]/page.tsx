@@ -42,6 +42,7 @@ const Editor = dynamic(() => import("@/components/Editor"), {
 });
 // Panels start closed, so they load after the page instead of in its first bundle.
 const SynthesisPanel = dynamic(() => import("../../../components/SynthesisPanel"), { ssr: false });
+const LabReport      = dynamic(() => import("../../../components/LabReport"), { ssr: false });
 const AIAssistantPanel = dynamic(() => import("../../../components/AIAssistantPanel"), { ssr: false });
 
 const SPLITTER_H         = 6;
@@ -104,6 +105,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
 
   const [tutorOpen, setTutorOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   // ── VCD parsing ────────────────────────────────────────────────────────────
   const [parsedVcd, setParsedVcd] = useState<ParsedVcd | null>(null);
@@ -252,6 +254,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         onSubmit={submit}
         onToggleTutor={() => setTutorOpen((v) => !v)}
         onSynthesize={() => setSynthOpen(true)}
+        onReport={() => setReportOpen(true)}
       />
 
       {/* ── Main content ─────────────────────────────────────────────── */}
@@ -384,6 +387,11 @@ function ProblemSolverInner({ problem }: { problem: any }) {
       </div>
 
       <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={designCode} language={language} />
+      {reportOpen && (
+        <LabReport onClose={() => setReportOpen(false)} result={runResult} parsedVcd={parsedVcd} viewKey={`/problems/${problem.slug}`} synthDesign={designCode}
+                   problem={{ title: problem.title, difficulty: problem.difficulty, statement: problem.statement, submission }}
+                   files={[{ name: language === "vhdl" ? "design.vhd" : "design.v", content: designCode }, { name: "tb.v", content: testbenchCode }]} />
+      )}
 
       <AIAssistantPanel
         isOpen={tutorOpen}

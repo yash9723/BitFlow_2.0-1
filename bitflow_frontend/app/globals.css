@@ -147,3 +147,11 @@
 @media (max-width: 640px) {
   input, select, textarea:not(.inputarea) { font-size: 16px !important; }
 }
+
+/* Lab report (components/LabReport.tsx): while it is open, printing shows only the report */
+@media print {
+  body.lab-report-open > *:not(#lab-report-root) { display: none !important; }
+  html:has(body.lab-report-open), body.lab-report-open { height: auto !important; overflow: visible !important; background: #fff !important; }
+  body.lab-report-open #lab-report-root { position: static !important; overflow: visible !important; }
+  @page { margin: 14mm; }
+}

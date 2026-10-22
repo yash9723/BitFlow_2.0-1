@@ -12,6 +12,8 @@ import Discussion from "@/components/Discussion";
 import { ArenaToolbar } from "@/components/ArenaToolbar";
 import ScrollUnlock from "@/components/ScrollUnlock";
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
+import { parseVcd } from "@/lib/vcd-parser";
 import Terminal from "@/components/Terminal";
 import WaveformPanel, { CounterexampleView, FailingWaveformView } from "@/components/WaveformPanel";
 import { WaveformPanelWrapper } from "./WaveformPanelWrapper";
@@ -22,6 +24,7 @@ const Editor = dynamic(() => import("@/components/Editor"), {
   loading: () => <div className="w-full h-full bg-pit animate-pulse" />,
 });
 const SynthesisPanel   = dynamic(() => import("@/components/SynthesisPanel"), { ssr: false });
+const LabReport        = dynamic(() => import("@/components/LabReport"), { ssr: false });
 const AIAssistantPanel = dynamic(() => import("@/components/AIAssistantPanel"), { ssr: false });
 
 function useWaveformSplitter(initial: number) {
@@ -135,6 +138,14 @@ export function ArenaSolverClient({ problem }: Props) {
   const waveSpl = useWaveformSplitter(200);
   const [tutorOpen, setTutorOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const page = usePathname();
+  // The report's waveform: parsed only while the report is open (the panel parses its own copy)
+  const reportVcd = useMemo(() => {
+    const b64 = reportOpen ? hook.runResult?.waveform?.vcd_base64 : null;
+    if (!b64) return null;
+    try { return parseVcd(atob(b64)); } catch { return null; }
+  }, [reportOpen, hook.runResult]);
 
   const showWaveform =
     hook.runResult?.waveform?.available ||
@@ -152,6 +163,7 @@ export function ArenaSolverClient({ problem }: Props) {
         onReset={hook.resetToStarter}
         onToggleTutor={() => setTutorOpen((v) => !v)}
         onSynthesize={() => setSynthOpen(true)}
+        onReport={() => setReportOpen(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -295,6 +307,11 @@ export function ArenaSolverClient({ problem }: Props) {
       </div>
 
       <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={hook.designCode} />
+      {reportOpen && (
+        <LabReport onClose={() => setReportOpen(false)} result={hook.runResult} parsedVcd={reportVcd} viewKey={page} synthDesign={hook.designCode}
+                   problem={{ title: problem.title, difficulty: problem.difficulty, statement: problem.statement, submission: hook.submission }}
+                   files={[{ name: "design.v", content: hook.designCode }, { name: tbFile, content: hook.testbenchCode }]} />
+      )}
 
       <AIAssistantPanel
         isOpen={tutorOpen}

@@ -59,6 +59,7 @@ import { downloadBlob, downloadVcd } from "@/lib/api";
 import { series, toCsv, valueAt as getValueAtTime, xyPoints } from "@/lib/plot";
 import { FROM_SIM_KEY, fromVcd, nsPerUnit } from "@/lib/studio/wave";
 import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
+import { rowKeys, visibleRows } from "@/lib/waveform-svg";
 import type { SimulateResponse } from "@/lib/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +101,8 @@ interface SavedView {
 }
 // ponytail: in-memory only, so views reset on reload; move to sessionStorage if people ask.
 const savedViews = new Map<string, SavedView>();
+/** The view a page's waveform panel last showed (row order, hidden rows, radix, markers): for the lab report. */
+export const getSavedView = (viewKey: string): SavedView | undefined => savedViews.get(viewKey);
 
 /** Captured on every mouse-move; drives the label-column value badges. */
 interface HoverInfo {
@@ -600,25 +603,8 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
   const [hidden, setHidden] = useState<string[]>(saved?.hidden ?? []);
   const [order,  setOrder]  = useState<string[]>(saved?.order ?? []);
 
-  const rowKey = useMemo(() => {
-    const seen = new Map<string, number>();
-    const keys = new Map<string, string>();
-    for (const s of signals) {
-      const n = seen.get(s.name) ?? 0;
-      seen.set(s.name, n + 1);
-      keys.set(s.id, n ? `${s.name}#${n}` : s.name);
-    }
-    return keys;
-  }, [signals]);
-
-  const visibleSignals = useMemo<VcdSignal[]>(() => {
-    const rank = new Map(order.map((n, i) => [n, i]));
-    return signals
-      .filter((s) => !hidden.includes(rowKey.get(s.id)!))
-      .map((s, i) => ({ s, r: rank.get(rowKey.get(s.id)!) ?? order.length + i }))
-      .sort((x, y) => x.r - y.r)
-      .map(({ s }) => s);
-  }, [signals, hidden, order, rowKey]);
+  const rowKey = useMemo(() => rowKeys(signals), [signals]);
+  const visibleSignals = useMemo<VcdSignal[]>(() => visibleRows(signals, hidden, order, rowKey), [signals, hidden, order, rowKey]);
 
   const hiddenCount = signals.filter((s) => hidden.includes(rowKey.get(s.id)!)).length;
   const handleHide  = useCallback((key: string) => setHidden((h) => [...h, key]), []);

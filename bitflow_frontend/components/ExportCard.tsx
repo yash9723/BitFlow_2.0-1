@@ -22,9 +22,8 @@
  *   - No external images / fonts that could cause CORS failures during capture.
  *     Google Fonts are loaded via <link> in layout.tsx so they're already in
  *     the browser's font cache and html-to-image can inline them.
- *   - Waveform is rendered as an inline mini-SVG from parsedVcd data —
- *     not a screenshot of the live WaveformPanel (which would require a ref
- *     chain and SVG serialization). The mini renderer is intentionally simple.
+ *   - Waveform is an inline SVG from parsedVcd (lib/waveform-svg.ts, also used by
+ *     the lab report) — not a screenshot of the live WaveformPanel.
  *   - Code blocks use <pre> with CSS overflow visible so the full source is
  *     captured even if it's longer than the visual height.
  *   - All colours are inline styles (not Tailwind classes) because
@@ -36,8 +35,8 @@
 
 import React, { forwardRef } from "react";
 import type { SimulateResponse } from "@/lib/types";
-import type { ParsedVcd, VcdSignal } from "@/lib/vcd-parser";
-import { binToHex } from "@/lib/vcd-parser";
+import type { ParsedVcd } from "@/lib/vcd-parser";
+import { waveformSvg } from "@/lib/waveform-svg";
 import { mono } from "@/lib/fonts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,9 +71,6 @@ const C = {
 
 const CARD_WIDTH  = 900;
 const CODE_MAX_H  = 320;  // px — code panels cap height; overflow shown on export
-const WAVE_H      = 160;  // px — mini waveform strip height
-const ROW_H       = 26;   // px — signal row height in mini waveform
-const AXIS_H      = 18;   // px — time axis height in mini waveform
 const MAX_SIGNALS = 6;    // show at most 6 signals in export waveform
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,128 +102,10 @@ function statusLabel(status: string): string {
 // Shows up to MAX_SIGNALS in a fixed-width SVG.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MiniWaveform({
-  parsedVcd,
-  width,
-}: {
-  parsedVcd: ParsedVcd;
-  width:     number;
-}) {
-  const { signals, maxTime } = parsedVcd;
-  const displaySigs = signals.slice(0, MAX_SIGNALS);
-  const ppu = maxTime > 0 ? (width - 4) / maxTime : 1;
-  const svgH = AXIS_H + displaySigs.length * ROW_H;
-  const xOf  = (t: number) => t * ppu;
-
-  const paths = displaySigs.map((sig, ri) => {
-    const yH = ri * ROW_H + AXIS_H + 3;
-    const yL = ri * ROW_H + AXIS_H + ROW_H - 3;
-    const yM = (yH + yL) / 2;
-
-    if (sig.width === 1) {
-      // 1-bit step function
-      if (sig.changes.length === 0) return null;
-      let d = `M 0 ${sig.changes[0]?.value === "1" ? yH : yL}`;
-      for (let j = 0; j < sig.changes.length; j++) {
-        const { time, value } = sig.changes[j];
-        if (j === 0 && time === 0) continue;
-        d += ` H ${xOf(time)} V ${value === "1" ? yH : yL}`;
-      }
-      d += ` H ${width}`;
-      return (
-        <path key={sig.id} d={d} stroke={C.phosphor} fill="none" strokeWidth={1.2} />
-      );
-    } else {
-      // Bus — simple horizontal lines with value label
-      const regions = sig.changes.map((c, idx) => ({
-        x1: xOf(c.time),
-        x2: idx + 1 < sig.changes.length ? xOf(sig.changes[idx + 1].time) : width,
-        v:  c.value,
-      }));
-      return (
-        <g key={sig.id}>
-          {regions.map((r, idx) => {
-            const label = binToHex(r.v);
-            const w = r.x2 - r.x1;
-            return (
-              <g key={idx}>
-                <line x1={r.x1} y1={yH} x2={r.x2} y2={yH} stroke={C.info} strokeWidth={1} />
-                <line x1={r.x1} y1={yL} x2={r.x2} y2={yL} stroke={C.info} strokeWidth={1} />
-                {w > 24 && (
-                  <text
-                    x={(r.x1 + r.x2) / 2} y={yM + 3.5}
-                    textAnchor="middle" fontSize={8}
-                    fill={C.info} fontFamily="monospace"
-                  >{label}</text>
-                )}
-              </g>
-            );
-          })}
-        </g>
-      );
-    }
-  });
-
-  // Row dividers
-  const dividers = displaySigs.map((_, ri) => (
-    <line
-      key={`d${ri}`}
-      x1={0} y1={AXIS_H + (ri + 1) * ROW_H}
-      x2={width} y2={AXIS_H + (ri + 1) * ROW_H}
-      stroke={C.rim} strokeWidth={0.5}
-    />
-  ));
-
-  return (
-    <div style={{ display: "flex" }}>
-      {/* Signal labels */}
-      <div style={{ width: 80, flexShrink: 0 }}>
-        <div style={{ height: AXIS_H }} />
-        {displaySigs.map((sig) => (
-          <div
-            key={sig.id}
-            style={{
-              height:     ROW_H,
-              display:    "flex",
-              alignItems: "center",
-              paddingLeft: 8,
-              fontFamily: "monospace",
-              fontSize:   9,
-              color:      C.pale,
-              borderBottom: `0.5px solid ${C.rim}`,
-            }}
-          >
-            {sig.name.length > 10 ? sig.name.slice(0, 9) + "…" : sig.name}
-          </div>
-        ))}
-      </div>
-
-      {/* SVG waveform */}
-      <svg
-        width={width - 80}
-        height={svgH}
-        style={{ flexShrink: 0, background: C.pit }}
-      >
-        <rect x={0} y={0} width={width - 80} height={AXIS_H} fill={C.surface} />
-        {dividers}
-        {paths}
-        {/* Cursor line placeholder: just a time axis label at end */}
-        <text x={2} y={AXIS_H - 4} fontSize={7} fill={C.dim} fontFamily="monospace">
-          0
-        </text>
-        <text
-          x={width - 84}
-          y={AXIS_H - 4}
-          textAnchor="end"
-          fontSize={7}
-          fill={C.dim}
-          fontFamily="monospace"
-        >
-          {maxTime}
-        </text>
-      </svg>
-    </div>
-  );
+function MiniWaveform({ parsedVcd, width }: { parsedVcd: ParsedVcd; width: number }) {
+  // Same renderer as the lab report (lib/waveform-svg.ts); only our own escaped SVG markup goes in.
+  const { svg } = waveformSvg(parsedVcd, {}, { width, theme: "dark", maxSignals: MAX_SIGNALS });
+  return <div style={{ lineHeight: 0 }} dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

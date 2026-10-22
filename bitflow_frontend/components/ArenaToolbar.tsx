@@ -18,6 +18,7 @@ interface Props {
   onReset:    () => void;
   onToggleTutor?: () => void;
   onSynthesize?:  () => void;
+  onReport?:      () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ function VerdictBadge({ sub }: { sub: ArenaSubmissionResult | null }) {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, onSynthesize }: Props) {
+export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, onSynthesize, onReport }: Props) {
   const { isRunning, isSubmitting, run, submit, submission, submittingIndex, submittingTotal } = hook;
 
   const busy = isRunning || isSubmitting;
@@ -93,6 +94,16 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, on
       <div className="flex items-center gap-2 shrink-0">
         {/* Last submission verdict */}
         <VerdictBadge sub={submission} />
+
+        {onReport && (
+          <button
+            onClick={onReport}
+            title="Lab report: code, simulation output, waveform and synthesis, ready to print or save as PDF"
+            className="font-mono text-[9px] text-dim hover:text-ghost border border-rim/40 hover:border-rim px-2 py-1 rounded transition-all"
+          >
+            Report
+          </button>
+        )}
 
         {onSynthesize && (
           <button

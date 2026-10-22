@@ -31,6 +31,7 @@ interface ToolbarProps {
   onAIToggle:     () => void;
   /** Opens the Yosys synthesis panel. */
   onSynthesize?:  () => void;
+  onReport?:      () => void;
   /** Opens the virtual board (gate-level simulation in the browser). */
   onBoard?:       () => void;
   /** Opens formal verification (assertions proved by a solver). */
@@ -85,6 +86,7 @@ export default function Toolbar({
   isAIOpen,
   onAIToggle,
   onSynthesize,
+  onReport,
   onBoard,
   onProve,
   onShare,
@@ -214,6 +216,16 @@ export default function Toolbar({
 
         {/* Divider */}
         <div className="w-px h-4 bg-rim mx-1" />
+
+        {onReport && (
+          <button
+            onClick={onReport}
+            title="Lab report: code, simulation output, waveform and synthesis, ready to print or save as PDF"
+            className="px-3 py-1.5 rounded-lg font-mono text-[11px] font-semibold tracking-wider border border-rim/60 bg-pit/30 text-ghost hover:border-info/40 hover:text-info/80 transition-all duration-150"
+          >
+            Report
+          </button>
+        )}
 
         {onSynthesize && (
           <button
