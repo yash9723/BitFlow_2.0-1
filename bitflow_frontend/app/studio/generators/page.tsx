@@ -5,7 +5,7 @@ import { GeneratorsTool } from "@/components/studio/loaders";
 
 export const metadata = {
   title: "Verilog generators",
-  description: "Parameterised LFSR, CRC, FIFO, clock divider, PWM, debouncer and more, each with a testbench checked against a reference model.",
+  description: "Parameterised LFSR, CRC, sync and async FIFOs, UART receiver, SPI master, round-robin arbiter, CDC synchronisers, VGA timing, 7-segment driver, sine table and more, in Verilog or SystemVerilog, each with a self-checking testbench.",
   alternates: { canonical: "/studio/generators" },
 };
 

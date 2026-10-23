@@ -291,6 +291,8 @@ export function generateTestbench(m: ModuleInfo, opts: Partial<TbOptions> = {}):
     ? `// Combinational, ${inBits} input bit${inBits === 1 ? "" : "s"}: tries all ${2 ** inBits} input combinations.`
     : clk ? `// Clocked by ${clk}${rst ? `, reset by ${rst.name} (active ${rst.activeLow ? "low" : "high"})` : ""}: ${o.cycles} cycles of random inputs.`
       : `// Combinational, ${inBits} input bits: ${o.cycles} random input vectors.`);
+  const otherClocks = driven.filter((p) => p.width === 1 && /clk|clock/i.test(p.name)).map((p) => p.name);
+  if (otherClocks.length) L.push(`// Note: ${otherClocks.join(", ")} look${otherClocks.length === 1 ? "s" : ""} like more clocks but get random values here; give a multi-clock design its own clock generators.`);
   L.push("// Fill in the reference model (search for TODO) so every output is checked against it;");
   L.push(o.xcheck ? "// until then only the X/Z checks run." : "// until then nothing is checked.");
   L.push(`module ${tb};`);

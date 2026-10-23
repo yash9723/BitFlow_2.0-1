@@ -102,4 +102,7 @@ assert.match(parseModule("module m #(parameter type T = logic) (input T a); endm
   assert.match(v, /always @\(posedge clk\) if \(tb_running\) model;/);
 }
 
+// a second clock gets a warning in the testbench
+assert.match(generateTestbench(ok("module x(input wclk, input rclk, input d, output q); endmodule")), /Note: rclk looks like more clocks/);
+
 console.log("tbgen: all checks passed");

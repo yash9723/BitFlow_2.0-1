@@ -29,7 +29,7 @@ export const STUDIO_TOOLS: StudioTool[] = [
   },
   {
     href: "/studio/generators", title: "Verilog generators", icon: "⚙",
-    blurb: "LFSR, CRC, FIFO, clock divider, PWM, debouncer, ROM and more, sized to your parameters, each with a testbench checked against a reference model.",
+    blurb: "LFSR, CRC, FIFOs (including an asynchronous one), UART receiver, SPI master, arbiter, CDC synchronisers, VGA timing, 7-segment driver, sine table and more, in Verilog or SystemVerilog, each with a self-checking testbench.",
   },
   {
     href: "/studio/boolean", title: "Boolean algebra", icon: "∧",

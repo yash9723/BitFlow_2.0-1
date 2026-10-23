@@ -119,7 +119,7 @@ export default function TbGenTool() {
         </div>
       </div>
       {testbench && typeof info !== "string" && (
-        <GeneratedCode module={info.name} design={d.source} testbench={testbench} />
+        <GeneratedCode module={info.name} design={d.source} testbench={testbench} convertible={false} />
       )}
     </div>
   );

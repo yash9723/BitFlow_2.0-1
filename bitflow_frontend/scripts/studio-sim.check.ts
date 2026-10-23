@@ -17,6 +17,7 @@ import { NONE, makeBlock } from "../lib/studio/circuit-edit";
 import { GENERATORS, type Values, defaults } from "../lib/studio/generators";
 import { TEMPLATES } from "../lib/templates";
 import { type TbOptions, generateTestbench as tbFor, parseModule } from "../lib/studio/tbgen";
+import { toSystemVerilog } from "../lib/studio/sv";
 import { PART_CASES } from "./circuit-cases";
 
 if (!process.env.BACKEND_URL || !process.env.JWT_SECRET) {
@@ -92,6 +93,9 @@ for (const gen of GENERATORS) {
     lfsr: [{ width: 3, seed: "5" }, { width: 32, seed: "DEADBEEF" }], crc: [{ width: 32, poly: "04C11DB7", init: "FFFFFFFF", xorout: "FFFFFFFF" }, { width: 8, poly: "07", init: "0" }],
     clkdiv: [{ n: 2 }, { n: 7 }], pwm: [{ width: 2 }], debounce: [{ n: 1 }, { n: 9 }], fifo: [{ width: 1, depth: 2 }, { width: 16, depth: 16 }],
     gray: [{ width: 9 }], rom: [{ width: 4, values: "1 2 3" }], shift: [{ width: 33 }], bin2bcd: [{ width: 4 }, { width: 14 }],
+    uart_rx: [{ cpb: 4 }, { cpb: 5 }], spi_master: [{ mode: 1 }, { mode: 2, div: 1 }, { mode: 3, width: 16, div: 3 }, { mode: 0, width: 32, div: 1 }],
+    rr_arbiter: [{ n: 2 }, { n: 3 }, { n: 16 }], async_fifo: [{ width: 1, depth: 4 }, { width: 32, depth: 64 }], cdc_sync: [{ stages: 3 }, { stages: 4 }],
+    vga: [{ sync_neg: 0 }], sevenseg: [{ digits: 2 }, { digits: 3 }, { digits: 8 }], sine: [{ entries: 8, width: 4 }, { entries: 1024, width: 16 }],
   };
   for (const v of [defaults(gen), ...(extra[gen.id] ?? []).map((x) => ({ ...defaults(gen), ...x }))]) {
     const r = gen.build(v);
@@ -99,6 +103,9 @@ for (const gen of GENERATORS) {
     cases.push([`generator ${gen.id} ${JSON.stringify(v).slice(0, 60)}`, { design: r.design, testbench: r.testbench }]);
   }
 }
+
+// SystemVerilog output: every generated design above, rewritten to SV, against the same testbench
+for (const [name, c] of [...cases]) cases.push([`${name} [SV]`, { ...c, design: toSystemVerilog(c.design) }]);
 
 // Testbench generator: a testbench for every generator and template design, in both styles
 const tbgen = (design: string, o: Partial<TbOptions> = {}) => {
@@ -110,7 +117,8 @@ const tbgen = (design: string, o: Partial<TbOptions> = {}) => {
 const withModel = (c: { design: string; testbench: string }, body: string) =>
   ({ ...c, testbench: c.testbench.replace(/ {6}\/\/ TODO[^\n]*\n( {6}exp_\w+ = 'bx;\n)+/, `      ${body}\n`) });
 const tbDesigns: [string, string][] = [
-  ...GENERATORS.map((g): [string, string] => { const r = g.build(defaults(g)); if (typeof r === "string") throw new Error(r); return [`generator ${g.id}`, r.design]; }),
+  // one-clock designs only: the generated testbench drives a second clock as data
+  ...GENERATORS.filter((g) => !["async_fifo", "cdc_sync"].includes(g.id)).map((g): [string, string] => { const r = g.build(defaults(g)); if (typeof r === "string") throw new Error(r); return [`generator ${g.id}`, r.design]; }),
   ...Object.entries(TEMPLATES).filter(([k]) => !["vhdlAlu", "uartEchoFiles", "uartEcho"].includes(k)).map(([k, t]): [string, string] => [`template ${k}`, t.design]),
 ];
 for (const [name, design] of tbDesigns) for (const style of ["verilog", "sv"] as const) cases.push([`tbgen: ${name} (${style})`, tbgen(design, { style })]);

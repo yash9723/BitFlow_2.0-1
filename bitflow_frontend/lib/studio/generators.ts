@@ -1,8 +1,10 @@
 /**
  * lib/studio/generators.ts — parameterised Verilog building blocks for /studio/generators:
- * LFSR, CRC, clock divider, PWM, debouncer, FIFO, Gray counter, ROM, edge detector, shift
- * register and binary-to-BCD. Each has a cycle-accurate model here; its testbench drives the
- * same stimulus and checks every output against the model on every cycle.
+ * LFSR, CRC, clock divider, PWM, debouncer, FIFO, Gray counter, ROM, edge detector, shift,
+ * register, binary-to-BCD, UART receiver, SPI master, round-robin arbiter, async FIFO, CDC
+ * synchronisers, VGA timing, 7-segment driver and sine table. Most have a cycle-accurate model
+ * here and a testbench that checks every output against it on every cycle; the two-clock blocks
+ * (async FIFO, CDC) get their own testbenches with a scoreboard.
  * Self-check: scripts/generators.check.ts; scripts/studio-sim.check.ts runs them on Icarus.
  */
 
@@ -46,7 +48,7 @@ function hexValue(s: number | string | undefined): bigint | null {
 }
 
 /** A testbench that applies each cycle's inputs, clocks once (or waits, for combinational logic) and checks the outputs. */
-function vectorTb(mod: string, ins: Port[], outs: Port[], cycles: Cycle[], clocked: boolean, what: string): string {
+function vectorTb(mod: string, ins: Port[], outs: Port[], cycles: Cycle[], clocked: boolean, what: string, overrides = ""): string {
   const tb = `tb_${mod}`;
   const prev: V = {};
   const body = cycles.map((cy, i) => {
@@ -63,7 +65,7 @@ ${clocked ? "    reg clk = 1'b0;\n" : ""}${ins.map((p) => `    reg  ${decl(p.wid
 ${outs.map((p) => `    wire ${decl(p.width)}${p.name};`).join("\n")}
     integer errors = 0;
 
-    ${mod} dut (${[...(clocked ? ["clk"] : []), ...ins.map((p) => p.name), ...outs.map((p) => p.name)].map((n) => `.${n}(${n})`).join(", ")});
+    ${mod}${overrides ? ` #(${overrides})` : ""} dut (${[...(clocked ? ["clk"] : []), ...ins.map((p) => p.name), ...outs.map((p) => p.name)].map((n) => `.${n}(${n})`).join(", ")});
 ${clocked ? "    always #5 clk = ~clk;\n" : ""}
 ${outs.map((p) => `    task expect_${p.name};
         input ${decl(p.width)}v;
@@ -618,5 +620,667 @@ endmodule
   },
 };
 
-export const GENERATORS: Generator[] = [lfsr, crc, clockDivider, pwm, debouncer, fifo, gray, rom, edge, shift, bcd];
+// ── UART receiver ────────────────────────────────────────────────────────────
+
+export interface UartRxOut { data: number; valid: number; frameErr: number }
+/** Cycle model of the uart_rx below: one entry per clock edge. */
+export function uartRxModel(cpb: number, stim: { rst: number; rx: number }[]): UartRxOut[] {
+  let r0 = 1, r1 = 1, st = 0, cnt = 0, idx = 0, sh = 0, data = 0, valid = 0, frameErr = 0;
+  const half = Math.floor(cpb / 2) - 1;
+  return stim.map(({ rst, rx }) => {
+    if (rst) { r0 = 1; r1 = 1; st = 0; cnt = 0; idx = 0; sh = 0; data = 0; valid = 0; frameErr = 0; }
+    else {
+      const o = { r0, r1, st, cnt, idx, sh };
+      r0 = rx; r1 = o.r0; valid = 0;
+      if (o.st === 0) { if (!o.r1) { st = 1; cnt = 0; } }
+      else if (o.st === 1) { if (o.cnt === half) { cnt = 0; if (!o.r1) { st = 2; idx = 0; } else st = 0; } else cnt = o.cnt + 1; }
+      else if (o.st === 2) {
+        if (o.cnt === cpb - 1) { cnt = 0; sh = (o.r1 << 7) | (o.sh >> 1); if (o.idx === 7) st = 3; else idx = o.idx + 1; } else cnt = o.cnt + 1;
+      } else if (o.cnt === cpb - 1) { cnt = 0; st = 0; data = o.sh; valid = 1; frameErr = o.r1 ? 0 : 1; } else cnt = o.cnt + 1;
+    }
+    return { data, valid, frameErr };
+  });
+}
+/** A serial line carrying `bytes` (8N1, LSB first) at `cpb` clocks per bit; `badStop` frames get a 0 stop bit. */
+export function uartLine(bytes: number[], cpb: number, badStop: number[] = [], gap = 3): number[] {
+  const line: number[] = Array(3 * cpb).fill(1);
+  bytes.forEach((b, i) => {
+    const bits = [0, ...Array.from({ length: 8 }, (_, k) => (b >> k) & 1), badStop.includes(i) ? 0 : 1];
+    for (const x of bits) for (let c = 0; c < cpb; c++) line.push(x);
+    for (let c = 0; c < (badStop.includes(i) ? 12 * cpb : gap * cpb); c++) line.push(1);   // after a bad frame, idle long enough to resynchronise
+  });
+  return line;
+}
+
+const uartRx: Generator = {
+  id: "uart_rx", title: "UART receiver", blurb: "8N1 serial in: a two-flip-flop synchroniser, start-bit check at mid-bit, data sampled in the middle of each bit, and a framing-error flag.",
+  params: [{ key: "cpb", label: "Clocks per bit", kind: "int", default: 434, min: 4, max: 100000, hint: "Clock ÷ baud rate: 50 MHz / 115200 ≈ 434." }],
+  build: (v) => {
+    const cpb = num(v, "cpb");
+    if (!(Number.isInteger(cpb) && cpb >= 4 && cpb <= 100000)) return "Clocks per bit from 4 to 100000.";
+    const mod = "uart_rx", tbCpb = Math.min(cpb, 8);
+    const design = `${header(`UART receiver, 8 data bits, no parity, 1 stop bit, ${cpb} clocks per bit.`)}module ${mod} #(parameter CLKS_PER_BIT = ${cpb}) (
+    input  wire       clk,
+    input  wire       rst,        // synchronous, active high
+    input  wire       rx,         // the serial line: idle high, asynchronous to clk
+    output reg  [7:0] data,       // the byte received
+    output reg        valid,      // a one-cycle pulse when data is ready
+    output reg        frame_err   // with valid: the stop bit was 0
+);
+    localparam IDLE = 2'd0, START = 2'd1, DATA = 2'd2, STOP = 2'd3;
+    localparam CW = $clog2(CLKS_PER_BIT + 1);
+    reg [1:0]    st;
+    reg [CW-1:0] cnt;
+    reg [2:0]    idx;
+    reg [7:0]    sh;
+    reg          r0, r1;          // two-flip-flop synchroniser
+    always @(posedge clk)
+        if (rst) begin
+            r0 <= 1'b1; r1 <= 1'b1; st <= IDLE; cnt <= 0; idx <= 0; sh <= 0;
+            data <= 0; valid <= 1'b0; frame_err <= 1'b0;
+        end else begin
+            r0 <= rx; r1 <= r0; valid <= 1'b0;
+            case (st)
+                IDLE:  if (!r1) begin st <= START; cnt <= 0; end
+                START: if (cnt == CLKS_PER_BIT/2 - 1) begin           // the middle of the start bit
+                           cnt <= 0;
+                           if (!r1) begin st <= DATA; idx <= 0; end
+                           else st <= IDLE;                           // a glitch, not a start bit
+                       end else cnt <= cnt + 1'b1;
+                DATA:  if (cnt == CLKS_PER_BIT - 1) begin             // the middle of each data bit, LSB first
+                           cnt <= 0; sh <= {r1, sh[7:1]};
+                           if (idx == 3'd7) st <= STOP; else idx <= idx + 1'b1;
+                       end else cnt <= cnt + 1'b1;
+                STOP:  if (cnt == CLKS_PER_BIT - 1) begin             // the middle of the stop bit
+                           cnt <= 0; st <= IDLE;
+                           data <= sh; valid <= 1'b1; frame_err <= !r1;
+                       end else cnt <= cnt + 1'b1;
+            endcase
+        end
+endmodule
+`;
+    const r = rng(21), bytes = [0x55, 0x00, 0xff, 0x41, ...Array.from({ length: 6 }, () => Math.floor(r() * 256))];
+    const line = [1, 1, ...uartLine(bytes, tbCpb, [5])];
+    const stim = line.map((rx, i) => ({ rst: i < 2 ? 1 : 0, rx }));
+    const out = uartRxModel(tbCpb, stim);
+    const cycles: Cycle[] = stim.map((s, i) => ({
+      set: { rst: big(s.rst), rx: big(s.rx) }, expect: { data: big(out[i].data), valid: big(out[i].valid), frame_err: big(out[i].frameErr) },
+      note: out[i].valid ? `byte 0x${out[i].data.toString(16)}${out[i].frameErr ? ", framing error" : ""}` : undefined,
+    }));
+    return {
+      module: mod, design,
+      testbench: vectorTb(mod, [{ name: "rst", width: 1 }, { name: "rx", width: 1 }], [{ name: "data", width: 8 }, { name: "valid", width: 1 }, { name: "frame_err", width: 1 }],
+        cycles, true, `${bytes.length} frames, one with a bad stop bit, at ${tbCpb} clocks per bit`, `.CLKS_PER_BIT(${tbCpb})`),
+      notes: [`The testbench runs it at ${tbCpb} clocks per bit to keep the simulation short; the logic is the same at ${cpb}.`,
+        "valid comes in the middle of the stop bit, so frames can follow back to back.", "Use the waveform viewer's Decode → UART on rx to see the bytes."],
+    };
+  },
+};
+
+// ── SPI master ───────────────────────────────────────────────────────────────
+
+export interface SpiCfg { width: number; cpol: number; cpha: number; div: number }
+export interface SpiOut { sclk: number; mosi: number; csN: number; dout: bigint; busy: number; done: number }
+/** Cycle model of the spi_master below. */
+export function spiMasterModel(c: SpiCfg, stim: { rst: number; start: number; din: bigint; miso: number }[]): SpiOut[] {
+  const m = mask(c.width), w = big(c.width);
+  let sclk = c.cpol, mosi = 0, csN = 1, dout = 0n, busy = 0, done = 0, cnt = 0, edges = 0, tx = 0n, rx = 0n;
+  return stim.map(({ rst, start, din, miso }) => {
+    if (rst) { sclk = c.cpol; mosi = 0; csN = 1; dout = 0n; busy = 0; done = 0; cnt = 0; edges = 0; tx = 0n; rx = 0n; }
+    else {
+      const o = { sclk, cnt, edges, tx, rx, busy };
+      done = 0;
+      if (!o.busy) {
+        if (start) { busy = 1; csN = 0; cnt = 0; edges = 0; tx = din & m; if (c.cpha === 0) mosi = Number((din >> (w - 1n)) & 1n); }
+      } else if (o.cnt === c.div - 1) {
+        cnt = 0;
+        if (o.edges === 2 * c.width) { busy = 0; csN = 1; done = 1; dout = o.rx; }
+        else {
+          sclk = o.sclk ^ 1; edges = o.edges + 1;
+          if ((o.edges & 1) === c.cpha) rx = ((o.rx << 1n) | big(miso)) & m;
+          else if (c.cpha === 1) { mosi = Number((o.tx >> (w - 1n)) & 1n); tx = (o.tx << 1n) & m; }
+          else { tx = (o.tx << 1n) & m; mosi = Number((o.tx >> (w - 2n)) & 1n); }
+        }
+      } else cnt = o.cnt + 1;
+    }
+    return { sclk, mosi, csN, dout, busy, done };
+  });
+}
+
+const spiMaster: Generator = {
+  id: "spi_master", title: "SPI master", blurb: "A full-duplex SPI master for any of the four modes: start a transfer, and it clocks a word out on MOSI while shifting one in from MISO.",
+  params: [
+    { key: "width", label: "Word width", kind: "int", default: 8, min: 4, max: 32 },
+    { key: "mode", label: "SPI mode (0–3)", kind: "int", default: 0, min: 0, max: 3, hint: "CPOL = mode ÷ 2, CPHA = mode mod 2." },
+    { key: "div", label: "Clocks per SCLK half-period", kind: "int", default: 2, min: 1, max: 64 },
+  ],
+  presets: [0, 1, 2, 3].map((mode) => ({ label: `Mode ${mode}`, values: { mode } })),
+  build: (v) => {
+    const w = num(v, "width"), mode = num(v, "mode"), div = num(v, "div");
+    if (!(Number.isInteger(w) && w >= 4 && w <= 32)) return "Word widths from 4 to 32.";
+    if (![0, 1, 2, 3].includes(mode)) return "The SPI mode is 0, 1, 2 or 3.";
+    if (!(Number.isInteger(div) && div >= 1 && div <= 64)) return "Clocks per half-period from 1 to 64.";
+    const cfg: SpiCfg = { width: w, cpol: mode >> 1, cpha: mode & 1, div }, mod = "spi_master";
+    const design = `${header(`SPI master, mode ${mode} (CPOL ${cfg.cpol}, CPHA ${cfg.cpha}), ${w}-bit words, MSB first, SCLK = clk / ${2 * div}.`)}module ${mod} #(
+    parameter WIDTH = ${w},
+    parameter CPOL  = ${cfg.cpol},
+    parameter CPHA  = ${cfg.cpha},
+    parameter DIV   = ${div}               // clocks per SCLK half-period
+) (
+    input  wire             clk,
+    input  wire             rst,        // synchronous, active high
+    input  wire             start,      // begin a transfer (ignored while busy)
+    input  wire [WIDTH-1:0] din,        // the word to send
+    input  wire             miso,
+    output reg              sclk,
+    output reg              mosi,
+    output reg              cs_n,
+    output reg  [WIDTH-1:0] dout,       // the word received, valid with done
+    output reg              busy,
+    output reg              done        // a one-cycle pulse at the end of a transfer
+);
+    localparam EW = $clog2(2*WIDTH + 1), DW = $clog2(DIV + 1);
+    reg [DW-1:0]    cnt;
+    reg [EW-1:0]    edges;              // SCLK edges made so far in this transfer
+    reg [WIDTH-1:0] tx, rx;
+    always @(posedge clk)
+        if (rst) begin
+            sclk <= CPOL; mosi <= 1'b0; cs_n <= 1'b1; dout <= 0; busy <= 1'b0; done <= 1'b0;
+            cnt <= 0; edges <= 0; tx <= 0; rx <= 0;
+        end else begin
+            done <= 1'b0;
+            if (!busy) begin
+                if (start) begin
+                    busy <= 1'b1; cs_n <= 1'b0; cnt <= 0; edges <= 0; tx <= din;
+                    if (CPHA == 0) mosi <= din[WIDTH-1];             // the first bit is out before the first edge
+                end
+            end else if (cnt == DIV - 1) begin
+                cnt <= 0;
+                if (edges == 2*WIDTH) begin                          // half a period after the last edge
+                    busy <= 1'b0; cs_n <= 1'b1; done <= 1'b1; dout <= rx;
+                end else begin
+                    sclk  <= ~sclk;
+                    edges <= edges + 1'b1;
+                    if (edges[0] == CPHA)                            // the sampling edge
+                        rx <= {rx[WIDTH-2:0], miso};
+                    else if (CPHA == 1) begin                        // CPHA 1: next bit out on the leading edge
+                        mosi <= tx[WIDTH-1]; tx <= tx << 1;
+                    end else begin                                   // CPHA 0: next bit out on the trailing edge
+                        mosi <= tx[WIDTH-2]; tx <= tx << 1;
+                    end
+                end
+            end else cnt <= cnt + 1'b1;
+        end
+endmodule
+`;
+    const r = rng(23), stim: { rst: number; start: number; din: bigint; miso: number }[] = [];
+    const words = Math.max(2, Math.min(6, Math.floor(1500 / (2 * w * div + 6))));
+    for (let i = 0; i < 4; i++) stim.push({ rst: i < 2 ? 1 : 0, start: 0, din: 0n, miso: 0 });
+    for (let k = 0; k < words; k++) {
+      const din = big(Math.floor(r() * 2 ** Math.min(w, 30))) & mask(w);
+      stim.push({ rst: 0, start: 1, din, miso: 0 });
+      for (let c = 0; c < (2 * w + 1) * div + 3 + (k % 3); c++) stim.push({ rst: 0, start: k === 1 && c === 5 ? 1 : 0, din: 0n, miso: r() < 0.5 ? 1 : 0 });
+    }
+    const out = spiMasterModel(cfg, stim);
+    const cycles: Cycle[] = stim.map((s, i) => ({
+      set: { rst: big(s.rst), start: big(s.start), din: s.din, miso: big(s.miso) },
+      expect: { sclk: big(out[i].sclk), mosi: big(out[i].mosi), cs_n: big(out[i].csN), dout: out[i].dout, busy: big(out[i].busy), done: big(out[i].done) },
+      note: s.start ? (i > 0 && out[i - 1].busy ? "start while busy: ignored" : "start") : out[i].done ? "done" : undefined,
+    }));
+    return {
+      module: mod, design,
+      testbench: vectorTb(mod, [{ name: "rst", width: 1 }, { name: "start", width: 1 }, { name: "din", width: w }, { name: "miso", width: 1 }],
+        [{ name: "sclk", width: 1 }, { name: "mosi", width: 1 }, { name: "cs_n", width: 1 }, { name: "dout", width: w }, { name: "busy", width: 1 }, { name: "done", width: 1 }],
+        cycles, true, `${words} transfers with random MISO data`),
+      notes: [`A transfer takes ${2 * w * div + div + 1} clock cycles from start to done.`, "Use the waveform viewer's Decode → SPI with the same mode to check the words on the wire."],
+    };
+  },
+};
+
+// ── Round-robin arbiter ──────────────────────────────────────────────────────
+
+const arbiter: Generator = {
+  id: "rr_arbiter", title: "Round-robin arbiter", blurb: "Shares one resource between N requesters fairly: the one granted last gets the lowest priority next time, so nobody starves.",
+  params: [{ key: "n", label: "Requesters", kind: "int", default: 4, min: 2, max: 16 }],
+  build: (v) => {
+    const n = num(v, "n");
+    if (!(Number.isInteger(n) && n >= 2 && n <= 16)) return "From 2 to 16 requesters.";
+    const pw = bitsFor(n - 1), mod = "rr_arbiter";
+    const design = `${header(`round-robin arbiter for ${n} requesters; grant is one-hot and registered.`)}module ${mod} (
+    input  wire         clk,
+    input  wire         rst,        // synchronous, active high
+    input  wire ${decl(n)}req,        // request lines
+    output reg  ${decl(n)}grant       // one-hot, the cycle after req; all 0 when nobody asks
+);
+    reg  [${pw - 1}:0] ptr;               // the requester with the highest priority now
+    reg  [${pw - 1}:0] pick;
+    reg        found;
+    integer    i, k;
+    always @(*) begin                 // the first request at or after ptr, wrapping round
+        found = 1'b0;
+        pick  = ptr;
+        for (i = 0; i < ${n}; i = i + 1) begin
+            k = (ptr + i) % ${n};
+            if (!found && req[k]) begin found = 1'b1; pick = k; end
+        end
+    end
+    always @(posedge clk)
+        if (rst) begin grant <= 0; ptr <= 0; end
+        else begin
+            grant <= found ? (${n}'d1 << pick) : ${n}'d0;
+            if (found) ptr <= (pick == ${n - 1}) ? ${pw}'d0 : pick + 1'b1;   // the winner goes to the back
+        end
+endmodule
+`;
+    const r = rng(29), cycles: Cycle[] = [];
+    let ptr = 0, grant = 0;
+    for (let i = 0; i < 160; i++) {
+      const rst = i < 2, density = i < 60 ? 0.8 : i < 110 ? 0.25 : 1;
+      const req = i >= 150 ? 0 : Array.from({ length: n }, (_, b) => (r() < density ? 1 << b : 0)).reduce((a, x) => a | x, 0);
+      if (rst) { ptr = 0; grant = 0; }
+      else {
+        let pick = -1;
+        for (let k = 0; k < n; k++) { const j = (ptr + k) % n; if (pick < 0 && (req >> j) & 1) pick = j; }
+        grant = pick < 0 ? 0 : 1 << pick;
+        if (pick >= 0) ptr = pick === n - 1 ? 0 : pick + 1;
+      }
+      cycles.push({ set: { rst: rst ? 1n : 0n, req: big(req) }, expect: { grant: big(grant) }, note: i === 110 ? "everyone asks: grants rotate" : undefined });
+    }
+    return {
+      module: mod, design, testbench: vectorTb(mod, [{ name: "rst", width: 1 }, { name: "req", width: n }], [{ name: "grant", width: n }], cycles, true, "busy, sparse and full request patterns"),
+      notes: [`With every line requesting, each requester is granted once every ${n} cycles.`, "A requester should hold req until it sees its grant."],
+    };
+  },
+};
+
+// ── Asynchronous FIFO ────────────────────────────────────────────────────────
+
+const asyncFifo: Generator = {
+  id: "async_fifo", title: "Asynchronous FIFO", blurb: "A FIFO between two unrelated clocks: Gray-coded pointers cross through two-flip-flop synchronisers, so full and empty are safe in both domains.",
+  params: [{ key: "width", label: "Data width", kind: "int", default: 8, min: 1, max: 64 }, { key: "depth", label: "Depth (power of 2)", kind: "int", default: 8, min: 4, max: 1024 }],
+  build: (v) => {
+    const w = num(v, "width"), depth = num(v, "depth");
+    if (!(Number.isInteger(w) && w >= 1 && w <= 64)) return "Data widths from 1 to 64.";
+    if (!isPow2(depth) || depth < 4 || depth > 1024) return "The depth is a power of two from 4 to 1024.";
+    const aw = Math.log2(depth), mod = "async_fifo";
+    const design = `${header(`asynchronous FIFO, ${depth} words of ${w} bits, Gray-code pointers.`)}module ${mod} #(parameter DW = ${w}, parameter AW = ${aw}) (
+    // write side (wclk domain)
+    input  wire          wclk,
+    input  wire          wrst,      // synchronous to wclk, active high
+    input  wire          winc,      // write wdata (ignored when full)
+    input  wire [DW-1:0] wdata,
+    output wire          wfull,
+    // read side (rclk domain)
+    input  wire          rclk,
+    input  wire          rrst,      // synchronous to rclk, active high
+    input  wire          rinc,      // drop the word on rdata (ignored when empty)
+    output wire [DW-1:0] rdata,     // the oldest word, valid while !rempty
+    output wire          rempty
+);
+    reg  [DW-1:0] mem [0:(1<<AW)-1];
+    // binary and Gray pointers, one bit wider than the address so full and empty differ
+    reg  [AW:0] wbin, wgray, rbin, rgray;
+    reg  [AW:0] rgray_w1, rgray_w2;     // the read pointer, synchronised into wclk
+    reg  [AW:0] wgray_r1, wgray_r2;     // the write pointer, synchronised into rclk
+    wire [AW:0] wbin_next  = wbin + {{AW{1'b0}}, winc & ~wfull};
+    wire [AW:0] wgray_next = (wbin_next >> 1) ^ wbin_next;
+    wire [AW:0] rbin_next  = rbin + {{AW{1'b0}}, rinc & ~rempty};
+    wire [AW:0] rgray_next = (rbin_next >> 1) ^ rbin_next;
+
+    always @(posedge wclk)
+        if (wrst) begin wbin <= 0; wgray <= 0; rgray_w1 <= 0; rgray_w2 <= 0; end
+        else begin
+            if (winc && !wfull) mem[wbin[AW-1:0]] <= wdata;
+            wbin <= wbin_next; wgray <= wgray_next;
+            rgray_w1 <= rgray; rgray_w2 <= rgray_w1;
+        end
+    always @(posedge rclk)
+        if (rrst) begin rbin <= 0; rgray <= 0; wgray_r1 <= 0; wgray_r2 <= 0; end
+        else begin
+            rbin <= rbin_next; rgray <= rgray_next;
+            wgray_r1 <= wgray; wgray_r2 <= wgray_r1;
+        end
+    // full: the write pointer is one lap ahead (top two Gray bits inverted, the rest equal)
+    assign wfull  = (wgray == {~rgray_w2[AW:AW-1], rgray_w2[AW-2:0]});
+    assign rempty = (rgray == wgray_r2);
+    assign rdata  = mem[rbin[AW-1:0]];
+endmodule
+`;
+    const steps = 24 * depth;
+    const testbench = `\`timescale 1ns / 1ps
+// Generated by BitFlow Studio: two unrelated clocks (10 ns and 14 ns), random writes and reads.
+// A scoreboard keeps every word written; each word read must be the next one, in order.
+module tb_${mod};
+    localparam DW = ${w}, AW = ${aw}, DEPTH = ${depth};
+    reg wclk = 1'b0, rclk = 1'b0, wrst = 1'b1, rrst = 1'b1, winc = 1'b0, rinc = 1'b0;
+    reg  [DW-1:0] wdata = 0;
+    wire [DW-1:0] rdata;
+    wire wfull, rempty;
+    integer errors = 0, nw = 0, nr = 0, phase = 0, seed = 5, saw_full = 0;
+    reg [DW-1:0] sb [0:65535];
+
+    ${mod} #(.DW(DW), .AW(AW)) dut (.wclk(wclk), .wrst(wrst), .winc(winc), .wdata(wdata), .wfull(wfull),
+                         .rclk(rclk), .rrst(rrst), .rinc(rinc), .rdata(rdata), .rempty(rempty));
+    always #5 wclk = ~wclk;
+    always #7 rclk = ~rclk;
+
+    // phase 0 fills (writes often, reads rarely), 1 drains, 2 stops writing
+    always @(negedge wclk) if (!wrst) begin
+        winc  <= (phase != 2) && (($random(seed) & 3) < (phase == 0 ? 3 : 1));
+        wdata <= $random(seed);
+    end
+    always @(negedge rclk) if (!rrst) rinc <= ($random(seed) & 3) < (phase == 0 ? 1 : 3);
+
+    always @(posedge wclk) if (!wrst) begin
+        if (wfull) saw_full = 1;
+        if (winc && !wfull) begin sb[nw] = wdata; nw = nw + 1; end
+        if (nw - nr > DEPTH) begin
+            $display("FAIL at %0t: %0d words in a %0d-word FIFO", $time, nw - nr, DEPTH);
+            errors = errors + 1;
+        end
+    end
+    always @(posedge rclk) if (!rrst && rinc && !rempty) begin
+        if (nr >= nw || rdata !== sb[nr]) begin
+            $display("FAIL at %0t: read %0d gave %h, expected %h", $time, nr, rdata, sb[nr]);
+            errors = errors + 1;
+        end
+        nr = nr + 1;
+    end
+
+    initial begin
+        $dumpfile("wave.vcd");
+        $dumpvars(0, tb_${mod});
+        #33 wrst = 1'b0; rrst = 1'b0;
+        repeat (${steps}) @(posedge wclk);
+        phase = 1; repeat (${steps}) @(posedge wclk);
+        phase = 0; repeat (${steps}) @(posedge wclk);
+        phase = 2; repeat (${4 * depth + 20}) @(posedge rclk);
+        if (!rempty || nr != nw) begin $display("FAIL: %0d written but %0d read", nw, nr); errors = errors + 1; end
+        if (!saw_full) begin $display("FAIL: the FIFO never filled up"); errors = errors + 1; end
+        if (nw < 4 * DEPTH) begin $display("FAIL: only %0d words got through", nw); errors = errors + 1; end
+        if (errors == 0) $display("ALL TESTS PASSED (%0d words through, in order)", nw);
+        else $display("TESTS FAILED: %0d error(s)", errors);
+        $finish;
+    end
+endmodule
+`;
+    return {
+      module: mod, design, testbench,
+      notes: ["full and empty are pessimistic: they release a few cycles late (the synchroniser delay), never early.",
+        "rdata shows the oldest word while rempty is low; rinc drops it.", "Constrain the synchroniser paths as false paths (or max-delay) in your timing constraints."],
+    };
+  },
+};
+
+// ── CDC synchronisers ────────────────────────────────────────────────────────
+
+const cdcSync: Generator = {
+  id: "cdc_sync", title: "CDC synchronisers", blurb: "Two safe ways across a clock boundary: a flip-flop chain for a level, and a toggle synchroniser that turns a one-cycle pulse into one pulse in the other domain.",
+  params: [{ key: "stages", label: "Synchroniser stages", kind: "int", default: 2, min: 2, max: 4, hint: "2 is usual; 3 for very fast clocks." }],
+  build: (v) => {
+    const n = num(v, "stages");
+    if (!(Number.isInteger(n) && n >= 2 && n <= 4)) return "From 2 to 4 stages.";
+    const mod = "cdc_sync";
+    const design = `${header(`clock-domain-crossing synchronisers, ${n} flip-flop stages.`)}module ${mod} #(parameter STAGES = ${n}) (
+    input  wire rst,            // active high, held for a few cycles of both clocks
+    // level: a signal that changes slowly (or is quasi-static) into the clk_dst domain
+    input  wire clk_dst,
+    input  wire d_async,
+    output wire q_sync,
+    // pulse: each one-cycle pulse_src in clk_src becomes one one-cycle pulse_dst in clk_dst
+    input  wire clk_src,
+    input  wire pulse_src,
+    output wire pulse_dst
+);
+    reg [STAGES-1:0] lvl;
+    always @(posedge clk_dst)
+        if (rst) lvl <= 0;
+        else     lvl <= {lvl[STAGES-2:0], d_async};
+    assign q_sync = lvl[STAGES-1];
+
+    reg toggle;                         // flips once per source pulse
+    always @(posedge clk_src)
+        if (rst)            toggle <= 1'b0;
+        else if (pulse_src) toggle <= ~toggle;
+    reg [STAGES:0] tsync;               // the synchroniser chain plus one flop to see the change
+    always @(posedge clk_dst)
+        if (rst) tsync <= 0;
+        else     tsync <= {tsync[STAGES-1:0], toggle};
+    assign pulse_dst = tsync[STAGES] ^ tsync[STAGES-1];
+endmodule
+`;
+    const testbench = `\`timescale 1ns / 1ps
+// Generated by BitFlow Studio: a 10 ns source clock and a slower 16 ns destination clock.
+// Every source pulse must arrive as exactly one destination pulse; the level must follow within ${n + 1} cycles.
+module tb_${mod};
+    localparam STAGES = ${n};
+    reg rst = 1'b1, clk_src = 1'b0, clk_dst = 1'b0, pulse_src = 1'b0, d_async = 1'b0;
+    wire q_sync, pulse_dst;
+    integer errors = 0, sent = 0, got = 0, i, seed = 3;
+
+    ${mod} #(.STAGES(STAGES)) dut (.rst(rst), .clk_dst(clk_dst), .d_async(d_async), .q_sync(q_sync),
+                         .clk_src(clk_src), .pulse_src(pulse_src), .pulse_dst(pulse_dst));
+    always #5 clk_src = ~clk_src;
+    always #8 clk_dst = ~clk_dst;
+    always @(posedge clk_dst) if (!rst && pulse_dst) got = got + 1;
+
+    initial begin
+        $dumpfile("wave.vcd");
+        $dumpvars(0, tb_${mod});
+        #50 rst = 1'b0;
+        // pulses: one source cycle wide, far enough apart for the slower side to see each
+        for (i = 0; i < 12; i = i + 1) begin
+            @(negedge clk_src); pulse_src = 1'b1; sent = sent + 1;
+            @(negedge clk_src); pulse_src = 1'b0;
+            repeat (2 * (STAGES + 3) + ($random(seed) & 7)) @(negedge clk_src);
+        end
+        repeat (STAGES + 3) @(posedge clk_dst);
+        if (got != sent) begin $display("FAIL: %0d pulses sent, %0d received", sent, got); errors = errors + 1; end
+        // level: change it now and then; q_sync must match within STAGES + 1 destination cycles
+        for (i = 0; i < 8; i = i + 1) begin
+            #3 d_async = ~d_async;
+            repeat (STAGES + 1) @(posedge clk_dst);
+            #1 if (q_sync !== d_async) begin $display("FAIL at %0t: q_sync = %b, d_async = %b", $time, q_sync, d_async); errors = errors + 1; end
+            repeat ($random(seed) & 3) @(posedge clk_dst);
+        end
+        if (errors == 0) $display("ALL TESTS PASSED (%0d pulses crossed)", got);
+        else $display("TESTS FAILED: %0d error(s)", errors);
+        $finish;
+    end
+endmodule
+`;
+    return {
+      module: mod, design, testbench,
+      notes: [`Latency: ${n} to ${n + 1} destination cycles.`, "Source pulses must be at least about 3 destination cycles apart, or two of them merge.",
+        "Never synchronise a multi-bit value bit by bit: use a Gray code, a handshake or an asynchronous FIFO."],
+    };
+  },
+};
+
+// ── VGA timing ───────────────────────────────────────────────────────────────
+
+const vgaTiming: Generator = {
+  id: "vga", title: "VGA / video timing", blurb: "Horizontal and vertical counters with sync pulses and a display-enable, for any resolution. Draw pixels where de is high.",
+  params: [
+    { key: "h_active", label: "H active", kind: "int", default: 640, min: 8, max: 4096 }, { key: "h_front", label: "H front porch", kind: "int", default: 16, min: 1, max: 1024 },
+    { key: "h_sync", label: "H sync", kind: "int", default: 96, min: 1, max: 1024 }, { key: "h_back", label: "H back porch", kind: "int", default: 48, min: 1, max: 1024 },
+    { key: "v_active", label: "V active", kind: "int", default: 480, min: 4, max: 4096 }, { key: "v_front", label: "V front porch", kind: "int", default: 10, min: 1, max: 256 },
+    { key: "v_sync", label: "V sync", kind: "int", default: 2, min: 1, max: 256 }, { key: "v_back", label: "V back porch", kind: "int", default: 33, min: 1, max: 256 },
+    { key: "sync_neg", label: "Sync active low (1/0)", kind: "int", default: 1, min: 0, max: 1 },
+  ],
+  presets: [
+    { label: "640×480 @60 (25.175 MHz)", values: { h_active: 640, h_front: 16, h_sync: 96, h_back: 48, v_active: 480, v_front: 10, v_sync: 2, v_back: 33, sync_neg: 1 } },
+    { label: "800×600 @60 (40 MHz)", values: { h_active: 800, h_front: 40, h_sync: 128, h_back: 88, v_active: 600, v_front: 1, v_sync: 4, v_back: 23, sync_neg: 0 } },
+    { label: "1280×720 @60 (74.25 MHz)", values: { h_active: 1280, h_front: 110, h_sync: 40, h_back: 220, v_active: 720, v_front: 5, v_sync: 5, v_back: 20, sync_neg: 0 } },
+  ],
+  build: (v) => {
+    const keys = ["h_active", "h_front", "h_sync", "h_back", "v_active", "v_front", "v_sync", "v_back"];
+    const p = Object.fromEntries(keys.map((k) => [k, num(v, k)])) as Record<string, number>;
+    if (keys.some((k) => !(Number.isInteger(p[k]) && p[k] >= 1 && p[k] <= 4096))) return "Every timing value is a whole number of pixels or lines, at least 1.";
+    const neg = num(v, "sync_neg") ? 1 : 0;
+    const hTotal = p.h_active + p.h_front + p.h_sync + p.h_back, vTotal = p.v_active + p.v_front + p.v_sync + p.v_back;
+    const xw = bitsFor(hTotal - 1), yw = bitsFor(vTotal - 1), mod = "vga_timing";
+    const design = `${header(`video timing ${p.h_active}×${p.v_active}, ${hTotal}×${vTotal} total, sync active ${neg ? "low" : "high"}.`)}module ${mod} #(
+    parameter H_ACTIVE = ${p.h_active}, H_FRONT = ${p.h_front}, H_SYNC = ${p.h_sync}, H_BACK = ${p.h_back},
+    parameter V_ACTIVE = ${p.v_active}, V_FRONT = ${p.v_front}, V_SYNC = ${p.v_sync}, V_BACK = ${p.v_back},
+    parameter SYNC_NEG = ${neg}           // 1: hsync and vsync are active low
+) (
+    input  wire          clk,         // the pixel clock
+    input  wire          rst,         // synchronous, active high
+    output wire [${xw - 1}:0] x,           // the pixel position, valid while de
+    output wire [${yw - 1}:0] y,
+    output wire          hsync,
+    output wire          vsync,
+    output wire          de           // display enable: inside the visible area
+);
+    localparam H_TOTAL = H_ACTIVE + H_FRONT + H_SYNC + H_BACK;
+    localparam V_TOTAL = V_ACTIVE + V_FRONT + V_SYNC + V_BACK;
+    reg [${xw - 1}:0] h;
+    reg [${yw - 1}:0] v;
+    always @(posedge clk)
+        if (rst) begin h <= 0; v <= 0; end
+        else if (h == H_TOTAL - 1) begin
+            h <= 0;
+            v <= (v == V_TOTAL - 1) ? 0 : v + 1'b1;
+        end else h <= h + 1'b1;
+    wire hs = (h >= H_ACTIVE + H_FRONT) && (h < H_ACTIVE + H_FRONT + H_SYNC);
+    wire vs = (v >= V_ACTIVE + V_FRONT) && (v < V_ACTIVE + V_FRONT + V_SYNC);
+    assign hsync = SYNC_NEG ? ~hs : hs;
+    assign vsync = SYNC_NEG ? ~vs : vs;
+    assign de    = (h < H_ACTIVE) && (v < V_ACTIVE);
+    assign x = h;
+    assign y = v;
+endmodule
+`;
+    const t = { ha: 8, hf: 2, hs: 3, hb: 2, va: 4, vf: 1, vs: 2, vb: 1 };                       // a tiny screen, so the test sees whole frames
+    const th = t.ha + t.hf + t.hs + t.hb, tv = t.va + t.vf + t.vs + t.vb;
+    const cycles: Cycle[] = [];
+    let h = 0, vv = 0;
+    for (let i = 0; i < 2 * th * tv + 20; i++) {
+      const rst = i < 2;
+      if (rst) { h = 0; vv = 0; } else if (h === th - 1) { h = 0; vv = vv === tv - 1 ? 0 : vv + 1; } else h++;
+      const hs = h >= t.ha + t.hf && h < t.ha + t.hf + t.hs ? 1 : 0, vs = vv >= t.va + t.vf && vv < t.va + t.vf + t.vs ? 1 : 0;
+      cycles.push({
+        set: { rst: rst ? 1n : 0n },
+        expect: { x: big(h), y: big(vv), hsync: big(neg ? 1 - hs : hs), vsync: big(neg ? 1 - vs : vs), de: big(h < t.ha && vv < t.va ? 1 : 0) },
+        note: !rst && h === 0 && vv === 0 ? "new frame" : undefined,
+      });
+    }
+    return {
+      module: mod, design,
+      testbench: vectorTb(mod, [{ name: "rst", width: 1 }], [{ name: "x", width: xw }, { name: "y", width: yw }, { name: "hsync", width: 1 }, { name: "vsync", width: 1 }, { name: "de", width: 1 }],
+        cycles, true, `two frames of a scaled-down ${th}×${tv} screen`,
+        `.H_ACTIVE(${t.ha}), .H_FRONT(${t.hf}), .H_SYNC(${t.hs}), .H_BACK(${t.hb}), .V_ACTIVE(${t.va}), .V_FRONT(${t.vf}), .V_SYNC(${t.vs}), .V_BACK(${t.vb})`),
+      notes: [`${hTotal} × ${vTotal} = ${hTotal * vTotal} pixel clocks per frame; at 60 Hz the pixel clock is ${(hTotal * vTotal * 60 / 1e6).toFixed(2)} MHz.`,
+        "The testbench shrinks the screen to 8×4 so two whole frames simulate quickly; the logic is the same."],
+    };
+  },
+};
+
+// ── 7-segment multiplexer ────────────────────────────────────────────────────
+
+/** Active-low segment patterns (gfedcba) for hex digits 0–F, as on most common-anode boards. */
+export const SEG_HEX_ACTIVE_LOW = [0x40, 0x79, 0x24, 0x30, 0x19, 0x12, 0x02, 0x78, 0x00, 0x10, 0x08, 0x03, 0x46, 0x21, 0x06, 0x0e];
+
+const sevenSeg: Generator = {
+  id: "sevenseg", title: "7-segment display driver", blurb: "Shows a hex number on several 7-segment digits that share their segment lines, lighting one digit at a time fast enough to look steady.",
+  params: [
+    { key: "digits", label: "Digits", kind: "int", default: 4, min: 2, max: 8 },
+    { key: "refresh", label: "Clocks per digit", kind: "int", default: 50000, min: 2, max: 10000000, hint: "50 MHz / 50000 = 1 kHz per digit." },
+  ],
+  build: (v) => {
+    const n = num(v, "digits"), refresh = num(v, "refresh");
+    if (!(Number.isInteger(n) && n >= 2 && n <= 8)) return "From 2 to 8 digits.";
+    if (!(Number.isInteger(refresh) && refresh >= 2 && refresh <= 10000000)) return "Clocks per digit from 2 to 10000000.";
+    const dw = bitsFor(n - 1), mod = "sevenseg_mux", tbRefresh = 3;
+    const design = `${header(`${n}-digit multiplexed 7-segment driver, active-low digits and segments.`)}module ${mod} #(parameter REFRESH = ${refresh}) (   // clocks each digit stays lit
+    input  wire        clk,
+    input  wire        rst,           // synchronous, active high
+    input  wire [${4 * n - 1}:0] value,         // ${n} hex digits; digit 0 (value[3:0]) is the rightmost
+    output reg  [${n - 1}:0]  an,            // digit enables, active low
+    output reg  [6:0]  seg            // segments g f e d c b a, active low
+);
+    localparam RW = $clog2(REFRESH + 1);
+    reg [RW-1:0] cnt;
+    reg [${dw - 1}:0]    digit;
+    always @(posedge clk)
+        if (rst) begin cnt <= 0; digit <= 0; end
+        else if (cnt == REFRESH - 1) begin
+            cnt   <= 0;
+            digit <= (digit == ${n - 1}) ? ${dw}'d0 : digit + 1'b1;
+        end else cnt <= cnt + 1'b1;
+    wire [3:0] nibble = value[4*digit +: 4];
+    always @(*) begin
+        an = {${n}{1'b1}};
+        an[digit] = 1'b0;
+        case (nibble)
+${SEG_HEX_ACTIVE_LOW.map((s, d) => `            4'h${d.toString(16)}: seg = 7'b${s.toString(2).padStart(7, "0")};`).join("\n")}
+            default: seg = 7'b1111111;
+        endcase
+    end
+endmodule
+`;
+    const r = rng(31), cycles: Cycle[] = [];
+    let cnt = 0, digit = 0, value = 0n;
+    for (let i = 0; i < 12 * tbRefresh * n; i++) {
+      const rst = i < 2;
+      if (i % (3 * tbRefresh * n) === 2) value = big(Math.floor(r() * 2 ** Math.min(4 * n, 30))) & mask(4 * n);
+      if (rst) { cnt = 0; digit = 0; } else if (cnt === tbRefresh - 1) { cnt = 0; digit = digit === n - 1 ? 0 : digit + 1; } else cnt++;
+      const nib = Number((value >> big(4 * digit)) & 15n);
+      cycles.push({ set: { rst: rst ? 1n : 0n, value }, expect: { an: mask(n) ^ (1n << big(digit)), seg: big(SEG_HEX_ACTIVE_LOW[nib]) } });
+    }
+    return {
+      module: mod, design,
+      testbench: vectorTb(mod, [{ name: "rst", width: 1 }, { name: "value", width: 4 * n }], [{ name: "an", width: n }, { name: "seg", width: 7 }], cycles, true,
+        `random values, ${tbRefresh} clocks per digit`, `.REFRESH(${tbRefresh})`),
+      notes: [`Each digit is lit 1/${n} of the time, refreshed every ${refresh * n} clocks.`, "Common-cathode boards: invert an and seg.",
+        `The testbench uses REFRESH = ${tbRefresh} so the digits change quickly.`],
+    };
+  },
+};
+
+// ── Sine lookup table ────────────────────────────────────────────────────────
+
+/** Signed sine samples: round((2^(width-1) - 1) · sin(2πi/entries)), as two's complement bit patterns. */
+export function sineTable(entries: number, width: number): bigint[] {
+  const amp = 2 ** (width - 1) - 1;
+  return Array.from({ length: entries }, (_, i) => big(Math.round(amp * Math.sin((2 * Math.PI * i) / entries))) & mask(width));
+}
+
+const sineLut: Generator = {
+  id: "sine", title: "Sine lookup table", blurb: "One period of a sine wave as signed samples in a ROM with a registered output. Add a phase accumulator for a DDS tone generator.",
+  params: [
+    { key: "entries", label: "Samples (power of 2)", kind: "int", default: 64, min: 8, max: 1024 },
+    { key: "width", label: "Sample width", kind: "int", default: 8, min: 4, max: 16 },
+  ],
+  build: (v) => {
+    const entries = num(v, "entries"), w = num(v, "width");
+    if (!isPow2(entries) || entries < 8 || entries > 1024) return "The number of samples is a power of two from 8 to 1024.";
+    if (!(Number.isInteger(w) && w >= 4 && w <= 16)) return "Sample widths from 4 to 16.";
+    const aw = Math.log2(entries), table = sineTable(entries, w), mod = "sine_lut";
+    const design = `${header(`sine table, ${entries} signed ${w}-bit samples (amplitude ${2 ** (w - 1) - 1}); data appears the cycle after addr.`)}module ${mod} (
+    input  wire              clk,
+    input  wire [${aw - 1}:0]        addr,    // the phase: 0 … ${entries - 1} is one period
+    output reg  signed [${w - 1}:0] data
+);
+    always @(posedge clk)
+        case (addr)
+${table.map((x, a) => `            ${aw}'d${a}: data <= ${lit(w, x)};`).join("\n")}
+        endcase
+endmodule
+`;
+    const r = rng(37);
+    const addrs = [...Array.from({ length: entries }, (_, a) => a), ...Array.from({ length: 40 }, () => Math.floor(r() * entries))];
+    const cycles: Cycle[] = addrs.map((a) => ({ set: { addr: big(a) }, expect: { data: table[a] } }));
+    return {
+      module: mod, design, testbench: vectorTb(mod, [{ name: "addr", width: aw }], [{ name: "data", width: w }], cycles, true, "every sample, then random ones"),
+      notes: [`addr ${entries / 4} is the peak (${2 ** (w - 1) - 1}), addr ${(3 * entries) / 4} the trough.`,
+        `For a tone at f with clock fclk, add round(f / fclk · 2^N) to an N-bit phase accumulator and use its top ${aw} bits as addr.`,
+        "Set the waveform viewer's radix to signed decimal and switch the row to a line plot to see the curve."],
+    };
+  },
+};
+
+export const GENERATORS: Generator[] = [lfsr, crc, clockDivider, pwm, debouncer, fifo, gray, rom, edge, shift, bcd,
+  uartRx, spiMaster, arbiter, asyncFifo, cdcSync, vgaTiming, sevenSeg, sineLut];
 export const defaults = (g: Generator): Values => Object.fromEntries(g.params.map((p) => [p.key, p.default]));
