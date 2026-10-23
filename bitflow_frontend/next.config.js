@@ -37,13 +37,14 @@ const nextConfig = {
               "default-src 'self'",
               // Monaco is self-hosted under /monaco (no CDN needed)
               // jsDelivr: YoWASP Yosys (WebAssembly) for synthesis in the browser (lib/synth/worker.ts)
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net",
+              // Google Analytics (components/Analytics.tsx) loads only after the visitor accepts the banner
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net https://www.googletagmanager.com",
               "style-src 'self' 'unsafe-inline'",
               "font-src 'self' data:",   // fonts are self-hosted (lib/fonts.ts)
-              "img-src 'self' data: blob:",
+              "img-src 'self' data: blob: https://www.googletagmanager.com https://*.google-analytics.com",
               // Simulation + AI calls go through our own /api routes (server-side);
               // jsDelivr serves the YoWASP WebAssembly files
-              "connect-src 'self' https://cdn.jsdelivr.net",
+              "connect-src 'self' https://cdn.jsdelivr.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
               "worker-src 'self' blob:",
               "frame-ancestors 'none'",
             ].join("; "),
@@ -51,6 +52,12 @@ const nextConfig = {
         ],
       },
     ];
+  },
+
+  // Old /learn/<slug> problem links: a permanent redirect at the edge (a redirect() in the page
+  // can only happen after the client-side gate has started streaming, which makes it a 200)
+  async redirects() {
+    return [{ source: "/learn/:slug((?!roadmap$)[^/]+)", destination: "/problems/:slug", permanent: true }];
   },
 
   // elkjs (schematic/FSM layout in /api/synthesize) is a large prebuilt

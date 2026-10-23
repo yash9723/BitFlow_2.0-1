@@ -27,7 +27,6 @@ export default function GeneratorsTool() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-display text-xl font-bold">Verilog generators</h1>
         <p className="text-[12px] text-ghost max-w-3xl">
           Common building blocks, sized to your needs. Each comes with a testbench that checks every output on every cycle against
           a reference model, so you can open it in the Sandbox, run it, and change it with confidence.

@@ -97,7 +97,6 @@ export default function TimingTool() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-xl font-bold">Timing diagram</h1>
           <p className="text-[12px] text-ghost max-w-3xl">
             Click a cell to cycle 0 → 1 → X, or drag along a row to paint; click a bus cell to type a value (empty repeats the one
             before). Mark rows as inputs or outputs, then test a design against the diagram.

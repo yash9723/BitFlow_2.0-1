@@ -6,11 +6,12 @@ import { BooleanTool } from "@/components/studio/loaders";
 export const metadata = {
   title: "Boolean algebra",
   description: "Simplify a Boolean expression to its minimal sum of products and product of sums, get its truth table and canonical forms, and check two expressions for equivalence.",
+  alternates: { canonical: "/studio/boolean" },
 };
 
 export default function Page() {
   return (
-    <StudioShell title="Boolean algebra">
+    <StudioShell title="Boolean algebra" path="/studio/boolean">
       <BooleanTool />
     </StudioShell>
   );

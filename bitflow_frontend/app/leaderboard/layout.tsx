@@ -2,6 +2,7 @@
 export const metadata = {
   title: "Leaderboard",
   description: "Top BitFlow learners ranked by XP and problems solved.",
+  alternates: { canonical: "/leaderboard" },
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

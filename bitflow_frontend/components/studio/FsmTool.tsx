@@ -103,7 +103,6 @@ export default function FsmTool() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-xl font-bold">FSM designer</h1>
           <p className="text-[12px] text-ghost max-w-3xl">
             Double-click to add a state. Drag a state to move it; drag from its green handle (or shift-drag it) to another
             state for a transition. Transitions from a state are tried top to bottom; with none true the machine stays.

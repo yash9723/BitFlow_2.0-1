@@ -7,7 +7,7 @@
  */
 
 import { notFound } from "next/navigation";
-import { redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 
 interface PageProps {
@@ -26,5 +26,5 @@ export default async function LearnPage({ params }: PageProps) {
     notFound();
   }
 
-  redirect(`/problems/${question.slug}`);
+  permanentRedirect(`/problems/${question.slug}`);
 }

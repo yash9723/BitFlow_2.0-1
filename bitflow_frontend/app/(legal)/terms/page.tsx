@@ -8,6 +8,7 @@ import { OPERATOR, SITE_NAME } from "@/lib/site";
 export const metadata = {
   title: "Terms of use",
   description: `The rules for using ${SITE_NAME}: your account, your code, fair use of the simulators and contests.`,
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

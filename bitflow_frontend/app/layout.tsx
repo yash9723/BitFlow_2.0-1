@@ -16,8 +16,9 @@ import { AuthProvider } from "@/hooks/useAuth";
 import PageViewTracker from "@/components/PageViewTracker";
 import SimulatorWakeNotice from "@/components/SimulatorWakeNotice";
 import CommandPalette from "@/components/CommandPalette";
+import Analytics from "@/components/Analytics";
 import { inter, mono } from "@/lib/fonts";
-import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
+import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL, jsonLd } from "@/lib/site";
 import "./globals.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,6 +44,29 @@ export const metadata: Metadata = {
     title:       `${SITE_NAME} — ${SITE_TAGLINE}`,
     description: SITE_DESCRIPTION,
   },
+  // Google Search Console ownership check: set GOOGLE_SITE_VERIFICATION to the token from Search Console
+  ...(process.env.GOOGLE_SITE_VERIFICATION ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } } : {}),
+};
+
+/** Organization and WebSite structured data (schema.org), on every page. */
+const SITE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/bitflow_logo_2.png`,
+      description: SITE_DESCRIPTION,
+      parentOrganization: { "@type": "Organization", name: OPERATOR },
+      sameAs: [
+        "https://www.linkedin.com/company/bitflow-vlsi-community/",
+        "https://www.instagram.com/bitflow__official",
+      ],
+    },
+    { "@type": "WebSite", "@id": `${SITE_URL}/#website`, url: SITE_URL, name: SITE_NAME, description: SITE_TAGLINE, publisher: { "@id": `${SITE_URL}/#organization` } },
+  ],
 };
 
 export const viewport: Viewport = {
@@ -64,11 +88,13 @@ export default function RootLayout({
   return (
     <html lang="en" className={`h-full ${inter.variable} ${mono.variable}`}>
       <body className="h-full overflow-y-auto bg-void text-bright font-mono antialiased">
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(SITE_SCHEMA) }} />
         <AuthProvider>
           {children}
           <PageViewTracker />
           <SimulatorWakeNotice />
           <CommandPalette />
+          <Analytics />
         </AuthProvider>
       </body>
     </html>

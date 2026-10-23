@@ -1,6 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
+import SiteFooter from "@/components/SiteFooter";
 
 export default function AboutPage() {
   return (
@@ -12,14 +14,15 @@ export default function AboutPage() {
       <nav className="relative z-10 flex items-center justify-between px-6 py-3 border-b border-rim/50 bg-void/80 backdrop-blur-md">
         <div className="flex items-center gap-10">
           <Link href="/" className="flex items-center gap-2">
-            <img src="/bitflow_logo_64.png" alt="BitFlow" className="w-7 h-7 object-contain" />
+            <Image src="/bitflow_logo_64.png" alt="BitFlow home" width={28} height={28} className="w-7 h-7 object-contain" priority />
             <span className="font-display font-bold text-lg">BitFlow</span>
           </Link>
           <div className="hidden md:flex items-center gap-6 text-[11px] font-semibold tracking-wider uppercase">
             <Link href="/" className="text-ghost hover:text-bright transition-colors pb-0.5">Home</Link>
             <Link href="/sandbox" className="text-ghost hover:text-bright transition-colors pb-0.5">Sandbox IDE</Link>
             <Link href="/learn" className="text-ghost hover:text-bright transition-colors pb-0.5">Learning</Link>
-            <Link href="/about" className="text-phosphor border-b-2 border-phosphor pb-0.5">About</Link>
+            <Link href="/about" className="text-phosphor border-b-2 border-phosphor pb-0.5" aria-current="page">About</Link>
+            <Link href="/contact" className="text-ghost hover:text-bright transition-colors pb-0.5">Contact</Link>
           </div>
         </div>
       </nav>
@@ -44,7 +47,7 @@ export default function AboutPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
             <div className="flex flex-col items-center p-6 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
               <div className="w-36 h-36 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
-                <img src="/Arun Kasi Dommeti.jpeg" alt="Arun Kasi Dommeti" className="w-full h-full object-cover" />
+                <Image src="/Arun Kasi Dommeti.jpeg" alt="Portrait of Arun Kasi Dommeti, co-founder of BitFlow" width={144} height={144} sizes="144px" className="w-full h-full object-cover" />
               </div>
               <h3 className="font-serif text-lg font-bold text-bright mb-1 text-center">Arun Kasi Dommeti</h3>
               <p className="text-xs text-phosphor uppercase tracking-[0.2em] mt-1 font-semibold">Founder</p>
@@ -52,7 +55,7 @@ export default function AboutPage() {
             
             <div className="flex flex-col items-center p-6 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
               <div className="w-36 h-36 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
-                <img src="/Abhilash Joyeal Uppalaguptha.jpeg" alt="Abhilash Joyeal Uppalaguptha" className="w-full h-full object-cover" />
+                <Image src="/Abhilash Joyeal Uppalaguptha.jpeg" alt="Portrait of Abhilash Joyeal Uppalaguptha, co-founder of BitFlow" width={144} height={144} sizes="144px" className="w-full h-full object-cover" />
               </div>
               <h3 className="font-serif text-lg font-bold text-bright mb-1 text-center">Abhilash Joyeal Uppalaguptha</h3>
               <p className="text-xs text-phosphor uppercase tracking-[0.2em] mt-1 font-semibold">Founder</p>
@@ -60,7 +63,7 @@ export default function AboutPage() {
 
             <div className="flex flex-col items-center p-6 border border-rim rounded-2xl bg-pit hover:border-phosphor/30 transition-colors shadow-sm">
               <div className="w-36 h-36 rounded-full overflow-hidden border-[3px] border-phosphor/30 mb-6 shadow-[0_0_15px_rgba(0,232,122,0.1)]">
-                <img src="/Yash Roop Pynni.jpeg" alt="Yash Roop Pynni" className="w-full h-full object-cover" />
+                <Image src="/Yash Roop Pynni.jpeg" alt="Portrait of Yash Roop Pynni, co-founder of BitFlow" width={144} height={144} sizes="144px" className="w-full h-full object-cover" />
               </div>
               <h3 className="font-serif text-lg font-bold text-bright mb-1 text-center">Yash Roop Pynni</h3>
               <p className="text-xs text-phosphor uppercase tracking-[0.2em] mt-1 font-semibold">Founder</p>
@@ -83,11 +86,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <footer className="relative z-10 border-t border-rim/50 py-8 flex justify-center gap-6 text-[11px] tracking-[0.14em] uppercase">
-        <Link href="/" className="text-pale hover:text-phosphor transition-colors">Home</Link>
-        <Link href="/privacy" className="text-pale hover:text-phosphor transition-colors">Privacy</Link>
-        <Link href="/terms" className="text-pale hover:text-phosphor transition-colors">Terms</Link>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

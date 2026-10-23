@@ -64,7 +64,6 @@ export default function BooleanTool() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-display text-xl font-bold">Boolean algebra</h1>
         <p className="text-[12px] text-ghost max-w-3xl">
           Type an expression in textbook notation (A&apos;B + AB&apos;, (A+B)&apos;) or Verilog (~a &amp; b | a &amp; ~b). Get its truth table, canonical
           forms and the simplest sum of products and product of sums, check it against another expression, and export Verilog.

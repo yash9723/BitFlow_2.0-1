@@ -1,7 +1,9 @@
+import { GATED } from "@/lib/site";
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
 
 export const metadata = {
+  ...GATED,
   title: "Contests",
   description: "Timed Verilog contests: solve a set of problems against the clock and climb the contest leaderboard.",
 };

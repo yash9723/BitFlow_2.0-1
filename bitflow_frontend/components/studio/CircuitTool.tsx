@@ -456,7 +456,6 @@ export default function CircuitTool() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-xl font-bold">Circuit editor</h1>
           <p className="text-[12px] text-ghost max-w-3xl">
             Add parts from the palette, drag them into place, and drag from pin to pin to wire them. Click a switch, button or
             clock to drive it: the circuit runs as you build it, and wires light up when they carry a 1. Press <kbd className="text-pale">?</kbd> on

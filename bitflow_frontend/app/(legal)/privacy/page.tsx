@@ -1,7 +1,7 @@
 /**
  * app/(legal)/privacy/page.tsx — privacy policy. Keep it in step with what
  * the code actually stores (prisma/schema.prisma, lib/auth-utils.ts,
- * app/api/analytics, lib/ai-providers.ts).
+ * app/api/analytics, components/Analytics.tsx, app/api/contact, lib/ai-providers.ts).
  */
 
 import { OPERATOR, SITE_NAME } from "@/lib/site";
@@ -9,17 +9,18 @@ import { OPERATOR, SITE_NAME } from "@/lib/site";
 export const metadata = {
   title: "Privacy policy",
   description: `What ${SITE_NAME} stores about you, why, and how to have it deleted.`,
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {
   return (
     <>
       <h1>Privacy policy</h1>
-      <p className="text-ghost text-[12px]">Last updated 19 October 2026</p>
+      <p className="text-ghost text-[12px]">Last updated 24 October 2026</p>
 
       <p>
         {SITE_NAME} is run by {OPERATOR} (&quot;we&quot;). We collect as little as we can: there are no
-        advertising or tracking cookies, and we never sell your data.
+        advertising cookies, analytics cookies are only set if you accept them, and we never sell your data.
       </p>
 
       <h2>What we store</h2>
@@ -31,13 +32,15 @@ export default function PrivacyPage() {
         <li><strong>Public leaderboard:</strong> your username, XP and number of solved problems.</li>
         <li><strong>Public profile (off by default):</strong> if you switch it on, anyone with the link can see your stats, badges, activity and recently solved problems. Switch it off any time.</li>
         <li><strong>Certificates:</strong> when you claim one, its page (your username, the track and the date) is public at its link so others can verify it.</li>
+        <li><strong>Contact form:</strong> if you write to us, we keep your name, email address, subject and message so we can reply. Only our team reads them, and we delete them on request or once they are no longer needed (at most two years).</li>
       </ul>
 
       <h2>Cookies and local storage</h2>
       <p>
         We set a single, strictly necessary cookie, <code>bitflow_session</code>, which keeps you signed in for up to
         a week. Your browser&apos;s local storage keeps editor drafts and panel sizes on your own device; it is never
-        sent to us. Because nothing else is stored, there is no cookie banner.
+        sent to us. Google Analytics cookies (below) are set only if you accept them in the cookie banner; your choice
+        is remembered in local storage, and &quot;Cookie settings&quot; at the bottom of the page lets you change it.
       </p>
 
       <h2>Analytics</h2>
@@ -46,6 +49,13 @@ export default function PrivacyPage() {
         referring website&apos;s domain. We don&apos;t record your IP address, account, device or any identifier, and we
         don&apos;t use cookies for this. If your browser sends <em>Do Not Track</em> or <em>Global Privacy Control</em>,
         nothing is counted.
+      </p>
+      <p>
+        If you accept analytics cookies, we also use Google Analytics 4 to see how visitors use the site (pages viewed,
+        approximate location by country or city, device and browser type). IP addresses are anonymised, advertising
+        features are off, and Google processes the data under its own privacy policy. If you decline or don&apos;t
+        choose, Google Analytics isn&apos;t loaded at all. You can change your choice at any time with
+        &quot;Cookie settings&quot;.
       </p>
 
       <h2>The AI assistant</h2>

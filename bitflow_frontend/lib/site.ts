@@ -20,3 +20,13 @@ export const SITE_URL = (
   "http://localhost:3000"
 ).replace(/\/+$/, "");
 export const CONTACT_EMAIL = process.env.CONTACT_EMAIL || null;
+
+/** A public page's title, description and canonical URL (relative: the root layout's metadataBase makes it absolute). */
+export const pageMeta = (path: string, title: string, description: string) =>
+  ({ title, description, alternates: { canonical: path } });
+
+/** Pages behind sign-in: crawlers only see the sign-in redirect, so keep them out of the index (links are still followed). */
+export const GATED = { robots: { index: false, follow: true } };
+
+/** JSON for a <script type="application/ld+json">, with "<" escaped so the content can't close the tag. */
+export const jsonLd = (data: unknown) => JSON.stringify(data).replace(/</g, "\\u003c");

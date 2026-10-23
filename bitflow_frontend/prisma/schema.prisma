@@ -319,6 +319,23 @@ model RateLimit {
 // No request bodies or user data: where it happened and what was thrown.
 // ============================================================================
 
+// ============================================================================
+// CONTACT — messages from the public form at /contact, read in the admin console
+// (Messages tab). Nothing else is done with them.
+// ============================================================================
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  name      String
+  email     String
+  subject   String
+  message   String
+  handled   Boolean  @default(false)
+
+  @@index([createdAt])
+}
+
 model ErrorLog {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())

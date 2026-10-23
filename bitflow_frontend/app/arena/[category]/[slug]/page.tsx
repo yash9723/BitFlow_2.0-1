@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: PageProps) {
   const problem = await getArenaProblemBySlugFromDb((await params).slug);
   if (!problem) return { title: "Problem not found" };
   return {
-    title:       problem.title,
+    title:       { absolute: `${problem.title} · BitFlow` },   // app/arena/layout.tsx's plain title drops the root template
     description: `${problem.title}: a ${String(problem.difficulty).toLowerCase()} ${problem.category} problem in the BitFlow Arena, graded against hidden tests.`,
   };
 }

@@ -6,11 +6,12 @@ import { GeneratorsTool } from "@/components/studio/loaders";
 export const metadata = {
   title: "Verilog generators",
   description: "Parameterised LFSR, CRC, FIFO, clock divider, PWM, debouncer and more, each with a testbench checked against a reference model.",
+  alternates: { canonical: "/studio/generators" },
 };
 
 export default function Page() {
   return (
-    <StudioShell title="Verilog generators">
+    <StudioShell title="Verilog generators" path="/studio/generators">
       <GeneratorsTool />
     </StudioShell>
   );

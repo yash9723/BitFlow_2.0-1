@@ -39,7 +39,6 @@ export default function NumbersTool() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-display text-xl font-bold">Number formats</h1>
         <p className="text-[12px] text-ghost max-w-3xl">
           See how a number is stored in hardware: integers in any width and radix (two&apos;s complement for negatives), fixed-point
           Q formats for DSP, and IEEE-754 floating point. Click any bit to flip it.

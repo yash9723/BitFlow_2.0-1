@@ -2,6 +2,7 @@
 export const metadata = {
   title: "Sign in or create an account",
   description: "Create a free BitFlow account to save your progress, solve graded Verilog problems and join classes and contests.",
+  alternates: { canonical: "/login" },
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

@@ -16,6 +16,7 @@ const AdminUsers    = dynamic(() => import("@/components/admin/AdminUsers"), { l
 const AdminSystem   = dynamic(() => import("@/components/admin/AdminSystem"), { loading });
 const ContestsAdmin  = dynamic(() => import("@/components/ContestsAdmin"), { loading });
 const AnalyticsAdmin = dynamic(() => import("@/components/AnalyticsAdmin"), { loading });
+const MessagesAdmin  = dynamic(() => import("@/components/admin/MessagesAdmin"), { loading });
 
 const EXPORTS = [
   { label: "Submissions JSONL", href: "/api/admin/export?dataset=submissions&format=jsonl" },
@@ -46,6 +47,7 @@ const TABS = {
   users:    { label: "Users", render: () => <AdminUsers /> },
   contests: { label: "Contests", render: () => <Panel><ContestsAdmin /></Panel> },
   analytics:{ label: "Analytics", render: () => <Analytics /> },
+  messages: { label: "Messages", render: () => <MessagesAdmin /> },
   system:   { label: "System", render: () => <AdminSystem /> },
 };
 type Tab = keyof typeof TABS;

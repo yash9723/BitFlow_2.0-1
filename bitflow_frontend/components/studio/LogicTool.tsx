@@ -99,7 +99,6 @@ export default function LogicTool() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-xl font-bold">Truth table &amp; K-map</h1>
           <p className="text-[12px] text-ghost max-w-2xl">
             Click a cell to cycle 0 → 1 → X (don&apos;t care). The minimal expressions and the K-map groups update as you go.
           </p>

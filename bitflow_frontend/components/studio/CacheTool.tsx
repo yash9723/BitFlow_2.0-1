@@ -56,7 +56,6 @@ export default function CacheTool() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-display text-xl font-bold">Cache simulator</h1>
         <p className="text-[12px] text-ghost max-w-3xl">
           Pick a cache, give it a list of memory accesses, and step through them: each address splits into tag, set index and offset,
           then hits or misses. Misses are sorted into the &quot;3 Cs&quot;: compulsory (first touch), capacity (too small) and conflict (too few ways).
