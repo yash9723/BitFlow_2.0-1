@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import ScrollUnlock from "@/components/ScrollUnlock";
+import { PaletteButton } from "@/components/CommandPalette";
 
 export default function StudioShell({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
@@ -19,6 +20,7 @@ export default function StudioShell({ title, children }: { title?: string; child
           {title && <><span className="text-rim">/</span><span className="text-pale truncate">{title}</span></>}
         </div>
         <nav className="flex items-center gap-4 font-mono text-[11px] shrink-0">
+          <PaletteButton />
           <Link href="/sandbox" className="text-ghost hover:text-bright">Sandbox</Link>
           <Link href="/dashboard" className="text-ghost hover:text-bright hidden sm:inline">Dashboard</Link>
           <Link href="/learn" className="text-ghost hover:text-bright hidden sm:inline">Learn</Link>

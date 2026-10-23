@@ -20,6 +20,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { RunState, SimulateResponse } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
+import { PaletteButton } from "@/components/CommandPalette";
 
 interface ToolbarProps {
   runState:       RunState;
@@ -148,6 +149,7 @@ export default function Toolbar({
               </Link>
             );
           })}
+          <PaletteButton className="ml-1" />
         </nav>
       </div>
 

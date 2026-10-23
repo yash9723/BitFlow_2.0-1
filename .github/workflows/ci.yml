@@ -52,6 +52,7 @@ jobs:
       - run: npm run check-pnr
       - run: npm run check-riscv
       - run: npm run check-report
+      - run: npm run check-palette
 
   web:
     name: Frontend type-check + build

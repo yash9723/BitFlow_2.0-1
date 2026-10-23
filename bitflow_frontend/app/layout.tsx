@@ -15,6 +15,7 @@ import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/hooks/useAuth";
 import PageViewTracker from "@/components/PageViewTracker";
 import SimulatorWakeNotice from "@/components/SimulatorWakeNotice";
+import CommandPalette from "@/components/CommandPalette";
 import { inter, mono } from "@/lib/fonts";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
 import "./globals.css";
@@ -67,6 +68,7 @@ export default function RootLayout({
           {children}
           <PageViewTracker />
           <SimulatorWakeNotice />
+          <CommandPalette />
         </AuthProvider>
       </body>
     </html>
