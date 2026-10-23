@@ -34,6 +34,7 @@
     "check-boolexpr": "tsx scripts/boolexpr.check.ts",
     "check-cache": "tsx scripts/cache.check.ts",
     "check-generators": "tsx scripts/generators.check.ts",
+    "check-protocol": "tsx scripts/protocol-decode.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },

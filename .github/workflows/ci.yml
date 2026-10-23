@@ -57,6 +57,7 @@ jobs:
       - run: npm run check-boolexpr
       - run: npm run check-cache
       - run: npm run check-generators
+      - run: npm run check-protocol
 
   web:
     name: Frontend type-check + build

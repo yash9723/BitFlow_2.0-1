@@ -58,6 +58,7 @@ import { binToHex, niceTimeStep } from "@/lib/vcd-parser";
 import { downloadBlob, downloadVcd } from "@/lib/api";
 import { series, toCsv, valueAt as getValueAtTime, xyPoints } from "@/lib/plot";
 import { FROM_SIM_KEY, fromVcd, nsPerUnit } from "@/lib/studio/wave";
+import { type DecoderKind, type DecoderSpec, type Frame, PRIMARY, ROLES, autoBitTime, guessDecoder, runDecoder } from "@/lib/protocol-decode";
 import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
 import { rowKeys, visibleRows } from "@/lib/waveform-svg";
 import type { SimulateResponse } from "@/lib/types";
@@ -99,6 +100,7 @@ interface SavedView {
   radixMap: Record<string, Radix>;
   markers : { a: number | null; b: number | null };
   plotMap : Record<string, boolean>;
+  decoder?: DecoderSpec | null;
 }
 // ponytail: in-memory only, so views reset on reload; move to sessionStorage if people ask.
 const savedViews = new Map<string, SavedView>();
@@ -383,6 +385,107 @@ function XyPlot({ buses, signedOf, onClose }: {
           <text x={(W + P) / 2} y={H - 4} fontSize={9} fill="#8b8fa3" textAnchor="middle">{x.name}</text>
           <text x={10} y={(H - P) / 2} fontSize={9} fill="#8b8fa3" textAnchor="middle" transform={`rotate(-90 10 ${(H - P) / 2})`}>{y.name}</text>
         </svg>
+      )}
+    </div>
+  );
+}
+
+const FRAME_COLOR: Record<Frame["kind"], string> = { data: "#4db8ff", start: "#ffb020", stop: "#ffb020", error: "#ff4f4f" };
+
+/** "Decode": pick UART / SPI / I2C, map 1-bit signals to its roles, list the frames (click one to jump to it). */
+function DecodePanel({ spec, setSpec, oneBit, frames, autoBit, onJump, onClose }: {
+  spec    : DecoderSpec | null;
+  setSpec : (d: DecoderSpec | null) => void;
+  /** row keys of the 1-bit signals */
+  oneBit  : string[];
+  frames  : Frame[] | string | null;
+  autoBit : number | null;
+  onJump  : (f: Frame) => void;
+  onClose : () => void;
+}) {
+  const input = "bg-pit border border-rim/60 rounded px-1 text-pale";
+  const set = (patch: Partial<DecoderSpec>) => spec && setSpec({ ...spec, ...patch });
+  const list = Array.isArray(frames) ? frames : [];
+  const errors = list.filter((f) => f.error).length;
+  return (
+    <div className="absolute top-2 right-2 z-20 w-[320px] bg-surface border border-rim rounded-lg shadow-xl p-2 font-mono text-[10px] space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-ghost uppercase tracking-wider">Decode</span>
+        <select aria-label="Protocol" value={spec?.kind ?? ""} className={input}
+                onChange={(e) => setSpec(e.target.value ? guessDecoder(e.target.value as DecoderKind, oneBit) : null)}>
+          <option value="">off</option>
+          <option value="uart">UART</option>
+          <option value="spi">SPI</option>
+          <option value="i2c">I2C</option>
+        </select>
+        <button onClick={onClose} aria-label="Close decoder" className="ml-auto text-dim hover:text-ghost px-1">×</button>
+      </div>
+      {oneBit.length === 0 && <p className="text-dim">Needs 1-bit signals in the waveform.</p>}
+      {spec && (
+        <>
+          <div className="grid grid-cols-2 gap-1">
+            {ROLES[spec.kind].map((r) => (
+              <label key={r.role} className="flex items-center gap-1">
+                <span className="text-dim w-12 shrink-0">{r.label.split(" ")[0]}</span>
+                <select aria-label={r.label} value={spec.signals[r.role] ?? ""} className={`${input} min-w-0 flex-1`}
+                        onChange={(e) => set({ signals: { ...spec.signals, [r.role]: e.target.value } })}>
+                  <option value="">{r.optional ? "none" : "choose…"}</option>
+                  {oneBit.map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
+          {spec.kind === "uart" && spec.uart && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1"><span className="text-dim">bit time</span>
+                <input type="number" min={0} value={spec.uart.bitTime || ""} placeholder={autoBit ? `auto ${autoBit}` : "auto"}
+                       onChange={(e) => set({ uart: { ...spec.uart!, bitTime: Math.max(0, Number(e.target.value) || 0) } })}
+                       className={`${input} w-20`} /></label>
+              <label className="flex items-center gap-1"><span className="text-dim">bits</span>
+                <select value={spec.uart.dataBits} className={input} onChange={(e) => set({ uart: { ...spec.uart!, dataBits: Number(e.target.value) } })}>
+                  {[5, 6, 7, 8, 9].map((n) => <option key={n}>{n}</option>)}
+                </select></label>
+              <label className="flex items-center gap-1"><span className="text-dim">parity</span>
+                <select value={spec.uart.parity} className={input}
+                        onChange={(e) => set({ uart: { ...spec.uart!, parity: e.target.value as "none" | "even" | "odd" } })}>
+                  <option>none</option><option>even</option><option>odd</option>
+                </select></label>
+            </div>
+          )}
+          {spec.kind === "spi" && spec.spi && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1"><span className="text-dim">mode</span>
+                <select value={spec.spi.cpol * 2 + spec.spi.cpha} className={input}
+                        onChange={(e) => { const m = Number(e.target.value); set({ spi: { ...spec.spi!, cpol: (m >> 1) as 0 | 1, cpha: (m & 1) as 0 | 1 } }); }}>
+                  {[0, 1, 2, 3].map((m) => <option key={m} value={m}>{m} (CPOL {m >> 1}, CPHA {m & 1})</option>)}
+                </select></label>
+              <label className="flex items-center gap-1"><span className="text-dim">bits</span>
+                <input type="number" min={1} max={16} value={spec.spi.bits} className={`${input} w-12`}
+                       onChange={(e) => set({ spi: { ...spec.spi!, bits: Math.min(16, Math.max(1, Number(e.target.value) || 8)) } })} /></label>
+              <label className="flex items-center gap-1">
+                <input type="checkbox" checked={spec.spi.msbFirst} onChange={(e) => set({ spi: { ...spec.spi!, msbFirst: e.target.checked } })} />
+                <span className="text-dim">MSB first</span></label>
+            </div>
+          )}
+          {typeof frames === "string" ? <p className="text-amber-400">{frames}</p> : (
+            <>
+              <div className="text-dim">{list.length} frame{list.length === 1 ? "" : "s"}{errors ? ` · ${errors} with errors` : ""}</div>
+              {list.length > 0 && (
+                <ul className="max-h-40 overflow-auto border border-rim/40 rounded">
+                  {list.slice(0, 500).map((f, i) => (
+                    <li key={i}>
+                      <button onClick={() => onJump(f)} title={f.error ?? "Jump to this frame"}
+                              className="w-full flex gap-2 px-1.5 py-0.5 text-left hover:bg-rim/40">
+                        <span className="text-dim w-14 shrink-0 text-right">{+f.start.toFixed(2)}</span>
+                        <span style={{ color: FRAME_COLOR[f.kind] }}>{f.label}{f.error ? ` — ${f.error}` : ""}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   );
@@ -698,6 +801,11 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
     return tops;
   }, [displaySignals, plotMap, rowKey]);
   const [xyOpen, setXyOpen] = useState(false);
+  const [decodeOpen, setDecodeOpen] = useState(false);
+  const [decoder, setDecoder] = useState<DecoderSpec | null>(saved?.decoder ?? null);
+  const byKey = useMemo(() => new Map(signals.map((s) => [rowKey.get(s.id)!, s])), [signals, rowKey]);
+  const oneBitKeys = useMemo(() => signals.filter((s) => s.width === 1).map((s) => rowKey.get(s.id)!), [signals, rowKey]);
+  const frames = useMemo(() => (decoder ? runDecoder(decoder, (k) => byKey.get(k)) : null), [decoder, byKey]);
   const svgRef = useRef<SVGSVGElement>(null);
 
   // ── Derived geometry ──────────────────────────────────────────────────────
@@ -870,8 +978,14 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
   const [markers, setMarkers] = useState<SavedView["markers"]>(saved?.markers ?? { a: null, b: null });
 
   useEffect(() => {
-    if (viewKey) savedViews.set(viewKey, { hidden, order, radixMap, markers, plotMap });
-  }, [viewKey, hidden, order, radixMap, markers, plotMap]);
+    if (viewKey) savedViews.set(viewKey, { hidden, order, radixMap, markers, plotMap, decoder });
+  }, [viewKey, hidden, order, radixMap, markers, plotMap, decoder]);
+
+  const jumpTo = useCallback((f: Frame) => {
+    setMarkers((m) => ({ ...m, a: Math.round(f.start) }));
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = Math.max(0, f.start * pxPerUnitRef.current - el.clientWidth / 3);
+  }, []);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const el  = scrollRef.current;
@@ -929,6 +1043,30 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
       }),
     [waveformElements, dimmedIds, displaySignals],
   );
+
+  const decodeOverlay = useMemo(() => {
+    if (!decoder || !Array.isArray(frames)) return null;
+    const key = decoder.signals[PRIMARY[decoder.kind]] || Object.values(decoder.signals).find(Boolean);
+    const ri = displaySignals.findIndex((sg) => rowKey.get(sg.id) === key);
+    if (ri < 0) return null;
+    const y0 = rowTops[ri], h = rowTops[ri + 1] - y0;
+    return (
+      <g pointerEvents="none" fontFamily="monospace" fontSize={9}>
+        {frames.map((f, i) => {
+          const x = f.start * pxPerUnit, w = Math.max(2, (f.end - f.start) * pxPerUnit), c = FRAME_COLOR[f.kind];
+          const fit = Math.floor((w - 6) / 5.5);
+          return (
+            <g key={i}>
+              <rect x={x} y={y0 + 3} width={w} height={h - 6} rx={2} fill={c} fillOpacity={0.12} stroke={c} strokeOpacity={0.55} />
+              {f.kind === "start" || f.kind === "stop"
+                ? <text x={x + 3} y={y0 + 11} fill={c}>{f.label}</text>
+                : fit >= 2 && <text x={x + w / 2} y={y0 + h / 2 + 3} fill={c} textAnchor="middle">{f.label.length > fit ? `${f.label.slice(0, fit - 1)}…` : f.label}</text>}
+            </g>
+          );
+        })}
+      </g>
+    );
+  }, [decoder, frames, displaySignals, rowKey, rowTops, pxPerUnit]);
 
   /**
    * Grid infrastructure: tick lines, tick labels, row dividers.
@@ -1117,7 +1255,8 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
 
           {signals.length > 0 && (
             <>
-              <button onClick={() => setXyOpen((v) => !v)} aria-pressed={xyOpen} title="Plot two buses against each other" className={headerBtn}>X–Y</button>
+              <button onClick={() => { setDecodeOpen((v) => !v); setXyOpen(false); }} aria-pressed={decodeOpen} title="Decode UART, SPI or I2C traffic on 1-bit signals" className={headerBtn}>Decode</button>
+              <button onClick={() => { setXyOpen((v) => !v); setDecodeOpen(false); }} aria-pressed={xyOpen} title="Plot two buses against each other" className={headerBtn}>X–Y</button>
               <button onClick={exportSvg} title="Download the chart as SVG" className={headerBtn}>SVG</button>
               <button onClick={exportCsv} title="Download the visible signals as CSV" className={headerBtn}>CSV</button>
               <button onClick={toTiming} title="Open the visible signals as a timing diagram (one cycle per clock edge)" className={headerBtn}>→ Timing</button>
@@ -1160,6 +1299,11 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
         <div className="relative flex flex-1 min-h-0 overflow-hidden">
           {xyOpen && (
             <XyPlot buses={displaySignals.filter((sg) => sg.width > 1)} signedOf={isSigned} onClose={() => setXyOpen(false)} />
+          )}
+          {decodeOpen && (
+            <DecodePanel spec={decoder} setSpec={setDecoder} oneBit={oneBitKeys} frames={frames} onJump={jumpTo}
+                         autoBit={decoder?.kind === "uart" && byKey.get(decoder.signals.line) ? autoBitTime(byKey.get(decoder.signals.line)!) : null}
+                         onClose={() => setDecodeOpen(false)} />
           )}
 
           {/*
@@ -1292,6 +1436,9 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
 
                 {/* ── Signal waveforms ──────────────────────────────────── */}
                 {dimmedWaveformElements}
+
+                {/* ── Decoded protocol frames, over the decoder's primary signal ── */}
+                {decodeOverlay}
 
                 {/* ── Pinned markers A / B ──────────────────────────────── */}
                 {(["a", "b"] as const).map((k) => {
