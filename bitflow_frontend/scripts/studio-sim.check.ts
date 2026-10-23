@@ -14,6 +14,7 @@ import {
   CIRCUIT_EXAMPLES, defaultEvents as circuitEvents, generateTestbench as circuitTestbench, generateVerilog as circuitVerilog, inputParts, outputParts,
 } from "../lib/studio/circuit";
 import { NONE, makeBlock } from "../lib/studio/circuit-edit";
+import { GENERATORS, type Values, defaults } from "../lib/studio/generators";
 import { TEMPLATES } from "../lib/templates";
 import { PART_CASES } from "./circuit-cases";
 
@@ -82,6 +83,20 @@ for (const { label, circuit } of [...CIRCUIT_EXAMPLES, ...Object.entries(PART_CA
   if (typeof r === "string") throw new Error(`${label}: ${r}`);
   const top = { ...r.circuit, blocks: { core: r.def } };
   cases.push([`circuit block: ${label}`, { design: circuitVerilog(top), testbench: circuitTestbench(top, circuitEvents(circuit, 64, 5)) }]);
+}
+
+// Generators: defaults and a few variants, each against its own model-checked testbench
+for (const gen of GENERATORS) {
+  const extra: Record<string, Values[]> = {
+    lfsr: [{ width: 3, seed: "5" }, { width: 32, seed: "DEADBEEF" }], crc: [{ width: 32, poly: "04C11DB7", init: "FFFFFFFF", xorout: "FFFFFFFF" }, { width: 8, poly: "07", init: "0" }],
+    clkdiv: [{ n: 2 }, { n: 7 }], pwm: [{ width: 2 }], debounce: [{ n: 1 }, { n: 9 }], fifo: [{ width: 1, depth: 2 }, { width: 16, depth: 16 }],
+    gray: [{ width: 9 }], rom: [{ width: 4, values: "1 2 3" }], shift: [{ width: 33 }], bin2bcd: [{ width: 4 }, { width: 14 }],
+  };
+  for (const v of [defaults(gen), ...(extra[gen.id] ?? []).map((x) => ({ ...defaults(gen), ...x }))]) {
+    const r = gen.build(v);
+    if (typeof r === "string") throw new Error(`${gen.id}: ${r}`);
+    cases.push([`generator ${gen.id} ${JSON.stringify(v).slice(0, 60)}`, { design: r.design, testbench: r.testbench }]);
+  }
 }
 
 (async () => {

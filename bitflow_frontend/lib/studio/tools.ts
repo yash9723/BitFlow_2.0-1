@@ -23,4 +23,20 @@ export const STUDIO_TOOLS: StudioTool[] = [
     href: "/studio/pipeline", title: "CPU pipeline", icon: "⫸",
     blurb: "Write RISC-V assembly and step a 5-stage pipeline cycle by cycle: forwarding, load-use stalls and branch flushes, with CPI and a check against the ISA.",
   },
+  {
+    href: "/studio/generators", title: "Verilog generators", icon: "⚙",
+    blurb: "LFSR, CRC, FIFO, clock divider, PWM, debouncer, ROM and more, sized to your parameters, each with a testbench checked against a reference model.",
+  },
+  {
+    href: "/studio/boolean", title: "Boolean algebra", icon: "∧",
+    blurb: "Type an expression like A'B + AB' and get its truth table, minimal SOP and POS, canonical forms, and an equivalence check against another expression.",
+  },
+  {
+    href: "/studio/numbers", title: "Number formats", icon: "#",
+    blurb: "Two's complement in any width, fixed-point Q formats and IEEE-754 half/single/double, bit by bit, with Verilog literals.",
+  },
+  {
+    href: "/studio/cache", title: "Cache simulator", icon: "▦",
+    blurb: "Run an address trace through a direct-mapped or set-associative cache: tag/index/offset, hits, the 3 Cs of misses, write-backs and AMAT.",
+  },
 ];

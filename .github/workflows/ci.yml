@@ -53,6 +53,10 @@ jobs:
       - run: npm run check-riscv
       - run: npm run check-report
       - run: npm run check-palette
+      - run: npm run check-numbers
+      - run: npm run check-boolexpr
+      - run: npm run check-cache
+      - run: npm run check-generators
 
   web:
     name: Frontend type-check + build

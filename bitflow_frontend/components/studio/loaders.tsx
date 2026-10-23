@@ -13,3 +13,7 @@ export const FsmTool = dynamic(() => import("./FsmTool"), { ssr: false, loading 
 export const TimingTool = dynamic(() => import("./TimingTool"), { ssr: false, loading });
 export const CircuitTool = dynamic(() => import("./CircuitTool"), { ssr: false, loading });
 export const PipelineTool = dynamic(() => import("./PipelineTool"), { ssr: false, loading });
+export const NumbersTool = dynamic(() => import("./NumbersTool"), { ssr: false, loading });
+export const BooleanTool = dynamic(() => import("./BooleanTool"), { ssr: false, loading });
+export const CacheTool = dynamic(() => import("./CacheTool"), { ssr: false, loading });
+export const GeneratorsTool = dynamic(() => import("./GeneratorsTool"), { ssr: false, loading });
