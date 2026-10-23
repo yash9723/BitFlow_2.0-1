@@ -305,6 +305,60 @@ export function renameBlock(top: Circuit, from: string, to: string): Circuit {
   };
 }
 
+/**
+ * Ungroup: replace block instance `instanceId` by a copy of its definition's parts, wired to
+ * what the instance's pins were wired to (its port parts disappear). Labels that would clash
+ * are renamed. The block stays in the library. Returns the new circuit and the copied parts.
+ */
+export function ungroupBlock(c: Circuit, instanceId: string, uid: (prefix: string) => string): { circuit: Circuit; sel: Selection } | string {
+  const inst = c.parts.find((p) => p.id === instanceId);
+  if (!inst || inst.kind !== "block") return "Select one block to ungroup.";
+  const def = c.blocks?.[inst.block ?? ""];
+  if (!def) return `Block ${inst.block} isn't in this circuit's library.`;
+  const portIds = new Set(def.parts.filter((p) => INPUT_KINDS.includes(p.kind) || OUTPUT_KINDS.includes(p.kind)).map((p) => p.id));
+  const inner = def.parts.filter((p) => !portIds.has(p.id));
+  const portOf = new Map(def.parts.filter((p) => portIds.has(p.id)).map((p) => [p.id, p.label]));
+
+  // copies of the inner parts, centred where the instance was
+  const b = bounds({ ...def, parts: inner.length ? inner : def.parts, notes: [] });
+  const sz = size(inst);
+  const dx = Math.round((inst.x + sz.w / 2 - (b ? b.x + b.w / 2 : 0)) / SNAP) * SNAP;
+  const dy = Math.round((inst.y + sz.h / 2 - (b ? b.y + b.h / 2 : 0)) / SNAP) * SNAP;
+  const used = new Set([c.module, ...c.parts.filter((p) => p.id !== inst.id).map((p) => p.label)]);
+  const ids = new Map<string, string>();
+  const parts = inner.map((p) => {
+    const id = uid("p"), label = nextLabel(p.label, used);
+    used.add(label);
+    ids.set(p.id, id);
+    return { ...p, id, label, x: p.x + dx, y: p.y + dy };
+  });
+
+  // what drove each input pin of the instance, and what each output pin drove
+  const drivers = new Map<string, PinRef[]>(), loads = new Map<string, PinRef[]>();
+  for (const w of c.wires) {
+    if (w.to.part === inst.id) drivers.set(w.to.pin, [...(drivers.get(w.to.pin) ?? []), w.from]);
+    if (w.from.part === inst.id) loads.set(w.from.pin, [...(loads.get(w.from.pin) ?? []), w.to]);
+  }
+  const wires: Wire[] = [];
+  for (const w of def.wires) {
+    const fromPort = portOf.get(w.from.part), toPort = portOf.get(w.to.part);
+    const froms = fromPort !== undefined ? drivers.get(fromPort) ?? [] : ids.has(w.from.part) ? [{ ...w.from, part: ids.get(w.from.part)! }] : [];
+    const tos = toPort !== undefined ? loads.get(toPort) ?? [] : ids.has(w.to.part) ? [{ ...w.to, part: ids.get(w.to.part)! }] : [];
+    for (const from of froms) for (const to of tos) wires.push({ id: uid("w"), from, to });
+  }
+  const notes = (def.notes ?? []).map((n) => ({ ...n, id: uid("n"), x: n.x + dx, y: n.y + dy }));
+  return {
+    circuit: {
+      ...c,
+      parts: [...c.parts.filter((p) => p.id !== inst.id), ...parts],
+      wires: [...c.wires.filter((w) => w.from.part !== inst.id && w.to.part !== inst.id), ...wires],
+      notes: [...(c.notes ?? []), ...notes],
+      probes: c.probes?.filter((r) => r.part !== inst.id),
+    },
+    sel: { parts: parts.map((p) => p.id), wires: wires.map((w) => w.id), notes: notes.map((n) => n.id) },
+  };
+}
+
 // ── Undo history ──────────────────────────────────────────────────────────────
 
 /**

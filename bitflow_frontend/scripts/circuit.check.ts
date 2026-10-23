@@ -9,7 +9,7 @@ import {
 } from "../lib/studio/circuit";
 import { tableFromNetlist } from "../lib/studio/logic-min";
 import {
-  type Selection, History, NONE, blockNameIssue, copy, inRect, makeBlock, merge, move, nextLabel, paste, remove, renameBlock, selectAll, usesBlock, withBlock, wirePath,
+  type Selection, History, NONE, blockNameIssue, copy, inRect, makeBlock, merge, move, nextLabel, paste, remove, renameBlock, selectAll, ungroupBlock, usesBlock, withBlock, wirePath,
 } from "../lib/studio/circuit-edit";
 import { netlistToCircuit } from "../lib/studio/circuit-import";
 import { inputParts, outputParts, toBits } from "../lib/studio/circuit";
@@ -249,6 +249,18 @@ for (const [label, c] of ALL) {
   assert.match(generateVerilog(top), /\n {4}blk u_blk1 \(/);
 }
 assert.match(makeBlock(half, { ...NONE, parts: ["p1", "p3"] }, "x", uid2) as string, /Leave switches/);
+// Ungroup undoes it: the block's logic back in the circuit, rewired, behaving the same
+for (const [label, c] of ALL) {
+  const top = blocked(c);
+  const r = ungroupBlock(top, top.parts.find((p) => p.kind === "block")!.id, uid2);
+  if (typeof r === "string") throw new Error(`${label}: ${r}`);
+  assert.equal(r.circuit.parts.filter((p) => p.kind === "block").length, 0, `ungroup: ${label}`);
+  assert.equal(r.circuit.parts.length, c.parts.length, `ungroup: ${label}: same parts`);
+  assert.deepEqual(validate(r.circuit).filter((i) => i.level === "error"), [], `ungroup: ${label}`);
+  sameOutputs(c, r.circuit, `ungroup: ${label}`);
+  assert.equal(new Set(r.circuit.parts.map((p) => p.label)).size, r.circuit.parts.length, `ungroup: ${label}: labels unique`);
+}
+assert.match(ungroupBlock(half, "p1", uid2) as string, /Select one block/);
 // Nested: the block instance itself put in a block; Verilog lists the inner module first
 const add4b = blocked(ex("4-bit adder"));
 const nested = blocked(add4b, "outer");

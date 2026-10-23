@@ -17,25 +17,10 @@ import {
   generateTestbench, matchDesign, resolved, setDir, stubModule, toWaveJson, validate,
 } from "@/lib/studio/wave";
 import { nameProblem } from "@/lib/studio/logic-min";
+import { svgToPng } from "@/lib/svg-image";
 
 function valid(d: WaveDiagram | null): d is WaveDiagram {
   return !!d && Array.isArray(d.signals) && typeof d.cycles === "number" && typeof d.period === "number";
-}
-
-/** The SVG as a PNG at 2x, for slides and reports. */
-async function svgToPng(svg: string): Promise<Blob> {
-  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
-  try {
-    const img = new Image();
-    await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; img.src = url; });
-    const canvas = Object.assign(document.createElement("canvas"), { width: img.width * 2, height: img.height * 2 });
-    const ctx = canvas.getContext("2d")!;
-    ctx.scale(2, 2);
-    ctx.drawImage(img, 0, 0);
-    return await new Promise((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error("PNG export failed"))), "image/png"));
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }
 
 const nextBit = (v: string) => (v === "0" ? "1" : v === "1" ? "x" : "0");

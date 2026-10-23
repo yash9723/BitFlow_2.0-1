@@ -44,3 +44,17 @@ export const STUDIO_TOOLS: StudioTool[] = [
     blurb: "Run an address trace through a direct-mapped or set-associative cache: tag/index/offset, hits, the 3 Cs of misses, write-backs and AMAT.",
   },
 ];
+
+/** The localStorage drafts a share link carries, per tool page (components/studio/ShareControl.tsx). */
+export const SHARE_KEYS: Record<string, string[]> = {
+  "/studio/circuit": ["bitflow_studio_circuit"],
+  "/studio/fsm": ["bitflow_studio_fsm"],
+  "/studio/timing": ["bitflow_studio_timing", "bitflow_studio_timing_mode", "bitflow_studio_timing_module", "bitflow_studio_timing_design"],
+  "/studio/logic": ["bitflow_studio_logic", "bitflow_studio_logic_form", "bitflow_studio_logic_module"],
+  "/studio/pipeline": ["bitflow_studio_pipeline"],
+  "/studio/testbench": ["bitflow_studio_testbench"],
+  "/studio/generators": ["bitflow_studio_generators"],
+  "/studio/boolean": ["bitflow_studio_boolean"],
+  "/studio/numbers": ["bitflow_studio_numbers"],
+  "/studio/cache": ["bitflow_studio_cache"],
+};

@@ -30,7 +30,7 @@ import {
 } from "@/lib/studio/circuit";
 import {
   type Clip, type Selection, History, NONE, SNAP, blockNameIssue, bounds, copy, forward, inRect, isEmpty, makeBlock, merge, move, nextLabel,
-  noteLines, noteSize, paste, pinPos, remove, renameBlock, selectAll, size, usesBlock, wirePath, wirePoints, withBlock,
+  noteLines, noteSize, paste, pinPos, remove, renameBlock, selectAll, size, ungroupBlock, usesBlock, wirePath, wirePoints, withBlock,
 } from "@/lib/studio/circuit-edit";
 import { MAX_IMPORT_CELLS, netlistToCircuit } from "@/lib/studio/circuit-import";
 import { synthesizeDesign } from "@/lib/synth/client";
@@ -39,6 +39,7 @@ import { tableFromNetlist } from "@/lib/studio/logic-min";
 import { type Trace, longestPath, traceToParsed, traceToVcd } from "@/lib/studio/circuit-analysis";
 import { waveformSvg } from "@/lib/waveform-svg";
 import { downloadBlob } from "@/lib/api";
+import { standaloneSvg, svgToPng } from "@/lib/svg-image";
 
 const TRACE_STEPS = 400;          // steps kept by the logic analyzer
 const TRACE_SHOWN = 160;          // steps drawn
@@ -108,7 +109,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+A", "select all"], ["Delete", "delete the selection"], ["Arrows (Shift: ×5)", "nudge the selection"],
   ["Shift+click", "add to / remove from the selection"], ["Drag empty space", "box select"], ["Drag a wire", "bend it"],
   ["Ctrl+wheel", "zoom"], ["Space+drag, middle button", "pan"], ["Esc", "clear the selection"],
-  ["Ctrl+G", "make a block from the selection"], ["Double-click a block", "open it to edit or test it"],
+  ["Ctrl+G", "make a block from the selection"], ["Ctrl+Shift+G", "ungroup the selected block"], ["Double-click a block", "open it to edit or test it"],
 ];
 
 function valid(c: Circuit | null): c is Circuit {
@@ -377,7 +378,7 @@ export default function CircuitTool() {
     else if (mod && k === "v") pasteClip();
     else if (mod && k === "d") duplicate();
     else if (mod && k === "a") setSel(selectAll(cRef.current));
-    else if (mod && k === "g") blockFromSel();
+    else if (mod && k === "g") (e.shiftKey ? ungroupSel : blockFromSel)();
     else if (k === "delete" || k === "backspace") deleteSel();
     else if (k === "escape") { setSel(NONE); setHelp(false); }
     else if (k === "?") setHelp((h) => !h);
@@ -451,9 +452,33 @@ export default function CircuitTool() {
     router.push("/studio/logic");
   };
 
+  // Ungroup a block instance: its parts back in this circuit (Ctrl+Shift+G)
+  const selBlock = sel.parts.length === 1 && !sel.wires.length ? c.parts.find((p) => p.id === sel.parts[0] && p.kind === "block") : undefined;
+  const ungroupSel = () => {
+    if (!selBlock) { window.alert("Select one block to ungroup."); return; }
+    const r = ungroupBlock({ ...c, blocks: lib }, selBlock.id, uid);
+    if (typeof r === "string") { window.alert(r); return; }
+    edit(r.circuit);
+    setSel(r.sel);
+  };
+  // The canvas as an image, cropped to the circuit (selection cleared first so it isn't highlighted)
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const exportImage = (fmt: "svg" | "png") => {
+    setSel(NONE);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const live = wrapRef.current?.querySelector<SVGSVGElement>('svg[aria-label="Circuit editor"]');
+      const b = bounds(cRef.current);
+      if (!live || !b) { window.alert("The canvas is empty."); return; }
+      const svg = standaloneSvg(live, { x: b.x - 24, y: b.y - 24, w: b.w + 48, h: b.h + 48 }, "#0b0c10", 'rect[fill="url(#cgrid)"]');
+      const name = cRef.current.module || "circuit";
+      if (fmt === "svg") downloadBlob(`${name}.svg`, svg, "image/svg+xml");
+      else svgToPng(svg).then((png) => downloadBlob(`${name}.png`, png, "image/png")).catch(() => window.alert("This browser couldn't make the PNG; use the SVG."));
+    }));
+  };
+
   const btn = "px-2 py-1 rounded border border-rim/60 text-ghost hover:text-bright font-mono text-[11px] disabled:opacity-40";
   return (
-    <div className="space-y-5">
+    <div ref={wrapRef} className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[12px] text-ghost max-w-3xl">
@@ -502,6 +527,10 @@ export default function CircuitTool() {
                 title="Highlight the longest chain of gates between inputs/flip-flops and outputs/flip-flops">Longest path</button>
         <span className="text-rim">|</span>
         <button className={btn} onClick={blockFromSel} disabled={!sel.parts.length} title="Turn the selected parts into a reusable block (Ctrl+G)">⧉ Make block</button>
+        <button className={btn} onClick={ungroupSel} disabled={!selBlock} title="Put the selected block's parts back into this circuit (Ctrl+Shift+G)">Ungroup</button>
+        <span className="text-rim">|</span>
+        <button className={btn} onClick={() => exportImage("svg")} title="Download the circuit as an SVG drawing">⤓ SVG</button>
+        <button className={btn} onClick={() => exportImage("png")} title="Download the circuit as a PNG image">⤓ PNG</button>
         <button className={`${btn} ${importing ? "border-info/60 text-info" : ""}`} onClick={() => setImporting((v) => !v)}
                 title="Draw a circuit from a Verilog module">⇣ Import Verilog</button>
       </div>

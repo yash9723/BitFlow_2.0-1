@@ -11,6 +11,8 @@ import ScrollUnlock from "@/components/ScrollUnlock";
 import SiteFooter from "@/components/SiteFooter";
 import { PaletteButton } from "@/components/CommandPalette";
 import { SITE_URL, jsonLd } from "@/lib/site";
+import { SHARE_KEYS } from "@/lib/studio/tools";
+import ShareControl from "@/components/studio/ShareControl";
 
 export default function StudioShell({ title, path, children }: { title?: string; path?: string; children: React.ReactNode }) {
   const crumbs: [string, string][] = [["/", "BitFlow"], ["/studio", "Studio"], ...(title && path ? [[path, title] as [string, string]] : [])];
@@ -38,6 +40,7 @@ export default function StudioShell({ title, path, children }: { title?: string;
           </ol>
         </nav>
         <nav className="flex items-center gap-4 font-mono text-[11px] shrink-0" aria-label="Main">
+          {path && SHARE_KEYS[path] && <ShareControl path={path} keys={SHARE_KEYS[path]} />}
           <PaletteButton />
           <Link href="/sandbox" className="text-ghost hover:text-bright">Sandbox</Link>
           <Link href="/dashboard" className="text-ghost hover:text-bright hidden sm:inline">Dashboard</Link>

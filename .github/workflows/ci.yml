@@ -59,6 +59,7 @@ jobs:
       - run: npm run check-generators
       - run: npm run check-protocol
       - run: npm run check-tbgen
+      - run: npm run check-share
 
   web:
     name: Frontend type-check + build
