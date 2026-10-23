@@ -502,4 +502,718 @@ module tb_hex7seg_hidden;
 endmodule
 `,
   },
+
+  // ─── 6. typedef enum + struct packed in an ALU ─────────────────────────────
+  {
+    id: "sv-enum-alu", slug: "sv-enum-alu",
+    title: "SystemVerilog: Enum-Driven ALU with Flags",
+    difficulty: "intermediate", category: "systemverilog",
+    tags: ["systemverilog", "typedef enum", "struct packed", "unique case", "alu"],
+    learningLevel: "Verilog Intermediate",
+    moduleId: "mod_sv", orderIndex: 75,
+    xpReward: 150, waveformRequired: false,
+    expectedOutputMode: "stdout_compare",
+    statement: `## SystemVerilog: an enum-driven ALU
+
+A \`typedef enum\` gives opcodes names, so a \`case\` reads like the instruction set; a \`struct packed\` groups
+related bits (here the flags) under field names while still being a plain bit vector.
+
+Build an **8-bit ALU**. \`op\` selects the operation:
+
+| \`op\` | Name | \`y\` |
+|------|------|-----|
+| 0 | ADD | \`a + b\` |
+| 1 | SUB | \`a - b\` |
+| 2 | AND | \`a & b\` |
+| 3 | OR  | \`a \\| b\` |
+| 4 | XOR | \`a ^ b\` |
+| 5 | SLL | \`a << b[2:0]\` |
+| 6 | SRL | \`a >> b[2:0]\` (zeros in) |
+| 7 | SRA | \`a >>> b[2:0]\` (copies of \`a[7]\` in) |
+
+\`flags\` is \`{zero, negative, carry}\` (zero in bit 2): **zero** when \`y\` is 0, **negative** = \`y[7]\`,
+**carry** = the carry out of bit 7 for ADD, 1 for SUB when there is no borrow (\`a >= b\`), and 0 for the other operations.
+${SV_NOTE}`,
+    constraints: ["Name the opcodes with a typedef enum and the flags with a struct packed.", "Purely combinational: always_comb, no clock."],
+    examples: [
+      { input: "op = ADD, a = 8'hF0, b = 8'h20", output: "y = 8'h10, flags = 3'b001", explanation: "0xF0 + 0x20 = 0x110: carry out, result not zero, bit 7 clear" },
+      { input: "op = SUB, a = 8'h05, b = 8'h05", output: "y = 8'h00, flags = 3'b101", explanation: "Zero, and no borrow so carry = 1" },
+      { input: "op = SRA, a = 8'h80, b = 8'h03", output: "y = 8'hF0, flags = 3'b010" },
+    ],
+    hints: [
+      { tier: 1, content: "Compute carry and y together for ADD and SUB with a 9-bit sum: `{carry, y} = {1'b0, a} + {1'b0, b};`." },
+      { tier: 2, content: "SUB is a + ~b + 1; the ninth bit of that sum is 1 exactly when there is no borrow. SRA needs a signed operand: `$signed(a) >>> b[2:0]`." },
+      { tier: 3, content: "Default carry to 0 at the top of always_comb, then `unique case (op)` over the enum names, then fill the struct: `f.zero = (y == '0); f.negative = y[7]; f.carry = carry;` and `assign flags = f;`." },
+    ],
+    solutionExplanation: "The enum turns 3-bit codes into names, and `unique case` tells tools every value is handled exactly once. A 9-bit sum gives the carry for free; subtraction reuses the adder as a + ~b + 1. The packed struct's first field is its most significant bit, so `flags` comes out as {zero, negative, carry}.",
+    publicTestcases: [], hiddenTestcases: [],
+    starterCode: `\`timescale 1ns / 1ps
+
+module alu8 (
+    input  logic [7:0] a,
+    input  logic [7:0] b,
+    input  logic [2:0] op,
+    output logic [7:0] y,
+    output logic [2:0] flags     // {zero, negative, carry}
+);
+    typedef enum logic [2:0] { ADD, SUB, AND_OP, OR_OP, XOR_OP, SLL, SRL, SRA } op_t;
+    typedef struct packed { logic zero; logic negative; logic carry; } flags_t;
+
+    flags_t f;
+    logic   carry;
+
+    always_comb begin
+        // TODO: y and carry for each operation, then the flags
+    end
+    assign flags = f;
+endmodule
+`,
+    publicTestbench: `\`timescale 1ns / 1ps
+module tb_alu8;
+    logic [7:0] a, b, y;
+    logic [2:0] op, flags;
+    alu8 dut (.a(a), .b(b), .op(op), .y(y), .flags(flags));
+    initial begin
+        $dumpfile("wave.vcd"); $dumpvars(0, tb_alu8);
+        a = 8'hF0; b = 8'h20; op = 3'd0; #1 $display("ADD F0+20: y=%h flags=%b (expect 10 001)", y, flags);
+        a = 8'h05; b = 8'h05; op = 3'd1; #1 $display("SUB 05-05: y=%h flags=%b (expect 00 101)", y, flags);
+        a = 8'h80; b = 8'h03; op = 3'd7; #1 $display("SRA 80>>>3: y=%h flags=%b (expect f0 010)", y, flags);
+        $finish;
+    end
+endmodule
+`,
+    hiddenTestbench: `\`timescale 1ns / 1ps
+module tb_alu8_hidden;
+    reg  [7:0] a, b;
+    reg  [2:0] op;
+    wire [7:0] y;
+    wire [2:0] flags;
+    reg  [8:0] wide;
+    reg  [7:0] wy;
+    reg        wc;
+    integer i, k, errors;
+    alu8 dut (.a(a), .b(b), .op(op), .y(y), .flags(flags));
+    task check;
+        begin
+            wc = 1'b0;
+            case (op)
+                3'd0: begin wide = {1'b0, a} + {1'b0, b}; wy = wide[7:0]; wc = wide[8]; end
+                3'd1: begin wide = {1'b0, a} + {1'b0, ~b} + 9'd1; wy = wide[7:0]; wc = wide[8]; end
+                3'd2: wy = a & b;
+                3'd3: wy = a | b;
+                3'd4: wy = a ^ b;
+                3'd5: wy = a << b[2:0];
+                3'd6: wy = a >> b[2:0];
+                default: wy = $signed(a) >>> b[2:0];
+            endcase
+            #1;
+            if (y !== wy || flags !== {wy == 8'd0, wy[7], wc}) begin
+                $display("FAIL: op=%0d a=%h b=%h gave y=%h flags=%b, expected y=%h flags=%b", op, a, b, y, flags, wy, {wy == 8'd0, wy[7], wc});
+                errors = errors + 1;
+            end
+        end
+    endtask
+    initial begin
+        errors = 0;
+        for (k = 0; k < 8; k = k + 1) begin
+            op = k;
+            a = 8'h00; b = 8'h00; check;
+            a = 8'hFF; b = 8'h01; check;
+            a = 8'h80; b = 8'h07; check;
+            a = 8'h7F; b = 8'h80; check;
+            a = 8'h01; b = 8'h02; check;
+        end
+        for (i = 0; i < 3000; i = i + 1) begin
+            a = $random; b = $random; op = $random; check;
+        end
+        if (errors == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule
+`,
+  },
+
+  // ─── 7. always_ff register file ────────────────────────────────────────────
+  {
+    id: "sv-register-file", slug: "sv-register-file",
+    title: "SystemVerilog: Register File",
+    difficulty: "intermediate", category: "systemverilog",
+    tags: ["systemverilog", "always_ff", "memory", "register file", "sequential"],
+    learningLevel: "Verilog Intermediate",
+    moduleId: "mod_sv", orderIndex: 76,
+    xpReward: 150, waveformRequired: false,
+    expectedOutputMode: "stdout_compare",
+    statement: `## SystemVerilog: a register file
+
+A CPU keeps its working values in a **register file**: a small memory with one write port and two read ports,
+so an instruction can read two operands and write a result every cycle.
+
+Build eight 8-bit registers, **r0 to r7**:
+
+- **Write**: on the rising edge of \`clk\`, if \`we\` is 1, register \`waddr\` takes \`wdata\`.
+- **r0 is always 0**: writes to it are ignored (as in RISC-V's x0).
+- **Read**: \`rdata1\` shows register \`raddr1\` and \`rdata2\` shows register \`raddr2\` **combinationally**; a write
+  shows up on the read ports after the clock edge.
+- **Reset**: \`rst\` (synchronous, active high) clears every register.
+
+| Port | Dir | Width |
+|------|-----|-------|
+| \`clk\`, \`rst\`, \`we\` | in | 1 |
+| \`waddr\`, \`raddr1\`, \`raddr2\` | in | 3 |
+| \`wdata\` | in | 8 |
+| \`rdata1\`, \`rdata2\` | out | 8 |
+${SV_NOTE}`,
+    constraints: ["Store the registers in an unpacked array of logic.", "Writes in always_ff; reads are continuous assignments."],
+    examples: [
+      { input: "we = 1, waddr = 3, wdata = 8'h5A, then a clock edge; raddr1 = 3", output: "rdata1 = 8'h5A" },
+      { input: "we = 1, waddr = 0, wdata = 8'hFF, then a clock edge; raddr2 = 0", output: "rdata2 = 8'h00", explanation: "r0 ignores writes" },
+    ],
+    hints: [
+      { tier: 1, content: "Declare `logic [7:0] regs [0:7];` and read it with `assign rdata1 = regs[raddr1];`." },
+      { tier: 2, content: "In the always_ff block, a reset clears every entry with a for loop; otherwise write only when `we && waddr != 0`." },
+      { tier: 3, content: "`if (rst) for (int i = 0; i < 8; i++) regs[i] <= '0; else if (we && waddr != 3'd0) regs[waddr] <= wdata;`" },
+    ],
+    solutionExplanation: "The array holds the state; always_ff makes the write a clocked, non-blocking update, so a value written this cycle is read from the next one. Never writing r0, and clearing it on reset, makes it read as zero forever, which is the cheapest way to build a hard-wired zero register.",
+    publicTestcases: [], hiddenTestcases: [],
+    starterCode: `\`timescale 1ns / 1ps
+
+module regfile (
+    input  logic       clk,
+    input  logic       rst,
+    input  logic       we,
+    input  logic [2:0] waddr,
+    input  logic [7:0] wdata,
+    input  logic [2:0] raddr1,
+    input  logic [2:0] raddr2,
+    output logic [7:0] rdata1,
+    output logic [7:0] rdata2
+);
+    // TODO: eight 8-bit registers, a clocked write port, two read ports; r0 reads 0
+endmodule
+`,
+    publicTestbench: `\`timescale 1ns / 1ps
+module tb_regfile;
+    logic clk = 0, rst = 1, we = 0;
+    logic [2:0] waddr = 0, raddr1 = 0, raddr2 = 0;
+    logic [7:0] wdata = 0, rdata1, rdata2;
+    regfile dut (.clk(clk), .rst(rst), .we(we), .waddr(waddr), .wdata(wdata), .raddr1(raddr1), .raddr2(raddr2), .rdata1(rdata1), .rdata2(rdata2));
+    always #5 clk = ~clk;
+    initial begin
+        $dumpfile("wave.vcd"); $dumpvars(0, tb_regfile);
+        @(negedge clk) rst = 0;
+        we = 1; waddr = 3; wdata = 8'h5A; @(negedge clk);
+        waddr = 0; wdata = 8'hFF;         @(negedge clk);
+        we = 0; raddr1 = 3; raddr2 = 0; #1;
+        $display("r3=%h (expect 5a)  r0=%h (expect 00)", rdata1, rdata2);
+        $finish;
+    end
+endmodule
+`,
+    hiddenTestbench: `\`timescale 1ns / 1ps
+module tb_regfile_hidden;
+    reg clk = 0, rst, we;
+    reg [2:0] waddr, raddr1, raddr2;
+    reg [7:0] wdata;
+    wire [7:0] rdata1, rdata2;
+    reg [7:0] model [0:7];
+    integer i, j, errors;
+    regfile dut (.clk(clk), .rst(rst), .we(we), .waddr(waddr), .wdata(wdata), .raddr1(raddr1), .raddr2(raddr2), .rdata1(rdata1), .rdata2(rdata2));
+    always #5 clk = ~clk;
+    always @(posedge clk)
+        if (rst) for (j = 0; j < 8; j = j + 1) model[j] <= 8'd0;
+        else if (we && waddr != 3'd0) model[waddr] <= wdata;
+    initial begin
+        errors = 0;
+        rst = 1; we = 0; waddr = 0; wdata = 0; raddr1 = 0; raddr2 = 0;
+        @(negedge clk); @(negedge clk);
+        for (i = 0; i < 800; i = i + 1) begin
+            rst = (i % 97 == 50);
+            we = $random; waddr = $random; wdata = $random; raddr1 = $random; raddr2 = $random;
+            if (i < 16) begin we = 1; waddr = i; end
+            #1;
+            if (rdata1 !== model[raddr1] || rdata2 !== model[raddr2]) begin
+                $display("FAIL at step %0d: r%0d read %h (expected %h), r%0d read %h (expected %h)", i, raddr1, rdata1, model[raddr1], raddr2, rdata2, model[raddr2]);
+                errors = errors + 1;
+            end
+            @(negedge clk);
+        end
+        if (errors == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule
+`,
+  },
+
+  // ─── 8. generate: a parameterised adder tree ───────────────────────────────
+  {
+    id: "sv-adder-tree", slug: "sv-adder-tree",
+    title: "SystemVerilog: Adder Tree with generate",
+    difficulty: "advanced", category: "systemverilog",
+    tags: ["systemverilog", "generate", "parameter", "adder tree", "combinational"],
+    learningLevel: "Verilog Advanced",
+    moduleId: "mod_sv", orderIndex: 77,
+    xpReward: 180, waveformRequired: false,
+    expectedOutputMode: "stdout_compare",
+    statement: `## SystemVerilog: an adder tree with \`generate\`
+
+Adding N numbers one after another makes a chain N-1 adders long. A **tree** adds them in pairs, then the pair sums in pairs,
+and so on: only log₂N adders deep, so it runs much faster. \`generate\` loops build that structure for any N.
+
+Build \`adder_tree\` with a parameter **N** (a power of two, 2 to 64): \`data\` packs N unsigned 8-bit numbers
+(number *i* is \`data[8*i +: 8]\`), and \`sum\` is their total, **8 + $clog2(N)** bits wide so it never overflows.
+
+| Port | Dir | Width |
+|------|-----|-------|
+| \`data\` | in | 8·N |
+| \`sum\` | out | 8 + $clog2(N) |
+
+The tests instantiate it with N = 4, 8 and 16.
+${SV_NOTE}`,
+    constraints: ["Build the tree with generate for loops, not a single for loop in always_comb.", "Combinational: no clock."],
+    examples: [
+      { input: "N = 4, data = {8'd4, 8'd3, 8'd2, 8'd1}", output: "sum = 10" },
+      { input: "N = 8, every number 255", output: "sum = 2040", explanation: "11 bits hold up to 2047" },
+    ],
+    hints: [
+      { tier: 1, content: "Store the tree like a heap in one array of 2N-1 nodes: node i adds nodes 2i+1 and 2i+2; the leaves are nodes N-1 to 2N-2." },
+      { tier: 2, content: "Make every node the full output width so no partial sum overflows: `wire [W-1:0] node [0:2*N-2];` with `localparam W = 8 + $clog2(N);`." },
+      { tier: 3, content: "Two generate loops: `for (i = 0; i < N; i++) assign node[N-1+i] = data[8*i +: 8];` and `for (i = 0; i < N-1; i++) assign node[i] = node[2*i+1] + node[2*i+2];`, then `assign sum = node[0];`." },
+    ],
+    solutionExplanation: "Laid out as a heap, the tree needs no level-by-level bookkeeping: node i's children are 2i+1 and 2i+2, the N inputs are the last N nodes, and node 0 is the total. A generate loop instantiates one adder per internal node, so the netlist is a balanced tree log₂N adders deep however large N is.",
+    publicTestcases: [], hiddenTestcases: [],
+    starterCode: `\`timescale 1ns / 1ps
+
+module adder_tree #(
+    parameter N = 8                          // how many 8-bit numbers (a power of two)
+) (
+    input  logic [8*N-1:0]          data,    // number i is data[8*i +: 8]
+    output logic [8+$clog2(N)-1:0]  sum
+);
+    localparam W = 8 + $clog2(N);
+    // TODO: a tree of adders built with generate
+endmodule
+`,
+    publicTestbench: `\`timescale 1ns / 1ps
+module tb_adder_tree;
+    logic [31:0] data;
+    logic [9:0]  sum;
+    adder_tree #(.N(4)) dut (.data(data), .sum(sum));
+    initial begin
+        $dumpfile("wave.vcd"); $dumpvars(0, tb_adder_tree);
+        data = {8'd4, 8'd3, 8'd2, 8'd1}; #1 $display("1+2+3+4 = %0d (expect 10)", sum);
+        data = {4{8'd255}};              #1 $display("4 x 255 = %0d (expect 1020)", sum);
+        $finish;
+    end
+endmodule
+`,
+    hiddenTestbench: `\`timescale 1ns / 1ps
+module tb_adder_tree_hidden;
+    reg  [31:0]  d4;  wire [9:0]  s4;
+    reg  [63:0]  d8;  wire [10:0] s8;
+    reg  [127:0] d16; wire [11:0] s16;
+    integer i, k, errors, w4, w8, w16;
+    adder_tree #(.N(4))  t4  (.data(d4),  .sum(s4));
+    adder_tree #(.N(8))  t8  (.data(d8),  .sum(s8));
+    adder_tree #(.N(16)) t16 (.data(d16), .sum(s16));
+    task check;
+        begin
+            #1;
+            w4 = 0; w8 = 0; w16 = 0;
+            for (k = 0; k < 4; k = k + 1)  w4  = w4  + d4[8*k +: 8];
+            for (k = 0; k < 8; k = k + 1)  w8  = w8  + d8[8*k +: 8];
+            for (k = 0; k < 16; k = k + 1) w16 = w16 + d16[8*k +: 8];
+            if (s4 !== w4 || s8 !== w8 || s16 !== w16) begin
+                $display("FAIL: sums %0d %0d %0d, expected %0d %0d %0d", s4, s8, s16, w4, w8, w16);
+                errors = errors + 1;
+            end
+        end
+    endtask
+    initial begin
+        errors = 0;
+        d4 = 0; d8 = 0; d16 = 0; check;
+        d4 = {4{8'hFF}}; d8 = {8{8'hFF}}; d16 = {16{8'hFF}}; check;
+        for (i = 0; i < 16; i = i + 1) begin
+            d4 = 0; d8 = 0; d16 = 0;
+            d16[8*i +: 8] = 8'hFF; d8[8*(i % 8) +: 8] = 8'h80; d4[8*(i % 4) +: 8] = i + 1;
+            check;
+        end
+        for (i = 0; i < 400; i = i + 1) begin
+            d4 = $random; d8 = {$random, $random}; d16 = {$random, $random, $random, $random};
+            check;
+        end
+        if (errors == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule
+`,
+  },
+
+  // ─── 9. unique case one-hot mux ────────────────────────────────────────────
+  {
+    id: "sv-onehot-mux", slug: "sv-onehot-mux",
+    title: "SystemVerilog: One-Hot Mux with unique case",
+    difficulty: "intermediate", category: "systemverilog",
+    tags: ["systemverilog", "unique case", "always_comb", "mux", "combinational"],
+    learningLevel: "Verilog Intermediate",
+    moduleId: "mod_sv", orderIndex: 78,
+    xpReward: 120, waveformRequired: false,
+    expectedOutputMode: "stdout_compare",
+    statement: `## SystemVerilog: a one-hot mux with \`unique case\`
+
+Buses often select a source with **one-hot** lines: one bit per source, at most one set. \`unique case\` tells the
+synthesis tool the items never overlap, so it can build a fast parallel AND-OR mux instead of a priority chain;
+simulators can also warn when two items match.
+
+Build a 4-input, 8-bit one-hot mux:
+
+- If exactly one bit of \`sel\` is set, \`y\` is that input (\`sel[0]\` → \`d0\` … \`sel[3]\` → \`d3\`) and \`err\` is 0.
+- If \`sel\` is 0, \`y\` is 0 and \`err\` is 0 (nothing selected).
+- If two or more bits are set, \`y\` is 0 and \`err\` is 1.
+
+| Port | Dir | Width |
+|------|-----|-------|
+| \`sel\` | in | 4 |
+| \`d0\` … \`d3\` | in | 8 each |
+| \`y\` | out | 8 |
+| \`err\` | out | 1 |
+${SV_NOTE}`,
+    constraints: ["Use unique case inside always_comb.", "Assign y and err on every path (defaults first), so no latch."],
+    examples: [
+      { input: "sel = 4'b0100, d2 = 8'h3C", output: "y = 8'h3C, err = 0" },
+      { input: "sel = 4'b0110", output: "y = 8'h00, err = 1", explanation: "Two sources selected at once" },
+    ],
+    hints: [
+      { tier: 1, content: "Default `y = '0; err = 1'b0;` at the top of always_comb." },
+      { tier: 2, content: "List the four one-hot values as case items, add an item for 4'b0000 that does nothing, and let default catch everything else." },
+      { tier: 3, content: "`unique case (sel) 4'b0001: y = d0; 4'b0010: y = d1; 4'b0100: y = d2; 4'b1000: y = d3; 4'b0000: ; default: err = 1'b1; endcase`" },
+    ],
+    solutionExplanation: "The defaults cover the idle and error cases for y, the four one-hot items pick a source, and default flags any value with more than one bit set. Because no two items can match the same sel, `unique` is a true promise to the tools, which then drop the priority logic an ordinary case would imply.",
+    publicTestcases: [], hiddenTestcases: [],
+    starterCode: `\`timescale 1ns / 1ps
+
+module onehot_mux (
+    input  logic [3:0] sel,
+    input  logic [7:0] d0,
+    input  logic [7:0] d1,
+    input  logic [7:0] d2,
+    input  logic [7:0] d3,
+    output logic [7:0] y,
+    output logic       err
+);
+    always_comb begin
+        // TODO: defaults, then unique case on sel
+    end
+endmodule
+`,
+    publicTestbench: `\`timescale 1ns / 1ps
+module tb_onehot_mux;
+    logic [3:0] sel;
+    logic [7:0] d0 = 8'h11, d1 = 8'h22, d2 = 8'h3C, d3 = 8'h44, y;
+    logic err;
+    onehot_mux dut (.sel(sel), .d0(d0), .d1(d1), .d2(d2), .d3(d3), .y(y), .err(err));
+    initial begin
+        $dumpfile("wave.vcd"); $dumpvars(0, tb_onehot_mux);
+        sel = 4'b0100; #1 $display("sel=%b y=%h err=%b (expect 3c 0)", sel, y, err);
+        sel = 4'b0110; #1 $display("sel=%b y=%h err=%b (expect 00 1)", sel, y, err);
+        sel = 4'b0000; #1 $display("sel=%b y=%h err=%b (expect 00 0)", sel, y, err);
+        $finish;
+    end
+endmodule
+`,
+    hiddenTestbench: `\`timescale 1ns / 1ps
+module tb_onehot_mux_hidden;
+    reg  [3:0] sel;
+    reg  [7:0] d0, d1, d2, d3;
+    wire [7:0] y;
+    wire       err;
+    reg  [7:0] wy;
+    reg        we;
+    integer i, s, errors;
+    onehot_mux dut (.sel(sel), .d0(d0), .d1(d1), .d2(d2), .d3(d3), .y(y), .err(err));
+    initial begin
+        errors = 0;
+        for (i = 0; i < 24; i = i + 1) begin
+            d0 = $random; d1 = $random; d2 = $random; d3 = $random;
+            for (s = 0; s < 16; s = s + 1) begin
+                sel = s; #1;
+                case (sel)
+                    4'b0001: begin wy = d0; we = 0; end
+                    4'b0010: begin wy = d1; we = 0; end
+                    4'b0100: begin wy = d2; we = 0; end
+                    4'b1000: begin wy = d3; we = 0; end
+                    4'b0000: begin wy = 0;  we = 0; end
+                    default: begin wy = 0;  we = 1; end
+                endcase
+                if (y !== wy || err !== we) begin
+                    $display("FAIL: sel=%b gave y=%h err=%b, expected y=%h err=%b", sel, y, err, wy, we);
+                    errors = errors + 1;
+                end
+            end
+        end
+        if (errors == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule
+`,
+  },
+
+  // ─── 10. function automatic: CRC-8 ─────────────────────────────────────────
+  {
+    id: "sv-crc8-function", slug: "sv-crc8-function",
+    title: "SystemVerilog: CRC-8 with a Function",
+    difficulty: "advanced", category: "systemverilog",
+    tags: ["systemverilog", "function automatic", "always_ff", "crc", "sequential"],
+    learningLevel: "Verilog Advanced",
+    moduleId: "mod_sv", orderIndex: 79,
+    xpReward: 180, waveformRequired: false,
+    expectedOutputMode: "stdout_compare",
+    statement: `## SystemVerilog: CRC-8 with a \`function automatic\`
+
+A **CRC** (cyclic redundancy check) is a checksum that catches burst errors: links and file formats append one
+so the receiver can tell if bits were flipped. SystemVerilog functions (with \`return\`, local \`int\` loop variables and
+\`automatic\` storage) keep the per-byte arithmetic readable, and the clocked part tiny.
+
+Build \`crc8\`: a running **CRC-8** (polynomial **x⁸ + x² + x + 1**, written 0x07; start value 0; no final XOR;
+most significant bit first; the "CRC-8/SMBUS" variant).
+
+- On a rising clock edge with \`rst\` = 1, \`crc\` becomes 0.
+- Otherwise, when \`valid\` is 1, \`crc\` takes the CRC of everything so far followed by \`data\`.
+
+For one byte: XOR it into the CRC, then 8 times: shift left by one, and if the bit shifted out was 1, XOR in 0x07.
+
+| Port | Dir | Width |
+|------|-----|-------|
+| \`clk\`, \`rst\`, \`valid\` | in | 1 |
+| \`data\` | in | 8 |
+| \`crc\` | out | 8 |
+
+The check value: after the nine bytes of the text \`123456789\`, \`crc\` is **0xF4**.
+${SV_NOTE}`,
+    constraints: ["Put the per-byte step in a function automatic that returns the new CRC.", "Update crc in always_ff."],
+    examples: [
+      { input: "the bytes \"123456789\" (0x31 … 0x39) with valid = 1", output: "crc = 8'hF4" },
+      { input: "one byte 8'h01 after reset", output: "crc = 8'h07" },
+    ],
+    hints: [
+      { tier: 1, content: "Declare `function automatic logic [7:0] crc8_step(input logic [7:0] c, input logic [7:0] d);` inside the module." },
+      { tier: 2, content: "Inside it: `logic [7:0] x; x = c ^ d; for (int i = 0; i < 8; i++) x = x[7] ? (x << 1) ^ 8'h07 : (x << 1); return x;`" },
+      { tier: 3, content: "`always_ff @(posedge clk) if (rst) crc <= '0; else if (valid) crc <= crc8_step(crc, data);`" },
+    ],
+    solutionExplanation: "XOR-ing the byte in first and then doing eight shift-and-conditional-XOR steps is polynomial division by 0x07, one bit per step. The function is pure combinational logic (synthesis unrolls the loop), and the always_ff only decides when to take the next value, so the same function could be reused for a checker on the receive side.",
+    publicTestcases: [], hiddenTestcases: [],
+    starterCode: `\`timescale 1ns / 1ps
+
+module crc8 (
+    input  logic       clk,
+    input  logic       rst,
+    input  logic       valid,
+    input  logic [7:0] data,
+    output logic [7:0] crc
+);
+    // TODO: function automatic logic [7:0] crc8_step(...) and a clocked update
+endmodule
+`,
+    publicTestbench: `\`timescale 1ns / 1ps
+module tb_crc8;
+    logic clk = 0, rst = 1, valid = 0;
+    logic [7:0] data = 0, crc;
+    crc8 dut (.clk(clk), .rst(rst), .valid(valid), .data(data), .crc(crc));
+    always #5 clk = ~clk;
+    initial begin
+        $dumpfile("wave.vcd"); $dumpvars(0, tb_crc8);
+        @(negedge clk) rst = 0;
+        valid = 1;
+        data = "1"; @(negedge clk); data = "2"; @(negedge clk); data = "3"; @(negedge clk);
+        data = "4"; @(negedge clk); data = "5"; @(negedge clk); data = "6"; @(negedge clk);
+        data = "7"; @(negedge clk); data = "8"; @(negedge clk); data = "9"; @(negedge clk);
+        valid = 0;
+        $display("CRC-8 of 123456789 = %h (expect f4)", crc);
+        $finish;
+    end
+endmodule
+`,
+    hiddenTestbench: `\`timescale 1ns / 1ps
+module tb_crc8_hidden;
+    reg clk = 0, rst, valid;
+    reg [7:0] data, model;
+    wire [7:0] crc;
+    integer i, errors;
+    crc8 dut (.clk(clk), .rst(rst), .valid(valid), .data(data), .crc(crc));
+    always #5 clk = ~clk;
+    function [7:0] step;
+        input [7:0] c, d;
+        integer j;
+        reg [7:0] x;
+        begin
+            x = c ^ d;
+            for (j = 0; j < 8; j = j + 1) x = x[7] ? ((x << 1) ^ 8'h07) : (x << 1);
+            step = x;
+        end
+    endfunction
+    always @(posedge clk)
+        if (rst) model <= 8'd0;
+        else if (valid) model <= step(model, data);
+    task feed(input [7:0] b);
+        begin valid = 1; data = b; @(negedge clk); valid = 0; end
+    endtask
+    initial begin
+        errors = 0; rst = 1; valid = 0; data = 0;
+        @(negedge clk); @(negedge clk); rst = 0;
+        feed("1"); feed("2"); feed("3"); feed("4"); feed("5"); feed("6"); feed("7"); feed("8"); feed("9");
+        if (crc !== 8'hF4) begin $display("FAIL: CRC of 123456789 is %h, expected f4", crc); errors = errors + 1; end
+        rst = 1; @(negedge clk); rst = 0;
+        feed(8'h01);
+        if (crc !== 8'h07) begin $display("FAIL: CRC of 01 is %h, expected 07", crc); errors = errors + 1; end
+        for (i = 0; i < 1500; i = i + 1) begin
+            rst = (i % 211 == 100); valid = $random; data = $random;
+            @(negedge clk);
+            if (crc !== model) begin $display("FAIL at step %0d: crc = %h, expected %h", i, crc, model); errors = errors + 1; end
+        end
+        if (errors == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule
+`,
+  },
+
+  // ─── 11. typedef enum two-process FSM: req/ack handshake ───────────────────
+  {
+    id: "sv-req-ack-handshake", slug: "sv-req-ack-handshake",
+    title: "SystemVerilog: Four-Phase Req/Ack Handshake",
+    difficulty: "advanced", category: "systemverilog",
+    tags: ["systemverilog", "typedef enum", "fsm", "handshake", "always_ff", "always_comb"],
+    learningLevel: "Verilog Advanced",
+    moduleId: "mod_sv", orderIndex: 80,
+    xpReward: 200, waveformRequired: true,
+    expectedOutputMode: "stdout_compare",
+    statement: `## SystemVerilog: a four-phase req/ack handshake
+
+When two blocks run at different speeds, a **four-phase handshake** passes data safely: the sender raises \`req\`
+with the data held steady, the receiver raises \`ack\` once it has taken it, the sender drops \`req\`, and the
+receiver drops \`ack\`. Only then can the next transfer start.
+
+Build the **sender** as a state machine with a \`typedef enum\` and two processes (\`always_ff\` for the state,
+\`always_comb\` for the next state):
+
+| State | \`req\` | \`busy\` | Leaves when (sampled at the clock edge) |
+|-------|-------|--------|------------------------------|
+| IDLE | 0 | 0 | \`start\` is 1: go to REQ and copy \`data_in\` into \`data_out\` |
+| REQ | 1 | 1 | \`ack\` is 1: go to RELEASE |
+| RELEASE | 0 | 1 | \`ack\` is 0: go to IDLE |
+
+- \`data_out\` is a register: it changes only when a transfer starts, so it is steady while \`req\` is high.
+- \`done\` is 1 for exactly one cycle: the cycle after the clock edge that leaves RELEASE.
+- \`rst\` (synchronous, active high) returns to IDLE with \`data_out\` = 0 and \`done\` = 0.
+- \`start\` is ignored while busy.
+
+| Port | Dir | Width |
+|------|-----|-------|
+| \`clk\`, \`rst\`, \`start\`, \`ack\` | in | 1 |
+| \`data_in\` | in | 8 |
+| \`req\`, \`busy\`, \`done\` | out | 1 |
+| \`data_out\` | out | 8 |
+${SV_NOTE}`,
+    constraints: ["Name the states with typedef enum logic [1:0].", "One always_ff for the registers, one always_comb for the next state; req and busy decoded from the state."],
+    examples: [
+      { input: "start = 1 with data_in = 8'hA7 while idle", output: "next cycle: req = 1, busy = 1, data_out = 8'hA7" },
+      { input: "the receiver raises ack, then drops it", output: "req drops after ack rises; done pulses once after ack falls, then busy = 0" },
+    ],
+    hints: [
+      { tier: 1, content: "`typedef enum logic [1:0] { IDLE, REQ, RELEASE } state_t; state_t state, next_state;`" },
+      { tier: 2, content: "In always_comb: `next_state = state;` then a unique case moving IDLE→REQ on start, REQ→RELEASE on ack, RELEASE→IDLE on !ack." },
+      { tier: 3, content: "In always_ff (not in reset): `state <= next_state; done <= (state == RELEASE) && !ack; if (state == IDLE && start) data_out <= data_in;` and `assign req = (state == REQ); assign busy = (state != IDLE);`" },
+    ],
+    solutionExplanation: "Each phase of the protocol is one state, and each state waits for exactly one change of ack, so neither side can run ahead of the other. Decoding req from the state (instead of driving it from logic on the inputs) keeps it glitch-free, which matters when the receiver is in another clock domain. data_out only loads in IDLE, so it is stable for the whole time req is high.",
+    publicTestcases: [], hiddenTestcases: [],
+    starterCode: `\`timescale 1ns / 1ps
+
+module req_ack_sender (
+    input  logic       clk,
+    input  logic       rst,
+    input  logic       start,
+    input  logic [7:0] data_in,
+    input  logic       ack,
+    output logic       req,
+    output logic       busy,
+    output logic       done,
+    output logic [7:0] data_out
+);
+    typedef enum logic [1:0] { IDLE, REQ, RELEASE } state_t;
+    state_t state, next_state;
+
+    // TODO: always_ff for state, data_out and done; always_comb for next_state; decode req and busy
+endmodule
+`,
+    publicTestbench: `\`timescale 1ns / 1ps
+module tb_req_ack_sender;
+    logic clk = 0, rst = 1, start = 0, ack = 0;
+    logic [7:0] data_in = 8'hA7, data_out;
+    logic req, busy, done;
+    integer i;
+    req_ack_sender dut (.clk(clk), .rst(rst), .start(start), .data_in(data_in), .ack(ack), .req(req), .busy(busy), .done(done), .data_out(data_out));
+    always #5 clk = ~clk;
+    initial begin
+        $dumpfile("wave.vcd"); $dumpvars(0, tb_req_ack_sender);
+        @(negedge clk) rst = 0;
+        start = 1; @(negedge clk); start = 0;
+        for (i = 0; i < 10; i = i + 1) begin
+            $display("cycle %0d: req=%b ack=%b busy=%b done=%b data_out=%h", i, req, ack, busy, done, data_out);
+            if (req) ack = 1; else if (i > 4) ack = 0;     // a receiver that answers at once
+            @(negedge clk);
+        end
+        $finish;
+    end
+endmodule
+`,
+    hiddenTestbench: `\`timescale 1ns / 1ps
+module tb_req_ack_sender_hidden;
+    reg clk = 0, rst, start, ack;
+    reg [7:0] data_in;
+    wire req, busy, done;
+    wire [7:0] data_out;
+    reg [1:0] ms;          // model state: 0 idle, 1 req, 2 release
+    reg [7:0] mdata;
+    reg       mdone;
+    integer i, errors, transfers, wait_n, seed;
+    req_ack_sender dut (.clk(clk), .rst(rst), .start(start), .data_in(data_in), .ack(ack), .req(req), .busy(busy), .done(done), .data_out(data_out));
+    always #5 clk = ~clk;
+    // the model sees the same inputs at the same edges
+    always @(posedge clk)
+        if (rst) begin ms <= 0; mdata <= 0; mdone <= 0; end
+        else begin
+            mdone <= (ms == 2) && !ack;
+            case (ms)
+                0: if (start) begin ms <= 1; mdata <= data_in; end
+                1: if (ack) ms <= 2;
+                2: if (!ack) ms <= 0;
+                default: ms <= 0;
+            endcase
+        end
+    always @(posedge clk) if (!rst && mdone) transfers = transfers + 1;
+    initial begin
+        errors = 0; transfers = 0; seed = 9; wait_n = 0;
+        rst = 1; start = 0; ack = 0; data_in = 0;
+        @(negedge clk); @(negedge clk); rst = 0;
+        for (i = 0; i < 1500; i = i + 1) begin
+            if (req !== (ms == 1) || busy !== (ms != 0) || done !== mdone || data_out !== mdata) begin
+                $display("FAIL at step %0d: req=%b busy=%b done=%b data_out=%h, expected req=%b busy=%b done=%b data_out=%h",
+                         i, req, busy, done, data_out, ms == 1, ms != 0, mdone, mdata);
+                errors = errors + 1;
+            end
+            // next inputs: random starts and data, a receiver with random delays, the odd reset
+            start = ($random(seed) & 3) == 0;
+            data_in = $random(seed);
+            rst = (i % 401 == 300);
+            if (wait_n > 0) wait_n = wait_n - 1;
+            else if (req && !ack) begin ack = 1; wait_n = $random(seed) & 3; end
+            else if (!req && ack) begin ack = 0; wait_n = $random(seed) & 3; end
+            @(negedge clk);
+        end
+        if (transfers < 40) begin $display("FAIL: only %0d transfers completed", transfers); errors = errors + 1; end
+        if (errors == 0) $display("ALL TESTS PASSED");
+        $finish;
+    end
+endmodule
+`,
+  },
 ];
