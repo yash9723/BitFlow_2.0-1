@@ -17,3 +17,4 @@ export const NumbersTool = dynamic(() => import("./NumbersTool"), { ssr: false, 
 export const BooleanTool = dynamic(() => import("./BooleanTool"), { ssr: false, loading });
 export const CacheTool = dynamic(() => import("./CacheTool"), { ssr: false, loading });
 export const GeneratorsTool = dynamic(() => import("./GeneratorsTool"), { ssr: false, loading });
+export const TbGenTool = dynamic(() => import("./TbGenTool"), { ssr: false, loading });

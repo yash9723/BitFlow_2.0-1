@@ -24,6 +24,10 @@ export const STUDIO_TOOLS: StudioTool[] = [
     blurb: "Write RISC-V assembly and step a 5-stage pipeline cycle by cycle: forwarding, load-use stalls and branch flushes, with CPI and a check against the ISA.",
   },
   {
+    href: "/studio/testbench", title: "Testbench generator", icon: "⊳",
+    blurb: "Paste a Verilog or SystemVerilog module and get a self-checking testbench: clock and reset, exhaustive or random stimulus, X/Z checks and a slot for your reference model.",
+  },
+  {
     href: "/studio/generators", title: "Verilog generators", icon: "⚙",
     blurb: "LFSR, CRC, FIFO, clock divider, PWM, debouncer, ROM and more, sized to your parameters, each with a testbench checked against a reference model.",
   },

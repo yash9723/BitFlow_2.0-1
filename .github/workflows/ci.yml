@@ -58,6 +58,7 @@ jobs:
       - run: npm run check-cache
       - run: npm run check-generators
       - run: npm run check-protocol
+      - run: npm run check-tbgen
 
   web:
     name: Frontend type-check + build

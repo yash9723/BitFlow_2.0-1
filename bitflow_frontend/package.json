@@ -35,6 +35,7 @@
     "check-cache": "tsx scripts/cache.check.ts",
     "check-generators": "tsx scripts/generators.check.ts",
     "check-protocol": "tsx scripts/protocol-decode.check.ts",
+    "check-tbgen": "tsx scripts/tbgen.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },

@@ -16,6 +16,7 @@ import {
 import { NONE, makeBlock } from "../lib/studio/circuit-edit";
 import { GENERATORS, type Values, defaults } from "../lib/studio/generators";
 import { TEMPLATES } from "../lib/templates";
+import { type TbOptions, generateTestbench as tbFor, parseModule } from "../lib/studio/tbgen";
 import { PART_CASES } from "./circuit-cases";
 
 if (!process.env.BACKEND_URL || !process.env.JWT_SECRET) {
@@ -99,6 +100,31 @@ for (const gen of GENERATORS) {
   }
 }
 
+// Testbench generator: a testbench for every generator and template design, in both styles
+const tbgen = (design: string, o: Partial<TbOptions> = {}) => {
+  const m = parseModule(design);
+  if (typeof m === "string") throw new Error(m);
+  return { design, testbench: tbFor(m, o) };
+};
+/** Swap the generated TODO model for a real one. */
+const withModel = (c: { design: string; testbench: string }, body: string) =>
+  ({ ...c, testbench: c.testbench.replace(/ {6}\/\/ TODO[^\n]*\n( {6}exp_\w+ = 'bx;\n)+/, `      ${body}\n`) });
+const tbDesigns: [string, string][] = [
+  ...GENERATORS.map((g): [string, string] => { const r = g.build(defaults(g)); if (typeof r === "string") throw new Error(r); return [`generator ${g.id}`, r.design]; }),
+  ...Object.entries(TEMPLATES).filter(([k]) => !["vhdlAlu", "uartEchoFiles", "uartEcho"].includes(k)).map(([k, t]): [string, string] => [`template ${k}`, t.design]),
+];
+for (const [name, design] of tbDesigns) for (const style of ["verilog", "sv"] as const) cases.push([`tbgen: ${name} (${style})`, tbgen(design, { style })]);
+cases.push(["tbgen: uartEcho, X/Z check off (its led has no reset)", tbgen(TEMPLATES.uartEcho.design, { xcheck: false })]);
+const HALF_MODEL = "exp_sum = a ^ b; exp_carry = a & b;";
+const COUNTER_MODEL = "if (^exp_count === 1'bx) exp_count = 0; if (en) exp_count = exp_count + 1;";
+const modelled: [string, { design: string; testbench: string }][] = [];
+for (const style of ["verilog", "sv"] as const) {
+  modelled.push([`tbgen: half adder against its model (${style})`, withModel(tbgen(TEMPLATES.halfAdder.design, { style }), HALF_MODEL)]);
+  modelled.push([`tbgen: counter against its model (${style})`, withModel(tbgen(TEMPLATES.counter4bit.design, { style, cycles: 50 }), COUNTER_MODEL)]);
+}
+for (const [name, c] of modelled) assert.notEqual(c.testbench, tbgen(c.design).testbench, `${name}: model inserted`);
+cases.push(...modelled);
+
 (async () => {
   // Round trip: run the Sandbox counter template, sample its waveform into a diagram,
   // mark the output, and check the same design against the diagram's testbench.
@@ -125,5 +151,14 @@ for (const gen of GENERATORS) {
   const { data } = await simulateOnBackend({ design_v: bad.design.replace(/assign y = .*;/, "assign y = a;"), testbench_v: bad.testbench });
   assert.match(String(data?.stdout), /TESTS FAILED/, "a broken design is caught");
   console.log("PASS a broken design fails its testbench");
+  for (const [name, c] of modelled) {
+    const { data: good } = await simulateOnBackend({ design_v: c.design, testbench_v: c.testbench });
+    assert.doesNotMatch(String(good?.stdout), /\(0 output checks/, `${name}: the model was checked`);
+    const broken = c.design.replace("a ^ b", "a | b").replace("count + 1'b1", "count + 2'd2");
+    assert.notEqual(broken, c.design);
+    const { data: bad2 } = await simulateOnBackend({ design_v: broken, testbench_v: c.testbench });
+    assert.match(String(bad2?.stdout), /TESTS FAILED/, `${name}: a broken design is caught`);
+  }
+  console.log("PASS tbgen models catch broken designs");
   console.log("studio-sim: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });
