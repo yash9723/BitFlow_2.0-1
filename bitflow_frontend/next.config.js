@@ -56,6 +56,8 @@ const nextConfig = {
           },
         ],
       },
+      // Gowin chip databases (scripts/vendor-gowin.mjs): the path names the tool version, so they never change
+      { source: "/fpga/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
     ];
   },
 

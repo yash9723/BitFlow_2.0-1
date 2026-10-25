@@ -6,7 +6,7 @@
  * or a run takes too long. VHDL needs the server's GHDL, so it always goes there.
  */
 import type { BoardId } from "./boards";
-import type { BitstreamResult } from "./fpga";
+import type { BitstreamResult, ExportPins } from "./fpga";
 import type { SynthKind } from "./run";
 
 const FIRST_RUN_MS = 120_000;   // includes downloading Yosys (~6 MB)
@@ -95,11 +95,11 @@ export async function synthesizeDesign(kind: SynthKind, designCode: string, lang
 // ── Bitstreams for real boards (lib/synth/fpga-worker.ts) ──────────────────
 // Browser only: the server has no chip databases for these boards.
 
-const BITSTREAM_FIRST_MS = 240_000;   // first build downloads the tools and a chip database
+const BITSTREAM_FIRST_MS = 360_000;   // first build downloads the tools, a chip database (and for Gowin, Pyodide)
 const BITSTREAM_MS       = 90_000;
 
 let fpga: { board: BoardId; worker: Worker; built: boolean } | null = null;
-const fpgaPending = new Map<number, (msg: { result?: BitstreamResult; failed?: string }) => void>();
+const fpgaPending = new Map<number, (msg: { result?: any; failed?: string }) => void>();
 
 function stopFpga() {
   fpga?.worker.terminate();
@@ -112,7 +112,12 @@ function stopFpga() {
 export const bitstreamToolsLoaded = (board: BoardId) => fpga?.board === board && fpga.built;
 
 /** Synthesize, place, route and pack for a real board. Never throws. */
-export function buildBitstreamInBrowser(board: BoardId, design: string): Promise<BitstreamResult> {
+export const buildBitstreamInBrowser = (board: BoardId, design: string): Promise<BitstreamResult> => runFpga(board, design, false);
+
+/** For a board built with the vendor's tools: the top module and its pin constraints. Never throws. */
+export const exportPinsInBrowser = (board: BoardId, design: string): Promise<ExportPins> => runFpga(board, design, true);
+
+function runFpga(board: BoardId, design: string, exportOnly: boolean): Promise<any> {
   if (!canRunHere()) return Promise.resolve({ ok: false, error: "This browser can't run the FPGA tools (WebAssembly workers are unavailable)." });
   if (fpga && fpga.board !== board) stopFpga();         // one chip database per worker
   if (!fpga) {
@@ -132,7 +137,7 @@ export function buildBitstreamInBrowser(board: BoardId, design: string): Promise
       current.built = true;
       resolve(msg.result!);
     });
-    current.worker.postMessage({ id, board, design });
+    current.worker.postMessage({ id, board, design, export: exportOnly });
   });
 }
 
