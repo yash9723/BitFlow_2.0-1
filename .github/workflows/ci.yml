@@ -62,6 +62,7 @@ jobs:
       - run: npm run check-share
       - run: npm run check-policy
       - run: npm run check-constraints
+      - run: npm run check-flash
 
   web:
     name: Frontend type-check + build

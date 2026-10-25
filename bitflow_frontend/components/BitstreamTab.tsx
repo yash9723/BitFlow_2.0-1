@@ -11,6 +11,8 @@ import { BOARDS, buildsInBrowser, type BoardId, type Family, type PortInfo } fro
 import { bitstreamToolsLoaded, buildBitstreamInBrowser, exportPinsInBrowser } from "@/lib/synth/client";
 import type { BitstreamResult, ExportPins } from "@/lib/synth/fpga";
 import { downloadBlob as download } from "@/lib/api";
+import { putBitstream } from "@/lib/bitstream-handoff";
+import { FLASH } from "@/lib/flash";
 import ConstraintsEditor from "./ConstraintsEditor";
 import Floorplan from "./Floorplan";
 
@@ -61,6 +63,11 @@ export default function BitstreamTab({ designCode, language }: { designCode: str
     const { exportProject } = await import("@/lib/synth/export-project");
     const clock = r.assignments.find((a) => a.kind === "clock")?.port ?? null;
     download(`${r.top}-${board}.zip`, await exportProject(board, r.top, designCode, r.constraints, clock), "application/zip");
+  };
+  /** Hand the bitstream to /flash (its own, cross-origin isolated tab) and open it. */
+  const flashIt = async (r: Extract<BitstreamResult, { ok: true }>) => {
+    try { await putBitstream({ name: r.file, board, bytes: r.bin }); } catch { /* /flash still takes a file */ }
+    window.open("/flash", "_blank", "noopener");
   };
   const bitstream = result?.ok && "bin" in result ? result : null;
   const exported = result?.ok && !("bin" in result) ? result : null;
@@ -147,6 +154,10 @@ export default function BitstreamTab({ designCode, language }: { designCode: str
             </button>
             <button onClick={() => download(`${bitstream.top}.${bitstream.format}`, bitstream.constraints, "text/plain")}
               className="px-3 py-1.5 rounded border border-rim text-ghost hover:text-bright text-[10px]">Download pins (.{bitstream.format})</button>
+            {FLASH[board] && (
+              <button onClick={() => flashIt(bitstream)}
+                className="px-3 py-1.5 rounded border border-info/60 text-info hover:bg-info/10 text-[10px]">Flash to the board…</button>
+            )}
           </div>
           <ProgramHelp boardId={board} file={bitstream.file} />
           {bitstream.pnr && (
@@ -181,7 +192,10 @@ function ProgramHelp({ boardId, file }: { boardId: BoardId; file: string }) {
   const cmd = `openFPGALoader -b ${b.loader} ${file}`;
   return (
     <div className="text-[10px] text-dim space-y-1 max-w-2xl">
-      <p>To program the board, install <span className="text-ghost">openFPGALoader</span> (part of the open-source OSS CAD Suite), plug the board in over USB and run:</p>
+      <p>
+        {FLASH[boardId] ? "Flash to the board… programs it over USB from this browser (Chrome or Edge). Or from a terminal: install " : "To program the board, install "}
+        <span className="text-ghost">openFPGALoader</span> (part of the open-source OSS CAD Suite), plug the board in over USB and run:
+      </p>
       <pre className="bg-void border border-rim rounded px-2 py-1 text-pale">{cmd}</pre>
       {b.family === "ice40"
         ? <p>iCE40 boards are programmed through their flash, so the design stays after power-off. <span className="text-ghost">iceprog {file}</span> works too.</p>

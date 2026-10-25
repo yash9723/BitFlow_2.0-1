@@ -58,6 +58,17 @@ const nextConfig = {
       },
       // Gowin chip databases (scripts/vendor-gowin.mjs): the path names the tool version, so they never change
       { source: "/fpga/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+      // openFPGALoader (scripts/vendor-openfpgaloader.mjs), same: versioned path
+      { source: "/vendor/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+      // /flash: cross-origin isolated, so openFPGALoader's WebAssembly threads get SharedArrayBuffer.
+      // credentialless (not require-corp) still lets cross-origin scripts like analytics load, without cookies.
+      {
+        source: "/flash",
+        headers: [
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
+        ],
+      },
     ];
   },
 

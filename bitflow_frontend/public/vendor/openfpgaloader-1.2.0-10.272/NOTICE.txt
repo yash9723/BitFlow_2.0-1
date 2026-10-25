@@ -1,0 +1,5 @@
+@yowasp/openfpgaloader 1.2.0-10.272, unmodified (https://www.npmjs.com/package/@yowasp/openfpgaloader).
+Build scripts and sources: https://github.com/YoWASP/openFPGALoader-web
+  YoWASP packaging: ISC license.
+  openFPGALoader (https://github.com/trabucayre/openFPGALoader): Apache License 2.0.
+  libusb and libftdi, linked in: GNU LGPL 2.1; sources as above.

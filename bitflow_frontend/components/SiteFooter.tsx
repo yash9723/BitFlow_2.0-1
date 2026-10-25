@@ -8,7 +8,7 @@ import { CookieSettingsButton } from "@/components/Analytics";
 
 const GROUPS: { title: string; links: [href: string, label: string][] }[] = [
   { title: "Studio", links: [["/studio", "All tools"], ...STUDIO_TOOLS.map((t): [string, string] => [t.href, t.title])] },
-  { title: "Learn", links: [["/learn", "Learning path"], ["/arena", "Arena"], ["/academy", "Academy"], ["/sandbox", "Sandbox IDE"], ["/leaderboard", "Leaderboard"]] },
+  { title: "Learn", links: [["/learn", "Learning path"], ["/arena", "Arena"], ["/academy", "Academy"], ["/sandbox", "Sandbox IDE"], ["/flash", "Flash a board"], ["/leaderboard", "Leaderboard"]] },
   { title: "BitFlow", links: [["/about", "About"], ["/contact", "Contact"], ["/privacy", "Privacy"], ["/terms", "Terms"]] },
 ];
 

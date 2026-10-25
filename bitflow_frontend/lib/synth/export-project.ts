@@ -37,7 +37,7 @@ export function projectFiles(boardId: BoardId, top: string, design: string, cons
       "README.md": readme(board.name, top, [
         "Build (Vivado 2020.1 or later on your PATH):", "", "    vivado -mode batch -source build.tcl", "",
         "Program the board (until power-off):", "", "    vivado -mode batch -source program.tcl", "",
-        `or with openFPGALoader: \`${loader} ${top}.bit\`.`,
+        `or with openFPGALoader: \`${loader} ${top}.bit\`, or open bitflowvlsi.tech/flash in Chrome or Edge and pick ${top}.bit.`,
       ]),
     };
   }
