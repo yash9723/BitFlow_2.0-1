@@ -443,6 +443,7 @@ export default function BoardPanel({ isOpen, onClose, designCode, language = "ve
                              className="w-16 bg-pit border border-rim rounded px-1 py-0.5 text-pale" />
                     </label>
                     <span>match the design&apos;s CLKS_PER_BIT; run the clock fast (1–10 kHz) to send and receive</span>
+                    <a href="/flash" target="_blank" rel="noopener" className="text-info hover:underline">real board: serial monitor ↗</a>
                     <button onClick={() => setTerm("")} className="ml-auto text-info hover:underline">Clear</button>
                   </div>
                   {ports.uartTx && (
