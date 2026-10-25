@@ -28,6 +28,7 @@ from typing import Optional
 
 from api.config import settings
 from api.models import SandboxExitCode, exit_code_to_status
+from api.utils import RUN_UID_BASE, RUN_UID_COUNT
 
 logger = logging.getLogger(__name__)
 
@@ -93,9 +94,13 @@ def _run_limited(
             f"--cpu={timeout + 1}",
         ]
         if os.geteuid() == 0:   # drop root for user code
-            kwargs = {"user": settings.sandbox_uid, "group": settings.sandbox_gid, "extra_groups": []}
+            # The workspace's own uid (utils.create_workspace), else the shared sandbox uid.
+            owner = os.stat(cwd).st_uid
+            uid = owner if RUN_UID_BASE <= owner < RUN_UID_BASE + RUN_UID_COUNT else settings.sandbox_uid
+            gid = uid if uid == owner else settings.sandbox_gid
+            kwargs = {"user": uid, "group": gid, "extra_groups": []}
             # NPROC counts every process of the uid, so only cap the dedicated
-            # sandbox uid — never the server's own user (CI, local dev).
+            # sandbox uids — never the server's own user (CI, local dev).
             limits.append(f"--nproc={MAX_PROCS}")
         cmd = ["prlimit", *limits, "--", *cmd]
 

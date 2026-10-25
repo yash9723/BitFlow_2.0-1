@@ -60,6 +60,7 @@ jobs:
       - run: npm run check-protocol
       - run: npm run check-tbgen
       - run: npm run check-share
+      - run: npm run check-policy
 
   web:
     name: Frontend type-check + build
@@ -79,3 +80,4 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+      - run: npm run check-leaks

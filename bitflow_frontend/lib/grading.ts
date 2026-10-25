@@ -78,10 +78,10 @@ const ALLOWED_DIRECTIVES = new Set(["timescale", "default_nettype"]);
 
 /** Why a design may not be graded, or null if it is acceptable. */
 export function designPolicyViolation(design: string, testbenches: string[]): string | null {
-  const code = design
-    .replace(/\/\*[\s\S]*?\*\//g, " ")        // block comments
-    .replace(/\/\/.*$/gm, " ")                  // line comments
-    .replace(/"(?:\.|[^"\\n])*"/g, '""');     // string literals
+  // One left-to-right pass, so a "//" or "/*" inside a string can't hide the code after it
+  // (and a quote inside a comment can't start a string).
+  const code = design.replace(/"(?:\\.|[^"\\\n])*"|\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*/g,
+    (m) => (m[0] === '"' ? '""' : " "));
 
   for (const [task] of code.matchAll(/\$[A-Za-z_][\w$]*/g)) {
     if (!ALLOWED_SYSTEM_FUNCTIONS.has(task)) {

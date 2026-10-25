@@ -161,6 +161,7 @@ _BLOCKED = (
     "mmap.", "resource.setrlimit", "os.truncate", "shutil.",
 )
 _WRITE_FLAGS = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
+_HDL_SOURCE = (".v", ".sv", ".vh", ".svh", ".vhd", ".vhdl", ".vvp", ".f")
 
 
 def _inside(path, roots):
@@ -176,6 +177,9 @@ def _hook(event, args):
         writing = (isinstance(mode, str) and any(c in mode for c in "wax+")) or bool((flags or 0) & _WRITE_FLAGS)
         if not _inside(path, (_CWD,) if writing else _READ_OK):
             raise PermissionError(f"BitFlow sandbox: {'writing' if writing else 'reading'} {path} is not allowed")
+        # The design under test (a hidden mutant when grading) is checked through its ports, not read.
+        if _inside(path, (_CWD,)) and path.lower().endswith(_HDL_SOURCE):
+            raise PermissionError(f"BitFlow sandbox: reading {os.path.basename(path)} is not allowed")
     if event in ("os.remove", "os.rename", "os.replace", "os.rmdir", "os.mkdir") and args:
         if not _inside(os.path.realpath(os.fsdecode(args[0])), (_CWD,)):
             raise PermissionError(f"BitFlow sandbox: {event} outside the workspace is not allowed")

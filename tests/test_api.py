@@ -1253,6 +1253,7 @@ ESCAPES = {
     "shell":      "import os\n    os.system('id')",
     "read_api":   "open('/app/api/config.py').read()",
     "read_etc":   "open('/etc/hostname').read()",
+    "read_design": "open('design.v').read()",   # the hidden mutant when grading
     "write_out":  "open('/tmp/bitflow_escape', 'w').write('x')",
     "ctypes":     "import ctypes\n    ctypes.CDLL(None)",
     "new_code":   ("import types\n    c = (lambda: 0).__code__\n    types.CodeType(c.co_argcount, c.co_posonlyargcount, "

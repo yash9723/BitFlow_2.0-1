@@ -37,6 +37,8 @@
     "check-protocol": "tsx scripts/protocol-decode.check.ts",
     "check-tbgen": "tsx scripts/tbgen.check.ts",
     "check-share": "tsx scripts/share.check.ts",
+    "check-policy": "tsx scripts/policy.check.ts",
+    "check-leaks": "tsx scripts/check-bundle-leaks.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },

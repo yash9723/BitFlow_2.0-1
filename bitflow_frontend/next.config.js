@@ -2,6 +2,10 @@ const path = require("path");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // No source maps in production: the shipped JS stays minified (scripts/check-bundle-leaks.ts).
+  productionBrowserSourceMaps: false,
+  poweredByHeader: false,
+
   // ─────────────────────────────────────────────────────────────────────────
   // Security Headers
   // Applied to every response served by Next.js.
@@ -22,7 +26,8 @@ const nextConfig = {
           // Disallow reading sensitive hardware APIs
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=(), payment=()",
+            // usb / serial: flashing a real FPGA board and its serial port (lib/synth/flash.ts, lib/webserial.ts)
+            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(self), serial=(self)",
           },
           // Force HTTPS for 1 year (only effective in production over HTTPS)
           {
