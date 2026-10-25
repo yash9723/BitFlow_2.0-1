@@ -12,7 +12,7 @@
  * apicula tangnano9k/20k.cst + litex-boards, Digilent digilent-xdc, litex-boards terasic_de10lite.
  * Self-check: scripts/bitstream.check.ts.
  */
-import { emitConstraints, type ConstraintFormat } from "./constraints";
+import { emitConstraints, type ConstraintEntry, type ConstraintFormat } from "./constraints";
 
 export type Family = "ice40" | "ecp5" | "gowin" | "xilinx" | "intel";
 export type BoardId =
@@ -281,6 +281,25 @@ export const CONSTRAINT_FORMAT: Record<Family, ConstraintFormat> = { ice40: "pcf
 export interface PortInfo { direction: string; width: number }
 export type PinKind = "clock" | "uart" | "led" | "button" | "switch" | "gpio";
 export interface Assignment { port: string; pin: string; where: string; kind: PinKind; io: string; pull?: "UP" | "DOWN" }
+
+/** Every labelled pin of a board and what it is (the constraints editor's pin picker and checks). */
+export function boardPins(b: Board): (Pin & { kind: PinKind })[] {
+  const tag = (kind: PinKind) => (p: Pin) => ({ pin: p.pin, label: p.label, io: p.io, pull: p.pull, kind });
+  return [
+    tag("clock")(b.clock), ...[b.uartRx, b.uartTx].filter((p): p is Pin => !!p).map(tag("uart")),
+    ...b.leds.map(tag("led")), ...b.buttons.map(tag("button")), ...(b.switches ?? []).map(tag("switch")), ...b.gpio.map(tag("gpio")),
+  ];
+}
+
+/** Assignments (for the table and the flow) from hand-written placements. */
+export function assignmentsFrom(b: Board, entries: ConstraintEntry[]): Assignment[] {
+  const known = new Map(boardPins(b).map((p) => [p.pin.toUpperCase(), p]));
+  return entries.map((e) => {
+    const p = known.get(e.pin.toUpperCase());
+    const pull = e.pull ?? p?.pull;
+    return { port: e.port, pin: e.pin, where: p?.label ?? "pin not labelled on this board", kind: p?.kind ?? "gpio", io: e.io ?? p?.io ?? b.io, ...(pull ? { pull } : {}) };
+  });
+}
 
 const CLOCK  = /^(clk|clock)$/i;
 const BUTTON = /^(rst|reset|btn|key|button)/i;

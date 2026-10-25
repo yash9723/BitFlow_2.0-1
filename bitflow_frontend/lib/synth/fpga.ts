@@ -6,25 +6,28 @@
  * (scripts/bitstream.check.ts). Versions: Yosys 0.52, nextpnr-ice40/ecp5 0.7,
  * nextpnr-himbaechel-gowin 0.10 with apicula 0.31.
  */
-import { BOARDS, pinout, type Assignment, type Board, type BoardId, type Family, type PortInfo } from "./boards";
-import type { ConstraintFormat } from "./constraints";
+import { BOARDS, CONSTRAINT_FORMAT, assignmentsFrom, boardPins, pinout, type Assignment, type Board, type BoardId, type Family, type PortInfo } from "./boards";
+import { parseConstraints, validateConstraints, type ConstraintFormat } from "./constraints";
 import { type PnrSummary, pnrSummary } from "./pnr";
 import type { RunYosys } from "./run";
 
 /** runNextpnr / runPack: nextpnr-<family> and icepack, ecppack or gowin_pack. */
 export interface FpgaTools { runYosys: RunYosys; runNextpnr: RunYosys; runPack: RunYosys }
 
+/** On failure, the assignments and ports when the design got that far (for the constraints editor). */
+type Failure = { ok: false; error: string; assignments?: Assignment[]; ports?: Record<string, PortInfo> };
+
 export type BitstreamResult =
-  | { ok: false; error: string; assignments?: Assignment[] }
-  | { ok: true; top: string; bin: Uint8Array; file: string; constraints: string; format: ConstraintFormat;
+  | Failure
+  | { ok: true; top: string; ports: Record<string, PortInfo>; bin: Uint8Array; file: string; constraints: string; format: ConstraintFormat;
       assignments: Assignment[]; notes: string[];
       fmaxMhz: number | null; utilization: Record<string, { used: number; available: number }>;
       /** Placement and critical paths for the floorplan (components/Floorplan.tsx); iCE40 only. */
       pnr: PnrSummary | null };
 
 export type ExportPins =
-  | { ok: false; error: string; assignments?: Assignment[] }
-  | { ok: true; top: string; constraints: string; format: ConstraintFormat; assignments: Assignment[]; notes: string[] };
+  | Failure
+  | { ok: true; top: string; ports: Record<string, PortInfo>; constraints: string; format: ConstraintFormat; assignments: Assignment[]; notes: string[] };
 
 const decode = (v: unknown) => (typeof v === "string" ? v : v instanceof Uint8Array ? new TextDecoder().decode(v) : "");
 
@@ -46,8 +49,11 @@ const SYNTH: Record<Family, string> = {
   xilinx: "proc; write_json top.json", intel: "proc; write_json top.json",   // export only: just the ports
 };
 
-/** Synthesize and assign pins: the top module, its netlist and the board's constraints. */
-async function synthAndPins(runYosys: RunYosys, boardId: BoardId, design: string) {
+/**
+ * Synthesize and assign pins: the top module, its netlist and the board's constraints, either
+ * from port names or `custom` (hand-edited, checked against the design's ports first).
+ */
+async function synthAndPins(runYosys: RunYosys, boardId: BoardId, design: string, custom?: string) {
   const synth = await tool(runYosys, ["-q", "-p", `read_verilog -sv design.v; hierarchy -auto-top; ${SYNTH[BOARDS[boardId].family]}`],
     { "design.v": design }, (l) => /ERROR/.test(l));
   if (!synth.ok) return synth;
@@ -57,9 +63,23 @@ async function synthAndPins(runYosys: RunYosys, boardId: BoardId, design: string
   if (!top) return { ok: false as const, error: "No top module found." };
   const ports: Record<string, PortInfo> = Object.fromEntries(
     Object.entries<any>(mod.ports ?? {}).map(([n, p]) => [n, { direction: p.direction, width: p.bits.length }]));
-  const pins = pinout(boardId, ports);
-  if (pins.error) return { ok: false as const, error: pins.error, assignments: pins.assignments };
-  return { ok: true as const, top, json, pins };
+  const pins = custom === undefined ? pinout(boardId, ports) : customPins(boardId, ports, custom);
+  if (pins.error) return { ok: false as const, error: pins.error, assignments: pins.assignments, ports };
+  return { ok: true as const, top, json, pins, ports };
+}
+
+function customPins(boardId: BoardId, ports: Record<string, PortInfo>, text: string) {
+  const board = BOARDS[boardId];
+  const format = CONSTRAINT_FORMAT[board.family];
+  const { entries } = parseConstraints(format, text);
+  const issues = validateConstraints(board, boardPins(board), ports, entries);
+  const say = (i: (typeof issues)[number]) => (i.line !== undefined ? `Line ${i.line + 1}: ` : "") + i.message;
+  const errors = issues.filter((i) => i.level === "error");
+  return {
+    assignments: assignmentsFrom(board, entries), format, constraints: text,
+    error: errors.length ? errors.map(say).join("\n") : null,
+    notes: issues.filter((i) => i.level === "warning").map(say),
+  };
 }
 
 /** Place, route and pack for one family: the tool runs and the bitstream file they produce. */
@@ -78,9 +98,9 @@ function flow(board: Board, constraints: string): { nextpnr: string[]; files: Re
   }
 }
 
-export async function buildBitstream(tools: FpgaTools, boardId: BoardId, design: string): Promise<BitstreamResult> {
+export async function buildBitstream(tools: FpgaTools, boardId: BoardId, design: string, custom?: string): Promise<BitstreamResult> {
   const board = BOARDS[boardId];
-  const s = await synthAndPins(tools.runYosys, boardId, design);
+  const s = await synthAndPins(tools.runYosys, boardId, design, custom);
   if (!s.ok) return s;
   const f = flow(board, s.pins.constraints);
 
@@ -95,15 +115,15 @@ export async function buildBitstream(tools: FpgaTools, boardId: BoardId, design:
   const report = JSON.parse(decode(pnr.files["report.json"]) || "{}");
   const summary = pnrSummary(report, JSON.parse(decode(pnr.files["placed.json"]) || "{}"), board.grid ?? { width: 0, height: 0 });
   return {
-    ok: true, top: s.top, bin, file: `${s.top}.${f.out.split(".")[1]}`, constraints: s.pins.constraints, format: s.pins.format,
+    ok: true, top: s.top, ports: s.ports, bin, file: `${s.top}.${f.out.split(".")[1]}`, constraints: s.pins.constraints, format: s.pins.format,
     assignments: s.pins.assignments, notes: s.pins.notes,
     utilization: summary.utilization, fmaxMhz: summary.fmax[0]?.mhz ?? null, pnr: board.grid ? summary : null,
   };
 }
 
 /** For boards built with the vendor's tools (Xilinx, Intel): the top module and its pin constraints. */
-export async function portsForExport(runYosys: RunYosys, boardId: BoardId, design: string): Promise<ExportPins> {
-  const s = await synthAndPins(runYosys, boardId, design);
+export async function portsForExport(runYosys: RunYosys, boardId: BoardId, design: string, custom?: string): Promise<ExportPins> {
+  const s = await synthAndPins(runYosys, boardId, design, custom);
   if (!s.ok) return s;
-  return { ok: true, top: s.top, constraints: s.pins.constraints, format: s.pins.format, assignments: s.pins.assignments, notes: s.pins.notes };
+  return { ok: true, top: s.top, ports: s.ports, constraints: s.pins.constraints, format: s.pins.format, assignments: s.pins.assignments, notes: s.pins.notes };
 }

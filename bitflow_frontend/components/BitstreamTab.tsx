@@ -7,10 +7,11 @@
  * as the virtual board.
  */
 import { useState } from "react";
-import { BOARDS, buildsInBrowser, type BoardId, type Family } from "@/lib/synth/boards";
+import { BOARDS, buildsInBrowser, type BoardId, type Family, type PortInfo } from "@/lib/synth/boards";
 import { bitstreamToolsLoaded, buildBitstreamInBrowser, exportPinsInBrowser } from "@/lib/synth/client";
 import type { BitstreamResult, ExportPins } from "@/lib/synth/fpga";
 import { downloadBlob as download } from "@/lib/api";
+import ConstraintsEditor from "./ConstraintsEditor";
 import Floorplan from "./Floorplan";
 
 const GROUPS: [Family, string][] = [
@@ -19,10 +20,17 @@ const GROUPS: [Family, string][] = [
 ];
 const BOARD_IDS = Object.keys(BOARDS) as BoardId[];
 
+// Hand-edited pins, per board and top module, kept in this browser.
+const pinsKey = (board: BoardId, top: string) => `bitflow_pins:${board}:${top}`;
+const loadPins = (board: BoardId, top: string) => { try { return localStorage.getItem(pinsKey(board, top)); } catch { return null; } };
+const savePins = (board: BoardId, top: string, text: string) => { try { localStorage.setItem(pinsKey(board, top), text); } catch { /* storage off */ } };
+
 export default function BitstreamTab({ designCode, language }: { designCode: string; language: "verilog" | "vhdl" }) {
   const [board, setBoard] = useState<BoardId>("icestick");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<BitstreamResult | ExportPins | null>(null);
+  /** Own pins: the constraints text being edited, with the design it was made for. */
+  const [custom, setCustom] = useState<{ text: string; auto: string; top: string; ports: Record<string, PortInfo> } | null>(null);
 
   if (language === "vhdl") {
     return <p className="font-mono text-[11px] text-dim max-w-xl">Bitstreams are built from Verilog. VHDL designs aren&apos;t supported here yet.</p>;
@@ -33,8 +41,21 @@ export default function BitstreamTab({ designCode, language }: { designCode: str
   const build = async () => {
     setBusy(true);
     setResult(null);
-    setResult(await (here ? buildBitstreamInBrowser : exportPinsInBrowser)(board, designCode));
+    setResult(await (here ? buildBitstreamInBrowser : exportPinsInBrowser)(board, designCode, custom?.text));
     setBusy(false);
+  };
+  /** Start editing pins from the automatic ones (or what was saved for this board and design). */
+  const editPins = async () => {
+    setBusy(true);
+    const r = await exportPinsInBrowser(board, designCode);
+    setBusy(false);
+    if (!r.ok) return setResult(r);
+    setCustom({ text: loadPins(board, r.top) ?? r.constraints, auto: r.constraints, top: r.top, ports: r.ports });
+  };
+  const editText = (text: string) => {
+    if (!custom) return;
+    setCustom({ ...custom, text });
+    savePins(board, custom.top, text);
   };
   const exportZip = async (r: Extract<ExportPins, { ok: true }>) => {
     const { exportProject } = await import("@/lib/synth/export-project");
@@ -58,7 +79,7 @@ export default function BitstreamTab({ designCode, language }: { designCode: str
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 text-[10px] text-dim">
           Board
-          <select value={board} onChange={(e) => { setBoard(e.target.value as BoardId); setResult(null); }}
+          <select value={board} onChange={(e) => { setBoard(e.target.value as BoardId); setResult(null); setCustom(null); }}
             className="bg-void border border-rim rounded px-2 py-1 text-[11px] text-pale focus:border-phosphor/60 outline-none">
             {GROUPS.map(([family, label]) => (
               <optgroup key={family} label={label}>
@@ -73,6 +94,22 @@ export default function BitstreamTab({ designCode, language }: { designCode: str
         </button>
         <span className="text-[10px] text-dim">{b.clockMhz} MHz clock</span>
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-[10px]" role="radiogroup" aria-label="Pins">
+        <span className="text-dim">Pins</span>
+        <button role="radio" aria-checked={!custom} onClick={() => setCustom(null)} disabled={busy}
+          className={`px-2 py-0.5 rounded border ${!custom ? "border-phosphor/60 text-phosphor bg-phosphor/10" : "border-rim text-dim hover:text-ghost"}`}>
+          From port names
+        </button>
+        <button role="radio" aria-checked={!!custom} onClick={() => !custom && editPins()} disabled={busy}
+          className={`px-2 py-0.5 rounded border ${custom ? "border-phosphor/60 text-phosphor bg-phosphor/10" : "border-rim text-dim hover:text-ghost"}`}>
+          My own pins…
+        </button>
+        {custom && custom.text !== custom.auto && (
+          <button onClick={() => editText(custom.auto)} className="text-dim hover:text-ghost underline underline-offset-2">Reset to the automatic pins</button>
+        )}
+      </div>
+      {custom && <ConstraintsEditor boardId={board} text={custom.text} ports={custom.ports} onChange={editText} />}
       {busy && (
         <p className="text-dim text-[10px]">
           {bitstreamToolsLoaded(board) ? (here ? "Synthesizing, placing and routing…" : "Reading the design's ports…")

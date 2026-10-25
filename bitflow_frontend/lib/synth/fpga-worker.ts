@@ -93,16 +93,16 @@ async function tools(boardId: BoardId): Promise<FpgaTools | { runYosys: RunYosys
 
 let loaded: ReturnType<typeof tools> | null = null;
 
-self.onmessage = async (e: MessageEvent<{ id: number; board: BoardId; design: string; export?: boolean }>) => {
-  const { id, board, design } = e.data;
+self.onmessage = async (e: MessageEvent<{ id: number; board: BoardId; design: string; export?: boolean; constraints?: string }>) => {
+  const { id, board, design, constraints } = e.data;
   try {
     loaded ??= tools(board);
     const t = await loaded;
     if (e.data.export || !("runNextpnr" in t)) {
-      self.postMessage({ id, result: await portsForExport(t.runYosys, board, design) });
+      self.postMessage({ id, result: await portsForExport(t.runYosys, board, design, constraints) });
       return;
     }
-    const result = await buildBitstream(t, board, design);
+    const result = await buildBitstream(t, board, design, constraints);
     self.postMessage({ id, result }, result.ok ? [result.bin.buffer] : []);
   } catch (err) {
     loaded = null;

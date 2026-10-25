@@ -111,13 +111,15 @@ function stopFpga() {
 /** Has a bitstream been built for this board in this tab (tools already downloaded)? */
 export const bitstreamToolsLoaded = (board: BoardId) => fpga?.board === board && fpga.built;
 
-/** Synthesize, place, route and pack for a real board. Never throws. */
-export const buildBitstreamInBrowser = (board: BoardId, design: string): Promise<BitstreamResult> => runFpga(board, design, false);
+/** Synthesize, place, route and pack for a real board, with its pins from port names or `constraints`. Never throws. */
+export const buildBitstreamInBrowser = (board: BoardId, design: string, constraints?: string): Promise<BitstreamResult> =>
+  runFpga(board, design, false, constraints);
 
-/** For a board built with the vendor's tools: the top module and its pin constraints. Never throws. */
-export const exportPinsInBrowser = (board: BoardId, design: string): Promise<ExportPins> => runFpga(board, design, true);
+/** The top module, its ports and pin constraints (Yosys only): for exported projects and the constraints editor. Never throws. */
+export const exportPinsInBrowser = (board: BoardId, design: string, constraints?: string): Promise<ExportPins> =>
+  runFpga(board, design, true, constraints);
 
-function runFpga(board: BoardId, design: string, exportOnly: boolean): Promise<any> {
+function runFpga(board: BoardId, design: string, exportOnly: boolean, constraints?: string): Promise<any> {
   if (!canRunHere()) return Promise.resolve({ ok: false, error: "This browser can't run the FPGA tools (WebAssembly workers are unavailable)." });
   if (fpga && fpga.board !== board) stopFpga();         // one chip database per worker
   if (!fpga) {
@@ -137,7 +139,7 @@ function runFpga(board: BoardId, design: string, exportOnly: boolean): Promise<a
       current.built = true;
       resolve(msg.result!);
     });
-    current.worker.postMessage({ id, board, design, export: exportOnly });
+    current.worker.postMessage({ id, board, design, export: exportOnly, constraints });
   });
 }
 

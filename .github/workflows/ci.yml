@@ -61,6 +61,7 @@ jobs:
       - run: npm run check-tbgen
       - run: npm run check-share
       - run: npm run check-policy
+      - run: npm run check-constraints
 
   web:
     name: Frontend type-check + build
