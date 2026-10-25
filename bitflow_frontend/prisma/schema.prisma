@@ -29,6 +29,7 @@ model User {
   ownedClasses     Classroom[]   @relation("OwnedClasses")
   classMemberships ClassMember[]
   sharedDesigns    SharedDesign[]
+  projects         Project[]
   certificates     Certificate[]
   comments         Comment[]
 }
@@ -267,6 +268,47 @@ model SharedDesign {
   owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
+}
+
+// ============================================================================
+// PROJECTS — a user's saved Sandbox work (app/api/projects), with its versions
+// ============================================================================
+
+model Project {
+  id                String   @id @default(uuid())
+  ownerId           String
+  name              String
+  designCode        String
+  testbenchCode     String
+  files             String?  // JSON [{name, content}]: more design files (lib/project-files.ts)
+  designLanguage    String   @default("verilog")
+  testbenchLanguage String   @default("verilog")
+  pins              String?  // JSON {"<board>:<top>": constraints text} (components/BitstreamTab.tsx)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  owner             User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  versions          ProjectVersion[]
+
+  @@index([ownerId, updatedAt])
+}
+
+// A saved state of a project; autosaves within a couple of minutes share one (lib/projects.ts).
+model ProjectVersion {
+  id                String   @id @default(uuid())
+  projectId         String
+  designCode        String
+  testbenchCode     String
+  files             String?
+  designLanguage    String   @default("verilog")
+  testbenchLanguage String   @default("verilog")
+  pins              String?
+  message           String?  // "Saved by you", "Restored ...": set by an explicit save
+  createdAt         DateTime @default(now())
+
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
 }
 
 // ============================================================================

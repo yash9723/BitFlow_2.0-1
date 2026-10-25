@@ -78,6 +78,7 @@ import Toolbar                        from "@/components/Toolbar";
 import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
+import ProjectsMenu                   from "@/components/ProjectsMenu";
 import { parseDiagnostics }           from "@/lib/diagnostics";
 import { TEMPLATES }                  from "@/lib/templates";
 import type { DesignLanguage, TestbenchLanguage } from "@/lib/types";
@@ -362,6 +363,8 @@ function SandboxContent() {
     clearResult,
   } = useSimulation();
   const [proveOpen, setProveOpen] = useState(false);
+  const editorContent = useMemo(() => ({ designCode, testbenchCode, files: extraFiles, designLanguage, testbenchLanguage }),
+    [designCode, testbenchCode, extraFiles, designLanguage, testbenchLanguage]);
   const [designFile, designMonaco] = DESIGN_FILES[designLanguage];
   const [tbFile, tbMonaco] = TESTBENCH_FILES[testbenchLanguage];
 
@@ -719,6 +722,7 @@ function SandboxContent() {
             onLoad={loadProject}
             disabled={isRunning}
           />
+          <ProjectsMenu content={editorContent} onLoad={loadProject} disabled={isRunning} />
           <LanguageSelect<DesignLanguage> label="Design" value={designLanguage} disabled={isRunning}
             options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"]]} onChange={setDesignLanguage} />
           <LanguageSelect<TestbenchLanguage> label="Testbench" value={testbenchLanguage} disabled={isRunning}

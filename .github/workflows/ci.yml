@@ -64,6 +64,7 @@ jobs:
       - run: npm run check-constraints
       - run: npm run check-flash
       - run: npm run check-webserial
+      - run: npm run check-projects
 
   web:
     name: Frontend type-check + build
