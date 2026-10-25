@@ -8,6 +8,7 @@
 import type { BoardId } from "./boards";
 import type { BitstreamResult, ExportPins } from "./fpga";
 import type { SynthKind } from "./run";
+import type { LintMessage } from "../verilog-lang";
 
 const FIRST_RUN_MS = 120_000;   // includes downloading Yosys (~6 MB)
 const RUN_MS       = 30_000;
@@ -90,6 +91,20 @@ export async function synthesizeDesign(kind: SynthKind, designCode: string, lang
     return onServer(kind, designCode, language);
   }
   return withDiagrams(result);
+}
+
+/**
+ * Yosys' parse errors and warnings for one Verilog file (the editor's live squiggles), or null
+ * if the browser can't run Yosys or it didn't answer. The first call downloads Yosys (~6 MB).
+ */
+export async function lintInBrowser(code: string): Promise<LintMessage[] | null> {
+  if (!canRunHere()) return null;
+  try {
+    const r = await inBrowser("lint", code);
+    return Array.isArray(r?.messages) ? r.messages : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Bitstreams for real boards (lib/synth/fpga-worker.ts) ──────────────────

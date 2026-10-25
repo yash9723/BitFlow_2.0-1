@@ -65,6 +65,7 @@ jobs:
       - run: npm run check-flash
       - run: npm run check-webserial
       - run: npm run check-projects
+      - run: npm run check-verilog-lang
 
   web:
     name: Frontend type-check + build

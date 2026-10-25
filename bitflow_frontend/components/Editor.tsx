@@ -28,6 +28,8 @@ import { useRef, useCallback, useEffect } from "react";
 import MonacoEditor, { OnMount, BeforeMount, loader } from "@monaco-editor/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
 import type { Diagnostic } from "@/lib/diagnostics";
+import { VERILOG_LANGUAGES, registerVerilog } from "@/lib/verilog-monaco";
+import { lintInBrowser } from "@/lib/synth/client";
 import { mono } from "@/lib/fonts";
 
 // Load Monaco from our own origin (copied into public/ by scripts/copy-monaco.mjs)
@@ -53,7 +55,11 @@ interface EditorProps {
   readOnly?: boolean;
   /** Compiler/lint messages to show as squiggles (lib/diagnostics.ts). */
   diagnostics?: Diagnostic[];
+  /** Check the Verilog as you type (Yosys in the browser) and show its errors and warnings. Design files only. */
+  lint?: boolean;
 }
+
+const LINT_DELAY_MS = 1200;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Custom theme definition
@@ -228,6 +234,7 @@ export default function Editor({
   language = "verilog",
   readOnly = false,
   diagnostics,
+  lint = false,
 }: EditorProps) {
   const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -255,6 +262,28 @@ export default function Editor({
 
   useEffect(applyMarkers, [diagnostics, applyMarkers]);
 
+  // Live check: Yosys parses the file a moment after typing stops; its messages get their own markers.
+  useEffect(() => {
+    const monaco = monacoRef.current, model = editorRef.current?.getModel();
+    if (!monaco || !model) return;
+    if (!lint || !VERILOG_LANGUAGES.includes(language) || !value.trim()) { monaco.editor.setModelMarkers(model, "bitflow-lint", []); return; }
+    const t = setTimeout(async () => {
+      const messages = await lintInBrowser(value);
+      if (!messages || model.isDisposed() || model.getValue() !== value) return;   // stale: the next run will say
+      const lines = model.getLineCount();
+      monaco.editor.setModelMarkers(model, "bitflow-lint", messages.map((m) => {
+        const line = Math.min(Math.max(m.line, 1), lines);
+        return {
+          severity: m.severity === "error" ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
+          message: m.message, source: "Yosys",
+          startLineNumber: line, startColumn: model.getLineFirstNonWhitespaceColumn(line) || 1,
+          endLineNumber: line, endColumn: model.getLineMaxColumn(line),
+        };
+      }));
+    }, LINT_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [value, lint, language]);
+
   /** Store the editor instance so we can call methods on it if needed. */
   const handleMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
@@ -271,7 +300,7 @@ export default function Editor({
       value={value}
       theme="phosphor-dark"
       loading={<EditorSkeleton />}
-      beforeMount={defineTheme}
+      beforeMount={(monaco) => { defineTheme(monaco); registerVerilog(monaco); }}
       onMount={handleMount}
       onChange={(val) => onChange(val ?? "")}
       options={{

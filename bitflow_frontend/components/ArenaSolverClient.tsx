@@ -233,6 +233,7 @@ export function ArenaSolverClient({ problem }: Props) {
                   language="verilog"
                   diagnostics={diagnostics.design}
                   readOnly={writesTb}
+                  lint={!writesTb}
                 />
               </div>
             </div>

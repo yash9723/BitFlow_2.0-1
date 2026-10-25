@@ -79,6 +79,7 @@ import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import ProjectsMenu                   from "@/components/ProjectsMenu";
+import { setVerilogContext }          from "@/lib/verilog-monaco";
 import { parseDiagnostics }           from "@/lib/diagnostics";
 import { TEMPLATES }                  from "@/lib/templates";
 import type { DesignLanguage, TestbenchLanguage } from "@/lib/types";
@@ -366,6 +367,12 @@ function SandboxContent() {
   const editorContent = useMemo(() => ({ designCode, testbenchCode, files: extraFiles, designLanguage, testbenchLanguage }),
     [designCode, testbenchCode, extraFiles, designLanguage, testbenchLanguage]);
   const [designFile, designMonaco] = DESIGN_FILES[designLanguage];
+  // The editor's completion and hover also know the files in other tabs (lib/verilog-monaco.ts).
+  useEffect(() => {
+    setVerilogContext(designLanguage === "verilog"
+      ? [{ name: "design.v", text: designCode }, ...extraFiles.filter((f) => CODE_FILE.test(f.name)).map((f) => ({ name: f.name, text: f.content }))]
+      : []);
+  }, [designLanguage, designCode, extraFiles]);
   const [tbFile, tbMonaco] = TESTBENCH_FILES[testbenchLanguage];
 
   // ── Design files: design.v plus extra tabs (Verilog projects, lib/project-files.ts) ──
@@ -824,6 +831,7 @@ function SandboxContent() {
                 language={openFile ? (CODE_FILE.test(openFile.name) ? "systemverilog" : "plaintext") : designMonaco}
                 readOnly={isRunning}
                 diagnostics={diagnostics.files[openFile?.name ?? "design.v"] ?? []}
+                lint={designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name))}
               />
             </div>
           </div>

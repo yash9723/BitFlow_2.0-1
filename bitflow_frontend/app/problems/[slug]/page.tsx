@@ -320,6 +320,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
                   language={language === "vhdl" ? "vhdl" : "systemverilog"}
                   readOnly={isRunning || isSubmitting}
                   diagnostics={diagnostics.design}
+                  lint={language !== "vhdl"}
                 />
               </div>
             </div>

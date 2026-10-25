@@ -8,6 +8,7 @@ import {
   BOARD_SCRIPT, MAX_SCHEMATIC_CELLS, METRICS_SCRIPT, SYNTH_SCRIPT,
   boardNetlist, gateMetrics, latchesFromLog, paramNames, parseFsmInfo, summarize, warningsFromOutput,
 } from "./yosys";
+import { parseYosysMessages } from "../verilog-lang";
 
 type Tree = { [name: string]: Tree | string | Uint8Array };
 /** The @yowasp/yosys `runYosys` signature (lib/api.d.ts there). */
@@ -16,7 +17,8 @@ export type RunYosys = (args: string[], files: Tree, options: {
   stderr?: ((b: Uint8Array | null) => void) | null;
 }) => Promise<Tree | undefined> | Tree | undefined;
 
-export type SynthKind = "synth" | "board";
+/** synth: the Synth panel; board: the virtual board's netlist; lint: parse only, for the editor's squiggles. */
+export type SynthKind = "synth" | "board" | "lint";
 
 const text = (v: Tree[string] | undefined) => (typeof v === "string" ? v : v instanceof Uint8Array ? new TextDecoder().decode(v) : "");
 
@@ -51,6 +53,10 @@ export async function synthesize(
   run: RunYosys, kind: SynthKind, design: string,
   draw?: { schematic: (netlist: any) => Promise<string | null>; fsm: (fsm: any) => Promise<string> },
 ) {
+  if (kind === "lint") {
+    const r = await yosys(run, design, "read_verilog -sv design.v");
+    return { ok: true as const, messages: parseYosysMessages(r.ok ? r.output : r.error) };
+  }
   if (kind === "board") {
     const r = await yosys(run, design, BOARD_SCRIPT);
     return r.ok ? boardNetlist(JSON.parse(text(r.files["board.json"]) || "{}")) : r;

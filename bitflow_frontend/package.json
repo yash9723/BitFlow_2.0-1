@@ -42,6 +42,7 @@
     "check-flash": "tsx scripts/flash.check.ts",
     "check-webserial": "tsx scripts/webserial.check.ts",
     "check-projects": "tsx scripts/projects.check.ts",
+    "check-verilog-lang": "tsx scripts/verilog-lang.check.ts",
     "check-leaks": "tsx scripts/check-bundle-leaks.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
