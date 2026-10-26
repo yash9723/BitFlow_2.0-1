@@ -6,8 +6,9 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { BOARDS, type BoardId } from "@/lib/synth/boards";
-import { DRIVER_HINT, FLASH, flash, flashArgs, requestBoard, webUsbAvailable, type FlashMode } from "@/lib/flash";
+import { DRIVER_HINT, FLASH, detectOs, flash, flashArgs, needsWinUsbOnWindows, requestBoard, webUsbAvailable, type FlashMode, type Os } from "@/lib/flash";
 import { takeBitstream } from "@/lib/bitstream-handoff";
+import FlashSetup from "./FlashSetup";
 
 const BOARD_IDS = (Object.keys(FLASH) as BoardId[]);
 type Status = { kind: "idle" } | { kind: "busy"; step: string } | { kind: "done" } | { kind: "failed"; error: string };
@@ -20,10 +21,12 @@ export default function FlashTool() {
   const [progress, setProgress] = useState<{ label: string; percent: number } | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [usb, setUsb] = useState(true);
+  const [os, setOs] = useState<Os | null>(null);
   const logRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     setUsb(webUsbAvailable());
+    setOs(detectOs(navigator.userAgent));
     takeBitstream().then((h) => {
       if (!h || !FLASH[h.board]) return;
       setBoard(h.board);
@@ -57,6 +60,7 @@ export default function FlashTool() {
       device = await requestBoard(board);   // first: the chooser needs this click
     } catch (err) {
       const message = (err as Error).message;
+      if (message === DRIVER_HINT) setTimeout(() => document.getElementById("setup")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
       return setStatus({ kind: "failed", error: message === DRIVER_HINT ? message : `The browser couldn't open USB devices: ${message}` });
     }
     if (!device) return setStatus({ kind: "idle" });
@@ -118,6 +122,9 @@ export default function FlashTool() {
           {status.kind === "busy" ? "Programming…" : "Connect the board and program it"}
         </button>
         {!file && <span className="text-[11px] text-dim">Pick a bitstream first, or build one in the Sandbox&apos;s Bitstream tab.</span>}
+        {os === "windows" && needsWinUsbOnWindows(board) && (
+          <a href="#setup" className="text-[11px] text-info hover:underline">First time on this Windows PC? Set it up first ↓</a>
+        )}
       </div>
 
       {(status.kind === "busy" || progress) && (
@@ -132,7 +139,7 @@ export default function FlashTool() {
       {status.kind === "failed" && (
         <div className="space-y-1 text-[11px]" role="alert">
           <p className="text-danger">{status.error}</p>
-          <p className="text-dim">Check the board is plugged in, no other program (Vivado, Gowin, another tab) has it open, and the USB driver below is set up.</p>
+          {status.error !== DRIVER_HINT && <p className="text-dim">Check the board is plugged in, no other program (Vivado, Gowin, another tab) has it open, and this computer is set up (below).</p>}
         </div>
       )}
       {log.length > 0 && (
@@ -142,16 +149,8 @@ export default function FlashTool() {
         </div>
       )}
 
-      <details className="text-[11px] text-dim space-y-2">
-        <summary className="cursor-pointer text-ghost">USB drivers and the command line</summary>
-        <div className="space-y-2 pt-2 max-w-3xl">
-          <p><span className="text-ghost">Windows:</span> the browser needs the WinUSB driver on the board&apos;s programming interface. Run Zadig, choose Options → List all devices, pick the board&apos;s &quot;Interface 0&quot; (USB ID ending in 00; Windows calls it &quot;USB Serial Converter A&quot;) and install WinUSB. Leave Interface 1, the serial port, alone: Zadig may label it &quot;JTAG Debugger&quot;, but it isn&apos;t the one.</p>
-          <p><span className="text-ghost">Linux:</span> let your user open the board, e.g. <span className="text-pale">/etc/udev/rules.d/99-fpga.rules</span> with <span className="text-pale">SUBSYSTEM==&quot;usb&quot;, ATTRS{"{"}idVendor{"}"}==&quot;0403&quot;, MODE=&quot;0666&quot;</span> (and 1209 for the OrangeCrab), then replug it.</p>
-          <p><span className="text-ghost">macOS:</span> nothing to install; close other tools that use the board.</p>
-          <p>The same thing from a terminal, with openFPGALoader from the OSS CAD Suite:</p>
-          <pre className="bg-void border border-rim rounded px-2 py-1 text-pale">{command}</pre>
-        </div>
-      </details>
+      <FlashSetup board={board} mode={mode} file={file} os={os} command={command}
+        attention={status.kind === "failed" && status.error === DRIVER_HINT} />
     </div>
   );
 }

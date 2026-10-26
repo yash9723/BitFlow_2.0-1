@@ -6,7 +6,9 @@
  */
 import assert from "node:assert/strict";
 import { BOARDS, type BoardId, type Family } from "@/lib/synth/boards";
-import { FLASH, flashArgs, parseProgress } from "@/lib/flash";
+import { FLASH, USB_SETUP_URL, ZADIG_PRESET, detectOs, flashArgs, needsWinUsbOnWindows, parseProgress } from "@/lib/flash";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 assert.deepEqual(flashArgs("icestick", "flash", "top.bin"), ["-b", "ice40_generic", "top.bin"], "iCE40 always writes its flash");
 assert.deepEqual(flashArgs("ulx3s-85f", "sram", "top.bit"), ["-b", "ulx3s", "top.bit"]);
@@ -32,4 +34,19 @@ for (const [id, target] of Object.entries(FLASH) as [BoardId, NonNullable<(typeo
   assert.ok(target.usb.length > 0 && target.modes.length > 0, `${id}: USB filter and a mode`);
 }
 assert.ok(!FLASH["de10-lite"], "the DE10-Lite's USB-Blaster needs Quartus");
+// Setup for the visitor's computer: which OS, which boards need WinUSB on Windows, the vendor fallback.
+assert.equal(detectOs("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36"), "windows");
+assert.equal(detectOs("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/141.0"), "mac");
+assert.equal(detectOs("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/141.0"), "linux");
+assert.equal(detectOs("Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 Chrome/141.0"), "chromeos");
+assert.equal(detectOs("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/141.0 Mobile"), "android");
+for (const id of ["tangnano9k", "tangnano20k", "icestick", "icebreaker", "basys3"] as BoardId[]) assert.ok(needsWinUsbOnWindows(id), `${id} is an FT2232`);
+for (const id of ["ulx3s-85f", "orangecrab-25f"] as BoardId[]) assert.ok(!needsWinUsbOnWindows(id), `${id} isn't an FT2232`);
+assert.equal(FLASH.tangnano9k!.vendor!.command("sram", "a.fs"), "programmer_cli --device GW1NR-9C --run 2 --fsFile a.fs --cable-index 1");
+assert.equal(FLASH.tangnano9k!.vendor!.command("flash", "a.fs"), "programmer_cli --device GW1NR-9C --run 5 --fsFile a.fs --cable-index 1");
+assert.equal(FLASH.tangnano20k!.vendor!.command("flash", "a.fs"), "programmer_cli --device GW2AR-18C --run 36 --spiaddr 0x000000 --fsFile a.fs --cable-index 1");
+assert.match(USB_SETUP_URL, /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/releases\/download\/usb-setup-v1\/BitFlow-USB-Setup\.zip$/);
+const preset = join(__dirname, "..", "public", ZADIG_PRESET);
+assert.ok(existsSync(preset), "the Zadig preset is served");
+assert.match(readFileSync(preset, "utf8"), /VID = 0x0403\s+PID = 0x6010\s+MI = 0x00/, "the preset targets 0403:6010 interface 0");
 console.log("flash: all checks passed");

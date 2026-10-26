@@ -18,13 +18,39 @@ export interface FlashTarget {
   files: string[];
   /** What to do with the board before connecting it. */
   prepare?: string;
+  /** The vendor's own programmer, which works with the stock driver (no WinUSB setup on Windows). */
+  vendor?: { name: string; url: string; command: (mode: FlashMode, file: string) => string };
 }
 
 const FT2232 = { vendorId: 0x0403, productId: 0x6010 };   // FTDI FT2232H, and the Tang Nanos' BL702/BL616 that act as one
 const ice40: FlashTarget = { usb: [FT2232], modes: ["flash"], files: [".bin"] };
 const ulx3s: FlashTarget = { usb: [{ vendorId: 0x0403, productId: 0x6015 }], modes: ["sram", "flash"], files: [".bit"] };
-const tang: FlashTarget = { usb: [FT2232], modes: ["sram", "flash"], files: [".fs"] };
 const digilent: FlashTarget = { usb: [FT2232], modes: ["sram"], files: [".bit"] };
+/** Gowin Programmer's command line (SUG502E): --run 2 = SRAM program; 5 = embedded flash; 36 = external flash. */
+const tang = (device: string, flashRun: string): FlashTarget => ({
+  usb: [FT2232], modes: ["sram", "flash"], files: [".fs"],
+  vendor: {
+    name: "Gowin Programmer", url: "https://www.gowinsemi.com/en/support/download_eda/",
+    command: (mode, file) => `programmer_cli --device ${device} --run ${mode === "sram" ? "2" : flashRun} --fsFile ${file} --cable-index 1`,
+  },
+});
+
+/** BitFlow USB Setup for Windows (tools/windows-usb-setup, built by .github/workflows/usb-setup.yml). */
+export const USB_SETUP_URL = "https://github.com/yash9723/BitFlow_2.0-1/releases/download/usb-setup-v1/BitFlow-USB-Setup.zip";
+/** Zadig preset (Device → Load Preset Device) for the same interface. */
+export const ZADIG_PRESET = "/drivers/bitflow-ft2232-interface0.cfg";
+
+export type Os = "windows" | "mac" | "linux" | "chromeos" | "android" | "other";
+export function detectOs(userAgent: string): Os {
+  if (/Android/i.test(userAgent)) return "android";
+  if (/CrOS/.test(userAgent)) return "chromeos";
+  if (/Windows/i.test(userAgent)) return "windows";
+  if (/Mac OS X|Macintosh/.test(userAgent)) return "mac";
+  if (/Linux/i.test(userAgent)) return "linux";
+  return "other";
+}
+/** Windows only lets the browser use these boards after a one-time WinUSB driver setup. */
+export const needsWinUsbOnWindows = (board: BoardId) => FLASH[board]?.usb[0] === FT2232;
 
 /** Boards that can be programmed from here; the DE10-Lite's USB-Blaster needs Quartus. */
 export const FLASH: Partial<Record<BoardId, FlashTarget>> = {
@@ -32,7 +58,7 @@ export const FLASH: Partial<Record<BoardId, FlashTarget>> = {
   "ulx3s-12f": ulx3s, "ulx3s-25f": ulx3s, "ulx3s-45f": ulx3s, "ulx3s-85f": ulx3s,
   "orangecrab-25f": { usb: [{ vendorId: 0x1209, productId: 0x5af0 }], modes: ["flash"], files: [".bit"],
     prepare: "Hold the button down while you plug the OrangeCrab in: it starts its bootloader (the LED fades in and out)." },
-  tangnano9k: tang, tangnano20k: tang,
+  tangnano9k: tang("GW1NR-9C", "5"), tangnano20k: tang("GW2AR-18C", "36 --spiaddr 0x000000"),
   basys3: digilent, "arty-a7-35t": digilent, "nexys-a7-100t": digilent,
 };
 
@@ -59,8 +85,8 @@ type Usb = { requestDevice(o: { filters: UsbFilter[] }): Promise<Device> };
 /** The interface openFPGALoader programs through: the FTDI chip's first ("A"). */
 const JTAG_INTERFACE = 0;
 export const DRIVER_HINT =
-  `The browser can't open the board's programming interface (Interface 0, "USB Serial Converter A" in Windows), usually because it still has the FTDI driver. ` +
-  `In Zadig (Options → List All Devices) pick the entry whose USB ID ends in "00" and install WinUSB on it.`;
+  `The browser can't open the board's programming interface yet: on Windows it needs a one-time driver setup. ` +
+  `Follow "Set up this computer" below (one download, one click), or program it with the vendor's tool instead.`;
 
 /** Check the browser can claim the programming interface, so a driver problem gets a clear message. */
 async function canClaim(device: Device): Promise<boolean> {
