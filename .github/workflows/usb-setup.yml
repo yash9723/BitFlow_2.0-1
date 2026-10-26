@@ -54,8 +54,11 @@ jobs:
         shell: pwsh
         run: |
           $exe = "libwdi/x64/Release/examples/wdi-simple.exe"
-          & $exe --vid 0x0403 --pid 0x6010 --iid 0 --type 0 --name "BitFlow FPGA programmer" --inf bitflow_fpga.inf --dest extracted --extract --log 2
-          $inf = Get-Content extracted/bitflow_fpga.inf -Raw
+          $dest = Join-Path $env:RUNNER_TEMP "bitflow-usb-setup"   # absolute, as setup.cmd uses (%TEMP%\bitflow-usb-setup)
+          & $exe --vid 0x0403 --pid 0x6010 --iid 0 --type 0 --name "BitFlow FPGA programmer" --inf bitflow_fpga.inf --dest $dest --extract --log 2
+          Get-ChildItem -Recurse $dest | ForEach-Object { $_.FullName.Substring($dest.Length) }
+          $inf = Get-Content (Join-Path $dest "bitflow_fpga.inf") -Raw
+          Write-Host $inf
           if ($inf -notmatch 'USB\\VID_0403&PID_6010&MI_00') { throw "the INF doesn't target 0403:6010 interface 0" }
           if ($inf -notmatch '(?i)winusb') { throw "the INF doesn't install WinUSB" }
           if ($inf -match 'MI_01') { throw "the INF touches interface 1 (the serial port)" }
