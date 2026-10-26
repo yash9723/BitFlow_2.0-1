@@ -114,10 +114,17 @@ def parse_smtbmc(output: str) -> dict:
     if m:
         steps = re.findall(r"step (\d+)", output[: m.start()])
         failed = {"file": m.group(1), "line": int(m.group(2)), "step": int(steps[-1]) if steps else None}
-    covers = [{"file": f, "line": int(l), "reached": True, "step": int(s)}
-              for s, f, l in re.findall(r"Reached cover statement in step (\d+) at \S+: ([\w.]+):(\d+)", output)]
-    covers += [{"file": f, "line": int(l), "reached": False, "step": None}
-               for f, l in re.findall(r"Unreached cover statement at \S+: ([\w.]+):(\d+)", output)]
+    # Yosys 0.33 says "Reached cover statement at design.sv:12.5-12.24 in step 9.", newer ones
+    # "Reached cover statement in step 9 at \top: design.sv:12": take the step and file:line wherever they are.
+    covers = []
+    for line in output.splitlines():
+        if "cover statement" not in line:
+            continue
+        loc = re.search(r"([\w.-]+\.s?vh?):(\d+)", line)
+        step = re.search(r"in step (\d+)", line)
+        if loc and ("Unreached" in line or step):
+            covers.append({"file": loc.group(1), "line": int(loc.group(2)), "reached": "Unreached" not in line,
+                           "step": int(step.group(1)) if step and "Unreached" not in line else None})
     return {
         "status":           status[-1].lower() if status else "error",
         "failed":           failed,

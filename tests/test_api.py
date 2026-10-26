@@ -1150,6 +1150,9 @@ def test_parse_smtbmc():
     cov = parse_smtbmc("Reached cover statement in step 4 at t: harness.v:9.5-9.18 ($cover)\n"
                        "Unreached cover statement at t: harness.v:12.5-12.18 ($cover)\nStatus: FAILED")
     assert [(c["line"], c["reached"], c["step"]) for c in cov["covers"]] == [(9, True, 4), (12, False, None)], cov
+    old = parse_smtbmc("Reached cover statement at harness.v:9.5-9.18 in step 4.\n"     # Yosys 0.33 (Ubuntu 24.04)
+                       "Unreached cover statement at harness.v:12.5-12.18.\nStatus: FAILED")
+    assert [(c["line"], c["reached"], c["step"]) for c in old["covers"]] == [(9, True, 4), (12, False, None)], old
 
 
 @needs_formal
