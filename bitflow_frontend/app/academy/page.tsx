@@ -32,8 +32,8 @@ export default function AcademyHubPage() {
           }}
         />
 
-        <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-10 h-14 flex items-center justify-between gap-4 px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
+          <div className="flex items-center gap-3 shrink-0">
             <Link href="/" className="flex items-center gap-2 group">
               <img
                 src="/bitflow_logo_64.png"
@@ -42,10 +42,10 @@ export default function AcademyHubPage() {
               />
               <span className="font-display text-[13px] font-bold text-bright">BitFlow</span>
             </Link>
-            <span className="text-rim">·</span>
-            <span className="font-mono text-[11px] text-ghost">Digital Electronics Academy</span>
+            <span className="hidden sm:inline text-rim">·</span>
+            <span className="hidden sm:inline font-mono text-[11px] text-ghost">Digital Electronics Academy</span>
           </div>
-          <div className="flex items-center gap-5 font-mono text-[11px]">
+          <div className="flex items-center gap-4 sm:gap-5 min-w-0 overflow-x-auto whitespace-nowrap font-mono text-[11px]">
             <Link href="/dashboard" className="text-ghost hover:text-bright transition-colors">
               Dashboard
             </Link>

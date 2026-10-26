@@ -6,7 +6,7 @@ import SiteFooter from "@/components/SiteFooter";
 
 export default function AboutPage() {
   return (
-    <main className="min-h-screen bg-void text-bright font-mono overflow-x-hidden selection:bg-phosphor/30">
+    <main className="relative min-h-screen bg-void text-bright font-mono overflow-x-hidden selection:bg-phosphor/30">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-80 h-80 bg-phosphor/5 rounded-full blur-[120px] pointer-events-none" />
       

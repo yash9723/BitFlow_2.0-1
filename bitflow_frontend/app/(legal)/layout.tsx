@@ -11,7 +11,7 @@ import { CONTACT_EMAIL, OPERATOR, SITE_NAME } from "@/lib/site";
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-void text-bright">
-      <nav className="flex items-center justify-between px-6 py-3 border-b border-rim/50">
+      <nav className="flex items-center justify-between h-14 px-5 sm:px-6 border-b border-rim/50">
         <Link href="/" className="flex items-center gap-2">
           <Image src="/bitflow_logo_64.png" alt="" width={28} height={28} className="w-7 h-7 object-contain" priority />
           <span className="font-display font-bold text-lg">{SITE_NAME}</span>

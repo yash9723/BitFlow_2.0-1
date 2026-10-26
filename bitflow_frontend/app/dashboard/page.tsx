@@ -674,7 +674,7 @@ function DashboardContent() {
       <LatticeBackground />
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-rim/50 bg-void/50 backdrop-blur-md">
+      <nav className="relative z-10 flex items-center justify-between gap-3 h-14 px-4 sm:px-6 border-b border-rim/50 bg-void/50 backdrop-blur-md">
         <Link href="/" className="flex items-center gap-2 shrink-0">
           <img src="/bitflow_logo_64.png" alt="BitFlow" className="w-7 h-7 object-contain" />
           <span className="font-display font-bold text-lg">BitFlow</span>
@@ -707,6 +707,12 @@ function DashboardContent() {
             Logout
           </button>
         </div>
+      </nav>
+      {/* Phones: the links that don't fit in the bar above. */}
+      <nav aria-label="More" className="sm:hidden relative z-10 flex items-center gap-5 h-10 px-4 border-b border-rim/50 bg-void/50 text-[12px]">
+        <Link href="/classes" className="text-ghost hover:text-bright transition-colors">Classes</Link>
+        <Link href="/contests" className="text-ghost hover:text-bright transition-colors">Contests</Link>
+        <Link href="/leaderboard" className="text-ghost hover:text-bright transition-colors">Leaderboard</Link>
       </nav>
 
       <main className="relative z-10 flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-8">

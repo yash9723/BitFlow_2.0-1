@@ -102,15 +102,15 @@ export default function Toolbar({
   return (
     <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-void/70 backdrop-blur-xl border-b border-rim/50 z-10">
       {/* ── Left: branding + nav ───────────────────────────────────────── */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 min-w-0 overflow-hidden">
         {/* BitFlow mark */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <img
             src="/bitflow_logo_64.png"
             alt="BitFlow"
             className="w-7 h-7 object-contain rounded opacity-90"
           />
-          <div className="flex flex-col leading-none">
+          <div className="hidden lg:flex flex-col leading-none">
             <span className="font-display text-[13px] font-semibold text-bright tracking-wide">
               BitFlow
             </span>
@@ -121,25 +121,27 @@ export default function Toolbar({
         </div>
 
         {/* ── Nav links ─────────────────────────────────────────────────── */}
-        <nav className="hidden sm:flex items-center gap-1">
+        {/* The editor controls on the right come first: links appear as width allows (main ones from xl, the rest from 2xl); all are in the palette (Ctrl K). */}
+        <nav className="hidden lg:flex items-center gap-1 min-w-0">
           {[
             ...(pathname.startsWith("/sandbox") ? [] : [{ href: "/sandbox", label: "Sandbox" }]),
             { href: "/dashboard", label: "Dashboard" },
             { href: "/learn", label: "Learn" },
             { href: "/arena", label: "Arena" },
-            { href: "/academy", label: "Academy" },
-            { href: "/studio", label: "Studio" },
-            { href: "/classes", label: "Classes" },
-            { href: "/contests", label: "Contests" },
-            ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
-          ].map(({ href, label }) => {
+            { href: "/academy", label: "Academy", wide: true },
+            { href: "/studio", label: "Studio", wide: true },
+            { href: "/classes", label: "Classes", wide: true },
+            { href: "/contests", label: "Contests", wide: true },
+            ...(user?.role === "ADMIN" ? [{ href: "/admin", label: "Admin", wide: true }] : []),
+          ].map(({ href, label, wide }) => {
             const active = pathname.startsWith(href);
             return (
               <Link
                 key={href}
                 href={href}
                 className={[
-                  "px-2.5 py-1 rounded-lg font-mono text-[11px] tracking-wide transition-colors duration-100",
+                  "px-2.5 py-1 rounded-lg font-mono text-[11px] tracking-wide transition-colors duration-100 whitespace-nowrap",
+                  wide ? "hidden 2xl:inline-block" : "hidden xl:inline-block",
                   active
                     ? "bg-phosphor/10 backdrop-blur-sm text-phosphor border border-phosphor/30"
                     : "text-ghost hover:text-pale hover:bg-pit/40",
@@ -154,7 +156,7 @@ export default function Toolbar({
       </div>
 
       {/* ── Right: controls ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         {/* Duration from last run */}
         {result && <DurationChip ms={result.duration_ms} />}
 
@@ -296,8 +298,8 @@ export default function Toolbar({
         {/* User profile info & logout */}
         {user && (
           <div className="flex items-center gap-2 px-1">
-            <span className="text-[10px] text-ghost/85 font-mono">{user.username}</span>
-            <span className={`text-[9px] font-mono border px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+            <span className="hidden 2xl:inline text-[10px] text-ghost/85 font-mono">{user.username}</span>
+            <span className={`hidden 2xl:inline text-[9px] font-mono border px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
               user.role === "ADMIN" 
                 ? "border-info/30 bg-info/15 text-info font-bold" 
                 : "border-phosphor/30 bg-phosphor/10 text-phosphor"
