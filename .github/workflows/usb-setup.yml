@@ -59,7 +59,8 @@ jobs:
           Get-ChildItem -Recurse $dest | ForEach-Object { $_.FullName.Substring($dest.Length) }
           $inf = Get-Content (Join-Path $dest "bitflow_fpga.inf") -Raw
           Write-Host $inf
-          if ($inf -notmatch 'USB\\VID_0403&PID_6010&MI_00') { throw "the INF doesn't target 0403:6010 interface 0" }
+          # libwdi's INF names the device once ("DeviceID = ...") and installs on USB\%DeviceID%.
+          if ($inf -notmatch 'DeviceID\s*=\s*"VID_0403&PID_6010&MI_00"' -or $inf -notmatch 'USB\\%DeviceID%') { throw "the INF doesn't target 0403:6010 interface 0" }
           if ($inf -notmatch '(?i)winusb') { throw "the INF doesn't install WinUSB" }
           if ($inf -match 'MI_01') { throw "the INF touches interface 1 (the serial port)" }
           Write-Host "INF ok: WinUSB on USB\VID_0403&PID_6010&MI_00 only"
