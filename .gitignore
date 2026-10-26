@@ -32,3 +32,7 @@ bitflow_frontend/private/
 
 # Monaco editor copied from node_modules at build time
 bitflow_frontend/public/monaco/
+
+# Playwright output (bitflow_frontend/e2e)
+bitflow_frontend/e2e/test-results/
+bitflow_frontend/e2e/playwright-report/

@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { BOARDS, type BoardId } from "@/lib/synth/boards";
-import { FLASH, flash, flashArgs, requestBoard, webUsbAvailable, type FlashMode } from "@/lib/flash";
+import { DRIVER_HINT, FLASH, flash, flashArgs, requestBoard, webUsbAvailable, type FlashMode } from "@/lib/flash";
 import { takeBitstream } from "@/lib/bitstream-handoff";
 
 const BOARD_IDS = (Object.keys(FLASH) as BoardId[]);
@@ -53,7 +53,8 @@ export default function FlashTool() {
     try {
       device = await requestBoard(board);   // first: the chooser needs this click
     } catch (err) {
-      return setStatus({ kind: "failed", error: `The browser couldn't open USB devices: ${(err as Error).message}` });
+      const message = (err as Error).message;
+      return setStatus({ kind: "failed", error: message === DRIVER_HINT ? message : `The browser couldn't open USB devices: ${message}` });
     }
     if (!device) return setStatus({ kind: "idle" });
     setStatus({ kind: "busy", step: `Programming the ${b.name} (${device})…` });
@@ -134,7 +135,7 @@ export default function FlashTool() {
       <details className="text-[11px] text-dim space-y-2">
         <summary className="cursor-pointer text-ghost">USB drivers and the command line</summary>
         <div className="space-y-2 pt-2 max-w-3xl">
-          <p><span className="text-ghost">Windows:</span> the browser needs the WinUSB driver on the board&apos;s programming interface. Run Zadig, choose Options → List all devices, pick the board&apos;s &quot;Interface 0&quot; and install WinUSB. (Interface 1, the serial port, keeps its driver.)</p>
+          <p><span className="text-ghost">Windows:</span> the browser needs the WinUSB driver on the board&apos;s programming interface. Run Zadig, choose Options → List all devices, pick the board&apos;s &quot;Interface 0&quot; (USB ID ending in 00; Windows calls it &quot;USB Serial Converter A&quot;) and install WinUSB. Leave Interface 1, the serial port, alone: Zadig may label it &quot;JTAG Debugger&quot;, but it isn&apos;t the one.</p>
           <p><span className="text-ghost">Linux:</span> let your user open the board, e.g. <span className="text-pale">/etc/udev/rules.d/99-fpga.rules</span> with <span className="text-pale">SUBSYSTEM==&quot;usb&quot;, ATTRS{"{"}idVendor{"}"}==&quot;0403&quot;, MODE=&quot;0666&quot;</span> (and 1209 for the OrangeCrab), then replug it.</p>
           <p><span className="text-ghost">macOS:</span> nothing to install; close other tools that use the board.</p>
           <p>The same thing from a terminal, with openFPGALoader from the OSS CAD Suite:</p>

@@ -50,7 +50,31 @@ export function parseProgress(line: string): { label: string; percent: number } 
   return m ? { label: m[1].trim(), percent: Math.min(100, Number(m[2])) } : null;
 }
 
-type Usb = { requestDevice(o: { filters: UsbFilter[] }): Promise<{ productName?: string }> };
+interface Device {
+  productName?: string; opened?: boolean;
+  open(): Promise<void>; close(): Promise<void>; claimInterface(n: number): Promise<void>; releaseInterface(n: number): Promise<void>;
+}
+type Usb = { requestDevice(o: { filters: UsbFilter[] }): Promise<Device> };
+
+/** The interface openFPGALoader programs through: the FTDI chip's first ("A"). */
+const JTAG_INTERFACE = 0;
+export const DRIVER_HINT =
+  `The browser can't open the board's programming interface (Interface 0, "USB Serial Converter A" in Windows), usually because it still has the FTDI driver. ` +
+  `In Zadig (Options → List All Devices) pick the entry whose USB ID ends in "00" and install WinUSB on it.`;
+
+/** Check the browser can claim the programming interface, so a driver problem gets a clear message. */
+async function canClaim(device: Device): Promise<boolean> {
+  try {
+    if (!device.opened) await device.open();
+    await device.claimInterface(JTAG_INTERFACE);
+    await device.releaseInterface(JTAG_INTERFACE);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await device.close().catch(() => undefined);
+  }
+}
 const usb = (): Usb | undefined => (typeof navigator === "undefined" ? undefined : (navigator as unknown as { usb?: Usb }).usb);
 export const webUsbAvailable = () => !!usb();
 
@@ -62,6 +86,7 @@ export const webUsbAvailable = () => !!usb();
 export async function requestBoard(board: BoardId): Promise<string | null> {
   try {
     const device = await usb()!.requestDevice({ filters: FLASH[board]!.usb });
+    if (FLASH[board]!.usb[0] === FT2232 && !(await canClaim(device))) throw new Error(DRIVER_HINT);
     return device.productName ?? "USB device";
   } catch (err) {
     if ((err as Error)?.name === "NotFoundError") return null;   // chooser closed

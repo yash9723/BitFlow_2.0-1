@@ -9,6 +9,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import AccountSecurity from "@/components/AccountSecurity";
+import AccountData from "@/components/AccountData";
 import { useAuth } from "@/hooks/useAuth";
 import type { ProfileData } from "@/lib/profile";
 
@@ -264,6 +265,7 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
           </div>
 
           {own && <AccountSecurity />}
+          {own && <AccountData />}
         </aside>
 
         {/* ── Main content ─────────────────────────────────────────── */}

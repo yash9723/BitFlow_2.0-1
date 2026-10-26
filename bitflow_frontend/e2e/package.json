@@ -1,0 +1,7 @@
+{
+  "name": "bitflow-e2e",
+  "private": true,
+  "description": "End-to-end smoke tests for BitFlow (Playwright); its own package so the app's lockfile stays as it is.",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.63.0" }
+}

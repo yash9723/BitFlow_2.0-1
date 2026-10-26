@@ -1,0 +1,42 @@
+# Every 30 minutes: ask the site how many errors it logged (GET /api/cron/alerts) and, on a
+# spike, open (or add to) one "site-alert" issue, so GitHub emails the repository owner.
+# Needs the CRON_SECRET repository secret, the same value as CRON_SECRET in Vercel; without
+# it the job does nothing. It only reads the site's error counts: it never wakes the simulator.
+name: Site alerts
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check error counts
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE: https://bitflowvlsi.tech
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "::notice::CRON_SECRET isn't set; skipping."; exit 0; fi
+          body=$(curl -fsS --max-time 30 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/alerts?window=30") || {
+            echo "::warning::The site didn't answer the alert check."; body='{"alert":true,"total":"?","window":30,"byLocation":[],"down":true}'; }
+          echo "$body"
+          [ "$(echo "$body" | jq -r .alert)" = "true" ] || exit 0
+          summary=$(echo "$body" | jq -r '
+            (if .down then "The site did not answer the alert check.\n\n" else "" end) +
+            "\(.total) errors in the last \(.window) minutes (threshold \(.threshold // "?")).\n\n" +
+            ([.byLocation[] | "- \(.count) × \(.source) \(.location)"] | join("\n")) +
+            "\n\nDetails: /admin → Errors."')
+          gh label create site-alert --repo "$REPO" --color d93f0b --description "Error spike on bitflowvlsi.tech" 2>/dev/null || true
+          open=$(gh issue list --repo "$REPO" --label site-alert --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$REPO" --body "$(printf '%s\n\n_%s_' "$summary" "$(date -u '+%Y-%m-%d %H:%M UTC')")"
+          else
+            gh issue create --repo "$REPO" --label site-alert --title "Error spike on bitflowvlsi.tech" --body "$summary"
+          fi
