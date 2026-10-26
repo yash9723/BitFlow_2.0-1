@@ -23,7 +23,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022   # libwdi's projects use VS 2022's v143 tools (incl. ARM64), which windows-latest no longer has
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
