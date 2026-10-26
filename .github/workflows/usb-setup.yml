@@ -1,0 +1,89 @@
+# Builds "BitFlow USB Setup" for Windows: wdi-simple.exe from libwdi (the library behind Zadig),
+# built exactly as libwdi's own CI does, zipped with tools/windows-usb-setup/*, and published as
+# the release "usb-setup-v1" that bitflowvlsi.tech/flash links to (lib/flash.ts, USB_SETUP_URL).
+# Before publishing it checks the driver it would install targets only 0403:6010 interface 0.
+name: Windows USB setup
+
+on:
+  push:
+    branches: [main, bitflow-hardening-and-features]
+    paths: ["tools/windows-usb-setup/**", ".github/workflows/usb-setup.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  LIBWDI_REF: v1.5.1
+  WDK_URL: https://go.microsoft.com/fwlink/p/?LinkID=253170
+  LIBUSB0_URL: https://github.com/mcuee/libusb-win32/releases/download/release_1.4.0.0/libusb-win32-bin-1.4.0.0.zip
+  LIBUSBK_URL: https://github.com/mcuee/libusbk/releases/download/V3.1.0.0/libusbK-3.1.0.0-bin.7z
+  BUILD_MACROS: '"WDK_DIR=\"../wdk/Windows Kits/8.0\";LIBUSB0_DIR=\"../libusb0\";LIBUSBK_DIR=\"../libusbk/bin\""'
+  TAG: usb-setup-v1
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: pbatard/libwdi
+          ref: ${{ env.LIBWDI_REF }}
+          path: libwdi
+      - name: Download libwdi's support files (Microsoft WDK 8.0 redistributable, libusb-win32, libusbK)
+        shell: cmd
+        working-directory: libwdi
+        run: |
+          curl -fL ${{ env.WDK_URL }} -o wdk-redist.msi
+          curl -fL ${{ env.LIBUSB0_URL }} -o libusb0-redist.zip
+          curl -fL ${{ env.LIBUSBK_URL }} -o libusbk-redist.7z
+          msiexec /a wdk-redist.msi /qn TARGETDIR=%CD%\wdk
+          7z x libusb0-redist.zip
+          7z x libusbk-redist.7z
+          del *.zip
+          del *.7z
+          move libusb-win32* libusb0
+          move libusbK* libusbk
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build wdi-simple (Release x64)
+        shell: cmd
+        working-directory: libwdi
+        run: msbuild libwdi.sln /m /p:Configuration=Release,Platform=x64,BuildMacros=${{ env.BUILD_MACROS }}
+      - name: Check the driver it would install
+        shell: pwsh
+        run: |
+          $exe = "libwdi/x64/Release/examples/wdi-simple.exe"
+          & $exe --vid 0x0403 --pid 0x6010 --iid 0 --type 0 --name "BitFlow FPGA programmer" --inf bitflow_fpga.inf --dest extracted --extract --log 2
+          $inf = Get-Content extracted/bitflow_fpga.inf -Raw
+          if ($inf -notmatch 'USB\\VID_0403&PID_6010&MI_00') { throw "the INF doesn't target 0403:6010 interface 0" }
+          if ($inf -notmatch '(?i)winusb') { throw "the INF doesn't install WinUSB" }
+          if ($inf -match 'MI_01') { throw "the INF touches interface 1 (the serial port)" }
+          Write-Host "INF ok: WinUSB on USB\VID_0403&PID_6010&MI_00 only"
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory pkg | Out-Null
+          Copy-Item libwdi/x64/Release/examples/wdi-simple.exe pkg/
+          Copy-Item tools/windows-usb-setup/* pkg/
+          Copy-Item libwdi/COPYING pkg/LICENSE-libwdi.txt
+          Compress-Archive pkg/* BitFlow-USB-Setup.zip
+          (Get-FileHash BitFlow-USB-Setup.zip -Algorithm SHA256).Hash | Tee-Object sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BitFlow-USB-Setup
+          path: BitFlow-USB-Setup.zip
+      - name: Publish the release the flash page links to
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sha = Get-Content sha256.txt
+          $notes = "One-time Windows setup so Chrome/Edge can program FT2232 FPGA boards (Tang Nano 9K/20K, iCEstick, iCEBreaker, Digilent) from https://bitflowvlsi.tech/flash. Unzip, run setup.cmd, click Yes. undo.cmd reverts it.`n`nwdi-simple.exe built from libwdi $env:LIBWDI_REF by this workflow (run $env:GITHUB_RUN_ID).`nSHA-256 of BitFlow-USB-Setup.zip: $sha"
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG BitFlow-USB-Setup.zip --clobber
+            gh release edit $env:TAG --notes $notes
+          } else {
+            gh release create $env:TAG BitFlow-USB-Setup.zip --title "BitFlow USB Setup (Windows)" --notes $notes --target $env:GITHUB_SHA
+          }
