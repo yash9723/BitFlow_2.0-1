@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, bitflow-hardening-and-features]
   pull_request:
 
 jobs:
