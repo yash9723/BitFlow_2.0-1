@@ -42,16 +42,17 @@ export default function FlashSetup({ board, mode, file, os, command, attention }
             <p className="text-ghost"><span className="text-phosphor">1. One-click setup</span> (recommended)</p>
             <ol className="list-decimal pl-5 space-y-1">
               <li>Plug the board in and download <span className="text-pale">BitFlow USB Setup</span>.</li>
-              <li>Unzip it, double-click <span className="text-pale">setup.cmd</span> and click <span className="text-pale">Yes</span>. If Windows says &quot;Windows protected your PC&quot;, click More info → Run anyway.</li>
+              <li>Right-click the zip → Properties → tick <span className="text-pale">Unblock</span> → OK. Then unzip it, double-click <span className="text-pale">setup.cmd</span> and click <span className="text-pale">Yes</span>. If Windows says &quot;Windows protected your PC&quot;, click More info → Run anyway.</li>
               <li>Come back here and program the board. You only do this once per computer.</li>
             </ol>
             <a href={USB_SETUP_URL} className={`${link} border-phosphor/60 text-phosphor hover:bg-phosphor/10`}>Download BitFlow USB Setup</a>
             <p>It installs Windows&apos; own WinUSB driver on the board&apos;s programming interface only; the serial port keeps its driver. <span className="text-pale">undo.cmd</span> in the same folder puts the original driver back.</p>
+            <p className="text-warn">Blocked with no &quot;Run anyway&quot; (Smart App Control, or a school or company PC)? Windows only allows signed programs there: use option 2 (Zadig is signed) or option 3 (no driver change at all).</p>
           </div>
 
           <div className={card}>
-            <p className="text-ghost"><span className="text-phosphor">2. Already use Zadig?</span></p>
-            <p>Download the preset, then in Zadig choose Device → Load Preset Device, pick the file, keep WinUSB and click Install Driver. It selects the right interface for you.</p>
+            <p className="text-ghost"><span className="text-phosphor">2. Zadig with the BitFlow preset</span> (when Windows blocks option 1)</p>
+            <p>Download <a href="https://zadig.akeo.ie/" target="_blank" rel="noopener noreferrer" className="text-info hover:underline">Zadig</a> and the preset. In Zadig choose Device → Load Preset Device, pick the preset, keep WinUSB and click Install Driver. It selects the right interface for you, and Zadig is signed, so Windows security allows it.</p>
             <a href={ZADIG_PRESET} download className={`${link} border-rim text-ghost hover:text-bright`}>Download the Zadig preset</a>
           </div>
 
