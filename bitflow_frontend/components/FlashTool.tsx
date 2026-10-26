@@ -41,6 +41,9 @@ export default function FlashTool() {
   const pickBoard = (id: BoardId) => { setBoard(id); setMode(FLASH[id]!.modes[0]); setStatus({ kind: "idle" }); };
   const pickFile = async (f: File | undefined) => {
     if (!f) return;
+    // A file named for a board (e.g. blinky-tangnano9k.fs) selects that board.
+    const named = BOARD_IDS.filter((id) => f.name.toLowerCase().includes(id)).sort((x, y) => y.length - x.length)[0];
+    if (named && named !== board) pickBoard(named);
     setFile({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
     setStatus({ kind: "idle" });
   };
@@ -58,8 +61,12 @@ export default function FlashTool() {
     }
     if (!device) return setStatus({ kind: "idle" });
     setStatus({ kind: "busy", step: `Programming the ${b.name} (${device})…` });
-    const r = await flash(board, mode, file, (line) => setLog((l) => [...l.slice(-300), line]), setProgress);
-    setStatus(r.ok ? { kind: "done" } : { kind: "failed", error: r.error ?? "Programming failed." });
+    const lines = [`$ ${command}`];
+    setLog(lines.slice());
+    const r = await flash(board, mode, file, (line) => { lines.push(line); setLog(lines.slice(-300)); }, setProgress);
+    // openFPGALoader's own last words say why it stopped ("JTAG init failed", a chip ID mismatch, …).
+    const last = lines.slice(1).reverse().find((l) => /error|fail|not found|unable|mismatch|wrong|can't|cannot/i.test(l)) ?? lines.at(-1);
+    setStatus(r.ok ? { kind: "done" } : { kind: "failed", error: `${r.error ?? "Programming failed."}${lines.length > 1 ? ` It said: “${last}”` : " It printed nothing."}` });
   };
 
   return (
@@ -88,7 +95,7 @@ export default function FlashTool() {
       {file && (
         <p className="text-[11px] text-ghost">
           {file.fromSandbox ? "From the Bitstream tab: " : ""}<span className="text-bright">{file.name}</span> ({Math.max(1, Math.round(file.bytes.length / 1024))} KB)
-          {wrongType && <span className="text-warn"> — the {b.name} takes {target.files.join(" or ")} files; check you picked the right board.</span>}
+          {wrongType && <span className="text-warn"> — the {b.name} takes {target.files.join(" or ")} files: pick your board above first.</span>}
         </p>
       )}
 
@@ -106,7 +113,7 @@ export default function FlashTool() {
       {target.prepare && <p className="text-[11px] text-warn">{target.prepare}</p>}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={program} disabled={!file || !usb || status.kind === "busy"}
+        <button onClick={program} disabled={!file || !!wrongType || !usb || status.kind === "busy"}
           className="px-4 py-2 rounded border border-phosphor/60 text-phosphor hover:bg-phosphor/10 disabled:opacity-40 text-[12px]">
           {status.kind === "busy" ? "Programming…" : "Connect the board and program it"}
         </button>
@@ -129,7 +136,10 @@ export default function FlashTool() {
         </div>
       )}
       {log.length > 0 && (
-        <pre ref={logRef} className="max-h-56 overflow-auto bg-void border border-rim rounded p-2 text-[10px] text-dim whitespace-pre-wrap">{log.join("\n")}</pre>
+        <div className="space-y-1">
+          <pre ref={logRef} className="max-h-56 overflow-auto bg-void border border-rim rounded p-2 text-[10px] text-dim whitespace-pre-wrap">{log.join("\n")}</pre>
+          <button onClick={() => navigator.clipboard?.writeText(log.join("\n"))} className="text-[10px] text-ghost hover:text-bright">Copy log</button>
+        </div>
       )}
 
       <details className="text-[11px] text-dim space-y-2">
