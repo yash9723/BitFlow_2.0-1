@@ -26,7 +26,9 @@ model User {
   birthMonth        Int?      // 1-12
   guardianStatus    String    @default("none") // "none" (adult) | "pending" | "granted"
   guardianAllowAi   Boolean   @default(false)  // the parent allowed the AI tutor
-  guardianTokenHash String?   @unique          // sha256 of the parent link's token
+  // sha256 of the parent link's token (24 random bytes, so an index is enough: a unique
+  // constraint makes `prisma db push` stop on a data-loss warning for existing rows)
+  guardianTokenHash String?
   guardianTokenExp  DateTime? // the link's expiry before a parent has consented; null after
   consentVersion    String?   // lib/privacy.ts CONSENT_VERSION accepted; null = asked at next visit
   consentAt         DateTime?
@@ -45,6 +47,8 @@ model User {
   projects         Project[]
   certificates     Certificate[]
   comments         Comment[]
+
+  @@index([guardianTokenHash])
 }
 
 // ============================================================================

@@ -33,7 +33,7 @@ export async function newGuardianLink(userId: string): Promise<string> {
 /** The account a parent link belongs to, or null when it is unknown or expired. */
 export async function userByGuardianToken(token: unknown) {
   if (typeof token !== "string" || token.length < 20 || token.length > 100) return null;
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.findFirst({
     where:  { guardianTokenHash: hashToken(token) },
     select: { id: true, username: true, birthYear: true, birthMonth: true, guardianStatus: true, guardianAllowAi: true, guardianTokenExp: true, createdAt: true },
   });
