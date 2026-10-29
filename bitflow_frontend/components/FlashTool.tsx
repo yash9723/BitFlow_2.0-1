@@ -98,7 +98,7 @@ export default function FlashTool() {
 
       {file && (
         <p className="text-[11px] text-ghost">
-          {file.fromSandbox ? "From the Bitstream tab: " : ""}<span className="text-bright">{file.name}</span> ({Math.max(1, Math.round(file.bytes.length / 1024))} KB)
+          {file.fromSandbox ? "Built in BitFlow: " : ""}<span className="text-bright">{file.name}</span> ({Math.max(1, Math.round(file.bytes.length / 1024))} KB)
           {wrongType && <span className="text-warn"> — the {b.name} takes {target.files.join(" or ")} files: pick your board above first.</span>}
         </p>
       )}

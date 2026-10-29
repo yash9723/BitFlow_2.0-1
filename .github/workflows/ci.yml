@@ -66,6 +66,10 @@ jobs:
       - run: npm run check-webserial
       - run: npm run check-projects
       - run: npm run check-verilog-lang
+      - name: Board Lab lessons (every starter synthesizes and fails a goal) with YoWASP Yosys
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/yw" @yowasp/yosys@0.52.893
+          YOWASP_YOSYS="$RUNNER_TEMP/yw/node_modules/@yowasp/yosys/gen/bundle.js" npm run check-lab
 
   web:
     name: Frontend type-check + build

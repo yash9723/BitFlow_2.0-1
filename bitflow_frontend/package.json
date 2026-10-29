@@ -44,6 +44,7 @@
     "check-projects": "tsx scripts/projects.check.ts",
     "check-verilog-lang": "tsx scripts/verilog-lang.check.ts",
     "check-leaks": "tsx scripts/check-bundle-leaks.ts",
+    "check-lab": "tsx scripts/lab.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },
@@ -69,11 +70,15 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.4",
+    "three": "0.170.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@types/three": "0.170.0"
   }
 }

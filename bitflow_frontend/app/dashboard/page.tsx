@@ -238,6 +238,17 @@ const MODULES = [
       </svg>
     ),
   },
+  {
+    title: "Board Lab",
+    href: "/lab",
+    body: "16 hands-on lessons on a 3D FPGA board, then onto a real one.",
+    color: "phosphor",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18v10H3zM7 7V4m5 3V4m5 3V4M7 20v-3m5 3v-3m5 3v-3M8 11h3v2H8zM15 12h.01" />
+      </svg>
+    ),
+  },
 ];
 
 const CARD_STYLES: Record<string, { text: string; bg: string; border: string; shadow: string }> = {

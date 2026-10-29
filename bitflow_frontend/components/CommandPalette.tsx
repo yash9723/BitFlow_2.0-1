@@ -20,6 +20,7 @@ const SHORTCUTS_ID = "action:shortcuts";
 const PAGES: PaletteItem[] = [
   ["/", "Home"], ["/dashboard", "Dashboard"], ["/sandbox", "Sandbox IDE", "editor simulate run code"], ["/learn", "Learn: practice problems"],
   ["/arena", "Arena: challenge problems"], ["/academy", "Academy: lessons"], ["/academy/roadmap", "VLSI roadmap"], ["/studio", "Design Studio"],
+  ["/lab", "Board Lab: 3D FPGA lessons", "board led button fpga hardware"], ["/flash", "Flash a real board", "program usb fpga"],
   ["/classes", "Classes"], ["/contests", "Contests"], ["/leaderboard", "Leaderboard"], ["/profile", "Profile and settings", "account"],
   ["/about", "About BitFlow", "founders"],
 ].map(([href, title, keywords]) => ({ id: `page:${href}`, title, group: "Page", href, keywords }));

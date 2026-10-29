@@ -21,13 +21,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GateSim, toNumber, type BoardNetlist } from "@/lib/gate-sim";
 import { synthesizeDesign, synthToolsLoaded } from "@/lib/synth/client";
 import { UartReceiver, UartTransmitter } from "@/lib/uart";
+import { BUTTON, CLOCK, HEX_SEGS, RESET, activeLow, idle, isHex, isRgb, isRx, isSeg } from "@/lib/board-io";
 
-const CLOCK  = /^(clk|clock)$/i;
-const RESET  = /^(rst|reset|rst_n|reset_n|rstn|resetn|areset|arst|arst_n|aresetn)$/i;
-const BUTTON = /^(btn|key|button)/i;
-const SEVEN  = /^(seg|hex|sseg|seven)/i;
-const HEX    = /^(hex|digit)/i;
-const RGB    = /^rgb/i;
 const RATES  = [1, 2, 5, 10, 50, 100, 1000, 10000];
 /** Cap on clock cycles simulated per animation frame; past it the board runs slower than asked. */
 const MAX_PER_FRAME = 2000;
@@ -36,13 +31,6 @@ const MAX_PER_FRAME = 2000;
 const TRACE_DEPTH = 128;
 const TRACE_ROWS  = 8;
 
-const activeLow = (name: string) => RESET.test(name) && /n$/i.test(name);
-const isRx      = (name: string) => /^rx$/i.test(name);
-const idle      = (name: string) => (activeLow(name) || isRx(name) ? 1 : 0);   // a serial line rests high
-type Port = { name: string; width: number };
-const isSeg   = (p: Port) => SEVEN.test(p.name) && (p.width === 7 || p.width === 8);
-const isHex   = (p: Port) => HEX.test(p.name) && p.width === 4;
-const isRgb   = (p: Port) => RGB.test(p.name) && p.width === 3;
 const hz      = (r: number) => (r >= 1000 ? `${r / 1000} kHz` : `${r} Hz`);
 const toBits  = (n: number, width: number) => Array.from({ length: width }, (_, i) => Math.floor(n / 2 ** i) % 2);
 
@@ -63,8 +51,6 @@ const SEGMENTS = [
   "M8 4h20l-3 5H11z", "M30 6l-1 25-4 3 1-24z", "M29 37l-1 25-5-4 1-21z", "M7 66h20l-3-5H10z",
   "M6 36l-1 22 4 4 1-23z", "M7 6l4 4-1 21-4 3z", "M9 34l3-3h14l3 3-3 3H12z",
 ];
-/** Segments (bit 0 = a … bit 6 = g) lit for the hex digits 0–F. */
-const HEX_SEGS = [0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f, 0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71];
 
 function SevenSeg({ bits, label }: { bits: number[]; label: string }) {
   return (

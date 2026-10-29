@@ -128,6 +128,7 @@ export default function Toolbar({
             { href: "/dashboard", label: "Dashboard" },
             { href: "/learn", label: "Learn" },
             { href: "/arena", label: "Arena" },
+            { href: "/lab", label: "Lab" },
             { href: "/academy", label: "Academy", wide: true },
             { href: "/studio", label: "Studio", wide: true },
             { href: "/classes", label: "Classes", wide: true },

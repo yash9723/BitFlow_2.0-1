@@ -75,3 +75,22 @@ test("build an iCE40 bitstream in the browser", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Download .*\.bin/ })).toBeVisible({ timeout: 240_000 });
   await expect(page.getByText("openFPGALoader -b ice40_generic")).toBeVisible();
 });
+
+test("Board Lab: a lesson is checked in the browser", async ({ page }) => {
+  test.slow();   // the first check downloads Yosys (~6 MB)
+  await quiet(page);
+  await page.goto("/lab");
+  await expect(page.getByRole("heading", { name: /Build real hardware/ })).toBeVisible();
+  await page.goto("/lab/light-an-led");
+  await page.getByRole("button", { name: "Check my design" }).click();
+  await expect(page.getByText("LED 0 is off: led[0] should be 1.")).toBeVisible({ timeout: 120_000 });
+  // Typing into Monaco fights its auto-closing brackets, so set the text as an edit.
+  await page.waitForFunction(() => (window as any).monaco?.editor.getEditors().length > 0);
+  await page.evaluate(() => {
+    const ed = (window as any).monaco.editor.getEditors()[0];
+    ed.executeEdits("e2e", [{ range: ed.getModel().getFullModelRange(), text: "module lab (output [5:0] led);\n  assign led = 6'b000001;\nendmodule\n" }]);
+  });
+  await page.getByRole("button", { name: "Check my design" }).click();
+  await expect(page.getByLabel("passed")).toHaveCount(2, { timeout: 60_000 });
+  await expect(page.getByText("✓ lesson complete")).toBeVisible();
+});

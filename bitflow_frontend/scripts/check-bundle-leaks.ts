@@ -13,6 +13,7 @@ const PATTERNS: [string, RegExp][] = [
   ["hidden testbench module", /\bmodule\s+\w*_hidden\b/],
   ["hidden testbench source", /hiddenTestbench\s*:\s*["'`]\s*`timescale/],
   ["reference solution source", /referenceSolution\s*:\s*["'`]\s*(`timescale|module\b)/],
+  ["Board Lab reference solution", /lab-solution/],
   ["server-only Prisma client", /PrismaClient/],
   ["source map reference", /sourceMappingURL=/],
   ["private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
