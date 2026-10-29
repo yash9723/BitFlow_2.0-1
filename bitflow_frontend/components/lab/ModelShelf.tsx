@@ -63,13 +63,18 @@ export default function ModelShelf({ ids }: { ids: string[] }) {
       // Each model scaled to 4 units across, lined up left to right.
       models.forEach((m, i) => {
         if (!m) return;
+        // Some models are exported standing up: lay a board flat (its thinnest side up).
+        const size = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3());
+        if (size.z < size.y && size.z <= size.x) m.rotation.x = -Math.PI / 2;
+        else if (size.x < size.y && size.x <= size.z) m.rotation.z = Math.PI / 2;
+        m.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(m), s = 4 / Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
         const c = box.getCenter(new THREE.Vector3());
         m.scale.setScalar(s);
         m.position.set((i - (models.length - 1) / 2) * 5 - c.x * s, -box.min.y * s, -c.z * s);
         scene.add(m);
       });
-      camera.position.set(0, 7, 9 + models.length * 1.5);
+      camera.position.set(0, 5, 6 + models.length * 1.6);
       controls.target.set(0, 0, 0);
       controls.update();
       size();

@@ -6,5 +6,17 @@
  {
   "id": "orangecrab",
   "credit": "OrangeCrab r0.2.1 by Greg Davill (github.com/orangecrab-fpga), hardware licensed under CERN OHL v1.2."
+ },
+ {
+  "id": "mcu-arduino-uno",
+  "credit": "\"Arduino Uno\" by kakaeka, sketchfab.com/3d-models/arduino-uno-775a2bf901a74fd190f175f5f0dcf2d0, CC Attribution 4.0"
+ },
+ {
+  "id": "mcu-esp32",
+  "credit": "\"ESP32 WROOM 32 - Low Poly Photorealistic\" by wojteX, sketchfab.com/3d-models/esp32-wroom-32-low-poly-photorealistic-af0851c326ef4cbaa42439f801acbe98, CC Attribution 4.0"
+ },
+ {
+  "id": "mcu-nodemcu",
+  "credit": "\"LoLin NodeMcu V3\" by Jamie Hamel-Smith (jamie3d), sketchfab.com/3d-models/lolin-nodemcu-v3-c93922b794cc421e88f3ecaad107d454, CC Attribution 4.0"
  }
 ]

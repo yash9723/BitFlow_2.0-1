@@ -150,7 +150,7 @@ for (const b of BOARDS) {
 const MCUS = [
   { id: "mcu-arduino-uno", zip: /arduino.?uno/i, credit: '"Arduino Uno" by kakaeka, sketchfab.com/3d-models/arduino-uno-775a2bf901a74fd190f175f5f0dcf2d0, CC Attribution 4.0' },
   { id: "mcu-esp32", zip: /esp32/i, credit: '"ESP32 WROOM 32 - Low Poly Photorealistic" by wojteX, sketchfab.com/3d-models/esp32-wroom-32-low-poly-photorealistic-af0851c326ef4cbaa42439f801acbe98, CC Attribution 4.0' },
-  { id: "mcu-nodemcu", zip: /nodemcu|lolin/i, credit: '"LoLin NodeMcu V3" by jamie3d, sketchfab.com/3d-models/lolin-nodemcu-v3-c93922b794cc421e88f3ecaad107d454, CC Attribution 4.0' },
+  { id: "mcu-nodemcu", zip: /nodemcu|lolin/i, credit: '"LoLin NodeMcu V3" by Jamie Hamel-Smith (jamie3d), sketchfab.com/3d-models/lolin-nodemcu-v3-c93922b794cc421e88f3ecaad107d454, CC Attribution 4.0' },
 ];
 if (sketchfab) {
   for (const m of MCUS) {
