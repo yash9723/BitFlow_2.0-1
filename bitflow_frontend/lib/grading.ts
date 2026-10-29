@@ -366,6 +366,18 @@ export async function verifyReferenceSolution(
   return { ok: false, error: why.slice(0, 500) };
 }
 
+/**
+ * Verdicts as sent to the browser: hidden tests' outputs stay on the server, except the first
+ * failing case's (truncated), which the learner needs to debug. Without this, a stdout-compare
+ * problem's whole expected output could be read off one submit and hard-coded.
+ */
+export function publicVerdicts(verdicts: TestcaseVerdict[], max = 2000): TestcaseVerdict[] {
+  const firstFail = verdicts.findIndex((v) => !v.passed);
+  return verdicts.map((v, i) => i === firstFail
+    ? { ...v, actualOutput: v.actualOutput.slice(0, max), expectedOutput: v.expectedOutput.slice(0, max), error: v.error?.slice(0, max) }
+    : { ...v, actualOutput: "", expectedOutput: "", error: v.error?.slice(0, 300) });
+}
+
 /** Grade a design. Throws only on backend/infrastructure failure. */
 export async function gradeDesign(q: GradableQuestion, designCode: string): Promise<GradeResult> {
   const testcases = parseTestcases(q.hiddenTestcases);

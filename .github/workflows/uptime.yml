@@ -1,0 +1,40 @@
+# Once a day: check that the site and the simulator API answer, and open (or add to) one
+# "site-down" issue when either doesn't, so GitHub emails the repository owner.
+# Daily on purpose: checking the simulator wakes the Render instance, and it must not be
+# kept warm around the clock.
+name: Uptime check
+
+on:
+  schedule:
+    - cron: "0 5 * * *"   # 10:30 IST
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the site and the simulator
+        env:
+          SITE: https://bitflowvlsi.tech
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          problems=""
+          curl -fsS -o /dev/null --max-time 30 "$SITE/" || problems="$problems\n- The home page didn't load."
+          # The simulator sleeps when idle: give it time to wake up (up to ~2 minutes).
+          ok=""
+          for i in 1 2 3 4; do
+            body=$(curl -fsS --max-time 30 "$SITE/api/simulate/health" 2>/dev/null) && ok=1 && break
+            sleep 20
+          done
+          [ -n "$ok" ] || problems="$problems\n- The simulator API (/api/simulate/health) didn't answer."
+          echo "${body:-no answer}"
+          [ -n "$problems" ] || { echo "All good."; exit 0; }
+          summary=$(printf "Daily uptime check failed:%b\n\n_%s_" "$problems" "$(date -u '+%Y-%m-%d %H:%M UTC')")
+          gh label create site-down --repo "$REPO" --color b60205 --description "bitflowvlsi.tech or its simulator didn't answer" 2>/dev/null || true
+          open=$(gh issue list --repo "$REPO" --label site-down --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then gh issue comment "$open" --repo "$REPO" --body "$summary"
+          else gh issue create --repo "$REPO" --label site-down --title "bitflowvlsi.tech uptime check failed" --body "$summary"; fi

@@ -17,7 +17,11 @@ const MIN_MS = 3_000;
 const MAX_MS = 24 * 60 * 60 * 1000;
 
 function sign(ts: string): string {
-  return crypto.createHmac("sha256", process.env.JWT_SECRET ?? "").update(`signup:${ts}`).digest("base64url");
+  // Any server-only secret will do (production has one of the API signing keys, lib/jwt.ts).
+  const secret = process.env.BOT_CHECK_SECRET || process.env.JWT_SECRET || process.env.JWT_PRIVATE_KEY;
+  // An empty key would make tokens forgeable; dev keeps working without one.
+  if (!secret && process.env.NODE_ENV === "production") throw new Error("Set BOT_CHECK_SECRET (or JWT_SECRET / JWT_PRIVATE_KEY) to sign sign-up form tokens.");
+  return crypto.createHmac("sha256", secret ?? "dev-only").update(`signup:${ts}`).digest("base64url");
 }
 
 export function newFormToken(now = Date.now()): string {

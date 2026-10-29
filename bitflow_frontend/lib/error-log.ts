@@ -1,6 +1,6 @@
 /**
  * lib/error-log.ts — record server and browser errors for the admin page
- * (ErrorLog table, kept 30 days). Use instead of console.error in API routes:
+ * (ErrorLog table, kept a year: lib/privacy.ts LOG_RETENTION_DAYS). Use instead of console.error in API routes:
  *
  *   } catch (err) {
  *     await reportError("[submit] grading failed", err);
@@ -10,8 +10,9 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { LOG_RETENTION_DAYS } from "@/lib/privacy";
 
-const KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+const KEEP_MS = LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 function describe(err: unknown, fallback: string): string {
   if (err instanceof Error) return err.message || err.name;
@@ -36,7 +37,14 @@ export async function reportError(
       },
     });
     if (Math.random() < 0.02) {
-      await prisma.errorLog.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - KEEP_MS) } } });
+      // Retention (DPDP Rules: processing logs at least a year): errors, the audit trail,
+      // and contact messages a year after they were resolved.
+      const cutoff = new Date(Date.now() - KEEP_MS);
+      await Promise.all([
+        prisma.errorLog.deleteMany({ where: { createdAt: { lt: cutoff } } }),
+        prisma.auditLog.deleteMany({ where: { createdAt: { lt: cutoff } } }),
+        prisma.contactMessage.deleteMany({ where: { resolvedAt: { lt: cutoff } } }),
+      ]);
     }
   } catch {
     // The log itself must never break the request (e.g. database down).

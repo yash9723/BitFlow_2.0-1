@@ -28,7 +28,8 @@ export async function PATCH(request: Request) {
   if (typeof body?.id !== "string" || typeof body?.handled !== "boolean") {
     return NextResponse.json({ error: "Send {id, handled}." }, { status: 400 });
   }
-  const updated = await prisma.contactMessage.updateMany({ where: { id: body.id }, data: { handled: body.handled } });
+  // resolvedAt starts the one-year retention clock (lib/error-log.ts prunes it).
+  const updated = await prisma.contactMessage.updateMany({ where: { id: body.id }, data: { handled: body.handled, resolvedAt: body.handled ? new Date() : null } });
   if (!updated.count) return NextResponse.json({ error: "No such message." }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

@@ -52,6 +52,7 @@ export async function saveSubmission(
       body: JSON.stringify(payload),
     });
 
+    if (response.status === 401) return; // guests' runs are not stored
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       console.warn(

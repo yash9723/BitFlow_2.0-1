@@ -19,7 +19,7 @@ import { getSessionUser } from "@/lib/auth-utils";
 import { lockedBehind } from "@/lib/unlock";
 import { rateLimit } from "@/lib/rate-limit";
 import {
-  counterexampleTable, designPolicyViolation, measureFmax, timingTarget, failingTestWaveform, findCounterexample, formalPolicyViolation, gradeDesign,
+  counterexampleTable, designPolicyViolation, measureFmax, timingTarget, failingTestWaveform, findCounterexample, formalPolicyViolation, gradeDesign, publicVerdicts,
   gradeFormal, gradeTestbench, gradingTestbenches, testbenchPolicyViolation,
 } from "@/lib/grading";
 import { recordSubmission } from "@/lib/record-submission";
@@ -200,7 +200,7 @@ export async function POST(
       id:              saved?.id ?? crypto.randomUUID(),
       problemId:       question.id,
       timestamp:       Date.now(),
-      verdicts:        grade.verdicts,
+      verdicts:        publicVerdicts(grade.verdicts),
       passed:          grade.passed,
       total:           grade.total,
       accepted:        grade.accepted,

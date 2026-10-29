@@ -2,10 +2,80 @@
 /**
  * components/AccountData.tsx — profile card: download everything BitFlow keeps about you
  * (GET /api/profile/export), or delete the account (DELETE /api/profile, with the password
- * and the word "delete").
+ * and the word "delete"). PrivacyRights shows your consent record, the nominee who may act
+ * for you (DPDP s.14), and how to ask for a correction or raise a grievance.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { downloadBlob } from "@/lib/api";
+import { GuardianPanel } from "@/components/ConsentGate";
+
+interface ConsentRecord {
+  consentVersion: string | null; consentAt: string | null; guardianStatus: string; guardianAllowAi: boolean; minor: boolean;
+  nomineeName: string | null; nomineeContact: string | null;
+  guardians: { guardianName: string; relationship: string; allowAi: boolean; createdAt: string }[];
+  events: { action: string; detail: string | null; createdAt: string }[];
+}
+
+const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
+
+function PrivacyRights() {
+  const [rec, setRec] = useState<ConsentRecord | null>(null);
+  const [name, setName] = useState("");
+  const [contact, setContact] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/privacy/consent").then((r) => (r.ok ? r.json() : null)).then((d: ConsentRecord | null) => {
+      if (!d) return;
+      setRec(d); setName(d.nomineeName ?? ""); setContact(d.nomineeContact ?? "");
+    }).catch(() => {});
+  }, []);
+
+  const saveNominee = async (e: React.FormEvent) => {
+    e.preventDefault(); setMsg(null);
+    const res = await fetch("/api/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nomineeName: name, nomineeContact: contact }) });
+    const data = await res.json().catch(() => ({}));
+    setMsg(res.ok ? (data.nomineeName ? "Nominee saved." : "Nominee removed.") : data.error ?? "Couldn't save.");
+  };
+
+  return (
+    <div className="space-y-3 border-t border-rim pt-4 text-[11px] text-ghost leading-relaxed">
+      <GuardianPanel />
+      <div className="font-semibold text-pale">Your consent</div>
+      {rec ? (
+        <>
+          <p>Privacy notice accepted: version {rec.consentVersion ?? "none"} on {when(rec.consentAt)}.
+            {rec.minor && <> Parent consent: <b className="text-pale">{rec.guardianStatus === "granted" ? `given (AI tutor ${rec.guardianAllowAi ? "allowed" : "off"})` : "waiting"}</b>.</>}</p>
+          {rec.guardians.length > 0 && (
+            <ul className="list-disc pl-4">{rec.guardians.map((g, i) => <li key={i}>{g.relationship} {g.guardianName}, {when(g.createdAt)}</li>)}</ul>
+          )}
+          {rec.events.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-pale">History ({rec.events.length})</summary>
+              <ul className="mt-1 space-y-0.5">{rec.events.map((ev, i) => <li key={i}><span className="text-dim">{when(ev.createdAt)}</span> {ev.action}{ev.detail ? `: ${ev.detail}` : ""}</li>)}</ul>
+            </details>
+          )}
+        </>
+      ) : <p className="text-dim">Loading…</p>}
+
+      <form onSubmit={saveNominee} className="space-y-2">
+        <div className="font-semibold text-pale">Nominee</div>
+        <p>Someone who may use your data rights for you if you die or can&apos;t act yourself. Leave both empty to remove.</p>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Their name" aria-label="Nominee name" maxLength={120} className={field} />
+        <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Email or phone" aria-label="Nominee contact" maxLength={120} className={field} />
+        <button className={`${button} border-rim text-pale hover:text-bright`}>Save nominee</button>
+        {msg && <p role="status" className="text-dim">{msg}</p>}
+      </form>
+
+      <p>
+        To correct your month and year of birth, ask a question about your data, or make a complaint, use the{" "}
+        <Link href="/contact?kind=grievance" className="text-phosphor hover:underline">grievance form</Link>. We answer within 90 days.
+        You can also complain to the Data Protection Board of India.
+      </p>
+    </div>
+  );
+}
 
 const field = "w-full bg-void border border-rim rounded px-2 py-1.5 text-[12px] text-pale focus:outline-none focus:border-phosphor/50";
 const button = "w-full py-1.5 rounded-lg border text-[11px] font-semibold uppercase tracking-wider transition-colors disabled:opacity-50";
@@ -56,6 +126,8 @@ export default function AccountData() {
         <button onClick={download} disabled={busy} className={`${button} border-info/40 text-info hover:bg-info/10`}>Download my data</button>
         {msg && <p className="text-[11px] text-dim" role="status">{msg}</p>}
       </div>
+
+      <PrivacyRights />
 
       <div className="space-y-2 border-t border-rim pt-4">
         {!deleting ? (

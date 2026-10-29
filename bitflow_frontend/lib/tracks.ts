@@ -7,6 +7,7 @@
 import crypto from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { PRIVACY_SELECT, publicName } from "@/lib/privacy";
 
 export interface Track {
   id:          string;
@@ -61,12 +62,13 @@ export async function trackProgress(userId: string): Promise<TrackProgress[]> {
 export async function certificateById(id: string) {
   const cert = await prisma.certificate.findUnique({
     where: { id },
-    select: { id: true, track: true, issuedAt: true, user: { select: { username: true } } },
+    select: { id: true, track: true, issuedAt: true, user: { select: { id: true, username: true, ...PRIVACY_SELECT } } },
   });
   const track = cert && trackById(cert.track);
   if (!cert || !track) return null;
   const problems = await prisma.question.count({ where: track.where });
-  return { id: cert.id, issuedAt: cert.issuedAt, username: cert.user.username, track, problems };
+  // The page is public: an under-18 learner's certificate doesn't show their username.
+  return { id: cert.id, issuedAt: cert.issuedAt, username: publicName(cert.user), track, problems };
 }
 
 /** Short, unguessable id for the public certificate URL. */

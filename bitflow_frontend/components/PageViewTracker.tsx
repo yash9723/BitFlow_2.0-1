@@ -7,19 +7,22 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function PageViewTracker() {
   const pathname = usePathname();
   const first = useRef(true);
+  const { user, loading } = useAuth();
+  const off = loading || !!user?.minor;   // no tracking of children (lib/privacy.ts)
 
   useEffect(() => {
     const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
-    if (nav.doNotTrack === "1" || nav.globalPrivacyControl || pathname.startsWith("/admin")) return;
+    if (off || nav.doNotTrack === "1" || nav.globalPrivacyControl || pathname.startsWith("/admin")) return;
     // Only the landing page of a visit has an outside referrer.
     const referrer = first.current ? document.referrer : "";
     first.current = false;
     nav.sendBeacon?.("/api/analytics", JSON.stringify({ path: pathname, referrer }));
-  }, [pathname]);
+  }, [pathname, off]);
 
   return null;
 }

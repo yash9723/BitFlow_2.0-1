@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
+import { PRIVACY_SELECT, publicName } from "@/lib/privacy";
 
 export const dynamic = "force-dynamic";
 
@@ -25,15 +26,16 @@ export async function GET(request: Request, { params }: { params: { slug: string
   const rows = await prisma.submission.findMany({
     where:   { problemId: question.id, accepted: true, userId: { not: null }, ...(fastest ? { fmaxMhz: { not: null } } : { gateCount: { not: null } }) },
     orderBy: fastest ? [{ fmaxMhz: "desc" }, { createdAt: "asc" }] : [{ gateCount: "asc" }, { logicDepth: "asc" }, { createdAt: "asc" }],
-    select:  { userId: true, gateCount: true, logicDepth: true, ffBits: true, fmaxMhz: true, createdAt: true, user: { select: { username: true } } },
+    select:  { userId: true, gateCount: true, logicDepth: true, ffBits: true, fmaxMhz: true, createdAt: true, user: { select: { id: true, username: true, ...PRIVACY_SELECT } } },
     take:    5000,
   });
 
+  const me = await getSessionUser();
   const seen = new Set<string>();
   const board = rows.filter((r) => !seen.has(r.userId!) && seen.add(r.userId!)).map((r, i) => ({
     rank:     i + 1,
     userId:   r.userId!,
-    username: r.user?.username ?? "unknown",
+    username: r.user ? publicName(r.user, me?.id) : "unknown",   // under-18s appear as "Student xxxx"
     gates:    r.gateCount ?? 0,
     mhz:      r.fmaxMhz ?? null,
     depth:    r.logicDepth ?? 0,
@@ -41,7 +43,6 @@ export async function GET(request: Request, { params }: { params: { slug: string
     at:       r.createdAt,
   }));
 
-  const me = await getSessionUser();
   const mine = me ? board.find((b) => b.userId === me.id) ?? null : null;
   const strip = ({ userId, ...rest }: (typeof board)[number]) => ({ ...rest, isMe: !!me && userId === me.id });
 

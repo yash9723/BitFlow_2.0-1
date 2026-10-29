@@ -21,6 +21,19 @@ model User {
   publicProfile    Boolean   @default(false) // opt-in: /u/<username> shows stats, badges, certificates
   createdAt   DateTime       @default(now())
 
+  // DPDP (lib/privacy.ts). Month and year of birth only: enough to tell whether a parent must consent.
+  birthYear         Int?
+  birthMonth        Int?      // 1-12
+  guardianStatus    String    @default("none") // "none" (adult) | "pending" | "granted"
+  guardianAllowAi   Boolean   @default(false)  // the parent allowed the AI tutor
+  guardianTokenHash String?   @unique          // sha256 of the parent link's token
+  guardianTokenExp  DateTime? // the link's expiry before a parent has consented; null after
+  consentVersion    String?   // lib/privacy.ts CONSENT_VERSION accepted; null = asked at next visit
+  consentAt         DateTime?
+  nomineeName       String?   // the person who may exercise this user's rights (DPDP s.14)
+  nomineeContact    String?
+  guardianConsents  GuardianConsent[]
+
   // Relations
   progress    UserProgress[]
   xp          UserXp?
@@ -374,8 +387,49 @@ model ContactMessage {
   subject   String
   message   String
   handled   Boolean  @default(false)
+  kind      String   @default("general") // "general" | "grievance" (data requests: answer within 90 days)
+  resolvedAt DateTime? // set when handled; the row is deleted a year later (lib/privacy.ts)
 
   @@index([createdAt])
+}
+
+// ============================================================================
+// DPDP — parent/guardian consent for under-18 accounts, an audit trail kept a
+// year (DPDP Rules: logs of processing), and a site-wide notice (breach response).
+// ============================================================================
+
+model GuardianConsent {
+  id            String    @id @default(uuid())
+  userId        String
+  guardianName  String
+  relationship  String    // "parent" | "guardian"
+  adultDeclared Boolean
+  allowAi       Boolean
+  ipHash        String?   // sha256 of the parent's IP with a server secret: evidence, not tracking
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  actorId   String?  // who did it (null = the system or a parent link)
+  action    String   // e.g. "consent.given", "guardian.granted", "account.deleted", "admin.problem.edit"
+  targetId  String?  // the user/problem/contest it was about
+  detail    String?  // short, no secrets
+
+  @@index([createdAt])
+  @@index([targetId])
+}
+
+model SiteNotice {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  message   String
+  active    Boolean  @default(true)
 }
 
 model ErrorLog {

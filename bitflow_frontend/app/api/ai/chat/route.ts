@@ -53,6 +53,7 @@ import {
 import type { AIMessage }            from "@/lib/ai-providers";
 import type { IDEContext }           from "@/lib/ai-prompts";
 import { reportError } from "@/lib/error-log";
+import { canUseAi } from "@/lib/privacy";
 
 interface RequestBody {
   messages: AIMessage[];
@@ -66,6 +67,10 @@ export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in to use the AI assistant." }, { status: 401 });
+  }
+  if (!canUseAi(user)) {
+    // DPDP: an under-18 account's code goes to the AI provider only with a parent's permission.
+    return NextResponse.json({ error: "The AI tutor needs your parent's or guardian's permission. They can allow it from the parent link on your dashboard." }, { status: 403 });
   }
   const { success } = await rateLimit(req, { limit: 20, windowMs: 60_000, prefix: "ai", key: `user:${user.id}` });
   if (!success) {
@@ -95,6 +100,11 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Only the server sets the system prompt: drop any other role or non-text content from the client.
+    body.messages = body.messages.filter(
+      (m) => (m?.role === "user" || m?.role === "assistant") && typeof m.content === "string",
+    );
 
     if (body.messages.length === 0) {
       return NextResponse.json(

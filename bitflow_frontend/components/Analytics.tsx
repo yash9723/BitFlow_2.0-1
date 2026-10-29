@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Script from "next/script";
 import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
 
 const RAW_ID = process.env.NEXT_PUBLIC_GA_ID ?? "";
 export const GA_ID = /^G-[A-Z0-9]{4,20}$/.test(RAW_ID) ? RAW_ID : "";
@@ -27,6 +28,7 @@ export default function Analytics() {
   const [consent, setConsent] = useState<Consent | "loading">("loading");
   const [banner, setBanner] = useState(false);
   const pathname = usePathname();
+  const { user } = useAuth();
 
   useEffect(() => {
     if (!GA_ID) return;
@@ -50,7 +52,8 @@ export default function Analytics() {
     setBanner(false);
   };
 
-  if (!GA_ID) return null;
+  // Never for a signed-in under-18 (DPDP: no tracking of children), whatever was chosen.
+  if (!GA_ID || user?.minor) return null;
   return (
     <>
       {consent === "granted" && (
@@ -73,8 +76,9 @@ export default function Analytics() {
             See our <Link href="/privacy" className="text-phosphor hover:underline">privacy policy</Link>.
           </p>
           <div className="flex gap-2">
-            <button onClick={() => choose("granted")} className="px-3 py-1.5 rounded-lg bg-phosphor text-void font-bold">Accept</button>
-            <button onClick={() => choose("denied")} className="px-3 py-1.5 rounded-lg border border-rim text-ghost hover:text-bright">Decline</button>
+            {/* Equal weight: declining must be as easy as accepting. */}
+            <button onClick={() => choose("granted")} className="flex-1 px-3 py-1.5 rounded-lg border border-phosphor/60 text-phosphor font-bold hover:bg-phosphor/10">Accept</button>
+            <button onClick={() => choose("denied")} className="flex-1 px-3 py-1.5 rounded-lg border border-phosphor/60 text-phosphor font-bold hover:bg-phosphor/10">Decline</button>
           </div>
         </div>
       )}

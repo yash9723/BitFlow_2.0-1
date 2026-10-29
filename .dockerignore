@@ -1,0 +1,13 @@
+# The API images (Dockerfile, Dockerfile.api) only need api/, requirements.txt and entrypoint.sh.
+# Settings come from the host's environment, never from a baked-in .env.
+**/.env
+**/.env.*
+!**/.env.example
+bitflow_frontend
+api/workspace
+tests
+tools
+.git
+.github
+**/__pycache__
+**/*.db

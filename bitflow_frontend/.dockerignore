@@ -1,0 +1,12 @@
+# Secrets come from the environment; reference solutions (private/) never ship in an image.
+.env
+.env.*
+!.env.example
+node_modules
+.next
+private
+prisma/*.db
+prisma/*.db-journal
+e2e
+test-results
+playwright-report

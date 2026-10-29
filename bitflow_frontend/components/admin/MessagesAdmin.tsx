@@ -3,8 +3,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Card, Loading } from "@/components/admin/ui";
+import { GRIEVANCE_DAYS } from "@/lib/privacy";
 
-interface Message { id: string; createdAt: string; name: string; email: string; subject: string; message: string; handled: boolean }
+interface Message { id: string; createdAt: string; name: string; email: string; subject: string; message: string; handled: boolean; kind?: string }
 
 export default function MessagesAdmin() {
   const [data, setData] = useState<{ messages: Message[]; open: number } | null>(null);
@@ -31,6 +32,12 @@ export default function MessagesAdmin() {
         {shown.map((m) => (
           <li key={m.id} className={`rounded-lg border border-rim/60 p-3 space-y-1.5 ${m.handled ? "opacity-60" : ""}`}>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[12px]">
+              {m.kind === "grievance" && (
+                // DPDP Rules: grievances answered within 90 days of receipt.
+                <span className="px-1.5 rounded border border-warn/50 text-warn text-[10px] uppercase">
+                  Data request · due {new Date(new Date(m.createdAt).getTime() + GRIEVANCE_DAYS * 86_400_000).toLocaleDateString()}
+                </span>
+              )}
               <span className="text-bright font-semibold">{m.subject}</span>
               <span className="text-ghost">{m.name}</span>
               <a href={`mailto:${encodeURIComponent(m.email)}?subject=${encodeURIComponent(`Re: ${m.subject}`)}`} className="text-info hover:underline">{m.email}</a>

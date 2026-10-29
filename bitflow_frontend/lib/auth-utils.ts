@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { PRIVACY_SELECT } from "@/lib/privacy";
 
 const SESSION_COOKIE = "bitflow_session";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
@@ -83,7 +84,7 @@ export async function createSession(userId: string): Promise<void> {
   });
   cookies().set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure:   process.env.HTTPS === "true",
+    secure:   process.env.HTTPS === "true" || (process.env.NODE_ENV === "production" && process.env.HTTPS !== "false"),
     sameSite: "lax",
     maxAge:   SESSION_TTL_MS / 1000,
     path:     "/",
@@ -112,7 +113,8 @@ export async function getSessionUser() {
     where:  { token },
     select: {
       expiresAt: true,
-      user: { select: { id: true, username: true, role: true, createdAt: true } },
+      // The privacy fields drive safe mode for minors and the consent prompt (lib/privacy.ts).
+      user: { select: { id: true, username: true, role: true, createdAt: true, ...PRIVACY_SELECT } },
     },
   });
   if (!session || session.expiresAt < new Date()) return null;

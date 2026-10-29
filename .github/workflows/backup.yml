@@ -1,0 +1,46 @@
+# Nightly backup of the production database (Neon Postgres), kept as a workflow artifact
+# for 14 days. The repository is public and anyone can download its artifacts, so the dump
+# is encrypted (gpg AES-256) before upload. Needs two repository secrets:
+#   NEON_BACKUP_URL    a postgres:// connection string (a read-only role is enough)
+#   BACKUP_PASSPHRASE  the passphrase to decrypt with; keep a copy outside GitHub
+# Without them the job does nothing. Restore:
+#   gpg -d bitflow-YYYY-MM-DD.dump.gpg > db.dump && pg_restore --no-owner -d "$DATABASE_URL" db.dump
+name: Database backup
+
+on:
+  schedule:
+    - cron: "30 20 * * *"   # 02:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump and encrypt
+        env:
+          NEON_BACKUP_URL: ${{ secrets.NEON_BACKUP_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$NEON_BACKUP_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::notice::NEON_BACKUP_URL or BACKUP_PASSPHRASE isn't set; skipping."; exit 0; fi
+          sudo apt-get install -y -qq postgresql-common >/dev/null
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y -qq postgresql-client-17 >/dev/null
+          f="bitflow-$(date -u +%F).dump"
+          /usr/lib/postgresql/17/bin/pg_dump --format=custom --no-owner --no-privileges "$NEON_BACKUP_URL" -f "$f"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
+              --symmetric --cipher-algo AES256 -o "$f.gpg" "$f"
+          rm -f "$f"
+          ls -la "$f.gpg"
+          echo "FILE=$f.gpg" >> "$GITHUB_ENV"
+      - name: Upload
+        if: env.FILE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup
+          path: ${{ env.FILE }}
+          retention-days: 14
+          if-no-files-found: error

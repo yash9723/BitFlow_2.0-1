@@ -7,12 +7,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
+import { canShareWithClass } from "@/lib/privacy";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const me = await getSessionUser();
   if (!me) return NextResponse.json({ error: "Sign in to join a class." }, { status: 401 });
+  if (!canShareWithClass(me)) {
+    // A class shares your progress with its teacher: under-18s need a parent's consent first.
+    return NextResponse.json({ error: "Joining a class needs your parent's or guardian's consent first. Share the parent link on your dashboard." }, { status: 403 });
+  }
   if (!(await rateLimit(request, { limit: 10, windowMs: 60_000, prefix: "class-join", key: `user:${me.id}` })).success) {
     return NextResponse.json({ error: "Too many attempts. Wait a minute and try again." }, { status: 429 });
   }

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import ContactForm from "@/components/ContactForm";
 import SiteFooter from "@/components/SiteFooter";
 import { SITE_NAME, pageMeta } from "@/lib/site";
@@ -30,7 +31,11 @@ export default function ContactPage() {
             and we&apos;ll reply by email.
           </p>
         </div>
-        <ContactForm />
+        <Suspense fallback={null}><ContactForm /></Suspense>
+        <p className="text-[12px] text-dim leading-relaxed">
+          Requests about your personal data (a copy, a correction, deletion, or a complaint) go to the {SITE_NAME} Grievance Officer
+          through this form: choose &ldquo;My personal data&rdquo;. We answer within 90 days. See the <Link href="/privacy" className="text-phosphor hover:underline">privacy notice</Link>.
+        </p>
       </section>
       <SiteFooter />
     </main>

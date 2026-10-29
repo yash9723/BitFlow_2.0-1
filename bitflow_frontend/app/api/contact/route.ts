@@ -35,7 +35,8 @@ export async function POST(request: Request) {
   if (problem) return NextResponse.json({ error: problem }, { status: 400 });
 
   try {
-    await prisma.contactMessage.create({ data: { name, email, subject, message } });
+    const kind = body.kind === "grievance" ? "grievance" : "general";   // grievances: answer within 90 days (lib/privacy.ts)
+    await prisma.contactMessage.create({ data: { name, email, subject, message, kind } });
     return NextResponse.json({ ok: true });
   } catch (err) {
     await reportError("[POST /api/contact]", err);

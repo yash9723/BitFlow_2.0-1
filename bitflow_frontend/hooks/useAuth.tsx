@@ -8,14 +8,22 @@ interface UserProfile {
   username: string;
   role: "STUDENT" | "ADMIN";
   createdAt: string;
+  // Privacy flags from /api/auth/me (lib/privacy.ts)
+  minor?: boolean;
+  needsConsent?: boolean;
+  guardianPending?: boolean;
+  aiAllowed?: boolean;
 }
+
+/** Extra sign-up fields: month/year of birth and acceptance of the privacy notice. */
+export interface ConsentFields { birthYear?: number; birthMonth?: number; consent?: boolean }
 
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
   login: (username: string, password: string, role: "STUDENT" | "ADMIN") => Promise<{ error?: string }>;
   register: (username: string, password: string, role: "STUDENT" | "ADMIN", secretPassword?: string,
-             botFields?: { formToken: string; website: string }) => Promise<{ error?: string }>;
+             botFields?: { formToken: string; website: string }, consent?: ConsentFields) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
   checkSession: () => Promise<void>;
 }
@@ -64,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       if (res.ok && data.user) {
         setUser(data.user);
+        void checkSession();   // picks up the privacy flags
         router.push("/");
         return {};
       } else {
@@ -79,18 +88,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string,
     role: "STUDENT" | "ADMIN",
     secretPassword?: string,
-    botFields?: { formToken: string; website: string }
+    botFields?: { formToken: string; website: string },
+    consent?: ConsentFields
   ) => {
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role, secretPassword, ...botFields }),
+        body: JSON.stringify({ username, password, role, secretPassword, ...botFields, ...consent }),
       });
       const data = await res.json();
       if (res.ok && data.user) {
         setUser(data.user);
-        router.push("/");
+        void checkSession();   // picks up the privacy flags
+        // A minor goes to the dashboard, which shows the parent link to share.
+        router.push(data.guardianPending ? "/dashboard" : "/");
         return {};
       } else {
         return { error: data.error || "Registration failed" };

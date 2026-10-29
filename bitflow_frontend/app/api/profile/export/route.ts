@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
+import { audit } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +23,10 @@ export async function GET(request: Request) {
   if (!success) return NextResponse.json({ error: "You can download your data 3 times an hour. Please try again later." }, { status: 429 });
 
   const id = me.id;
-  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned] = await Promise.all([
-    prisma.user.findUnique({ where: { id }, select: { username: true, role: true, publicProfile: true, createdAt: true } }),
+  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events] = await Promise.all([
+    prisma.user.findUnique({ where: { id }, select: {
+      username: true, role: true, publicProfile: true, createdAt: true,
+      birthYear: true, birthMonth: true, consentVersion: true, consentAt: true, guardianStatus: true, guardianAllowAi: true, nomineeName: true, nomineeContact: true } }),
     prisma.userXp.findUnique({ where: { userId: id }, select: { totalXp: true, dailyStreak: true, lastDailyBonus: true, updatedAt: true } }),
     prisma.userProgress.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" },
       select: { solved: true, attempts: true, firstSolvedAt: true, xpEarned: true, question: { select: { slug: true, title: true } } } }),
@@ -39,13 +42,19 @@ export async function GET(request: Request) {
     prisma.comment.findMany({ where: { userId: id }, select: { body: true, hidden: true, createdAt: true, question: { select: { slug: true } } } }),
     prisma.classMember.findMany({ where: { userId: id }, select: { role: true, joinedAt: true, classroom: { select: { name: true } } } }),
     prisma.classroom.findMany({ where: { ownerId: id }, select: { name: true, joinCode: true, createdAt: true } }),
+    prisma.guardianConsent.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" }, select: { guardianName: true, relationship: true, allowAi: true, createdAt: true } }),
+    prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "asc" }, take: 1000, select: { action: true, detail: true, createdAt: true } }),
   ]);
   if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
+  await audit(id, "data.exported", id);
 
+  const { birthYear, birthMonth, consentVersion, consentAt, guardianStatus, guardianAllowAi, nomineeName, nomineeContact, ...account } = user;
   const data = {
     exportedAt: new Date().toISOString(),
     site: "bitflowvlsi.tech",
-    account: user,
+    account,
+    privacy: { birthYear, birthMonth, consentVersion, consentAt, guardianStatus, guardianAllowAi, nominee: nomineeName ? { name: nomineeName, contact: nomineeContact } : null,
+               parentConsents: guardians, events },
     xp,
     progress: progress.map(({ question, ...p }) => ({ problem: question.slug, title: question.title, ...p })),
     submissions: submissions.slice(0, MAX_SUBMISSIONS).map(({ question, testbenchCode, ...s }) => ({

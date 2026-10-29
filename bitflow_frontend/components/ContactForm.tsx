@@ -2,6 +2,7 @@
 /** components/ContactForm.tsx — the form on /contact (POST /api/contact). */
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 const field = "w-full bg-pit border border-rim/60 rounded-lg px-3 py-2 text-[14px] text-pale focus:border-phosphor/60 outline-none";
@@ -9,6 +10,8 @@ const field = "w-full bg-pit border border-rim/60 rounded-lg px-3 py-2 text-[14p
 export default function ContactForm() {
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
+  // /contact?kind=grievance (linked from the profile's "Your data") opens on data requests.
+  const kind = useSearchParams()?.get("kind") === "grievance" ? "grievance" : "general";
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -46,6 +49,12 @@ export default function ContactForm() {
           <input name="email" type="email" required maxLength={200} autoComplete="email" className={field} />
         </label>
       </div>
+      <label className="block space-y-1.5"><span className="text-[12px] text-ghost">About</span>
+        <select name="kind" defaultValue={kind} className={field}>
+          <option value="general">A question, a bug, a classroom, a partnership</option>
+          <option value="grievance">My personal data: a request, a correction or a complaint (answered within 90 days)</option>
+        </select>
+      </label>
       <label className="block space-y-1.5"><span className="text-[12px] text-ghost">Subject</span>
         <input name="subject" maxLength={150} className={field} placeholder="A question, a bug, a classroom, a partnership…" />
       </label>

@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../hooks/useAuth";
+import ConsentFields, { type ConsentValue } from "@/components/ConsentFields";
 
 /* ── Background decoration data — same shapes used on the landing hero ── */
 const TRACES = [
@@ -469,6 +470,8 @@ export default function LoginPage() {
   // Sign-up spam protection (lib/bot-check.ts): a timed form token + honeypot.
   const [formToken, setFormToken] = useState("");
   const [website, setWebsite] = useState("");
+  // DPDP: month/year of birth and acceptance of the notice (components/ConsentFields.tsx).
+  const [consent, setConsent] = useState<ConsentValue>({ consent: false });
 
   // /login?mode=register opens straight on the sign-up form (landing page CTA).
   useEffect(() => {
@@ -503,7 +506,7 @@ export default function LoginPage() {
 
     try {
       if (isSignUp) {
-        const res = await register(username, password, role, role === "ADMIN" ? secretPassword : undefined, { formToken, website });
+        const res = await register(username, password, role, role === "ADMIN" ? secretPassword : undefined, { formToken, website }, consent);
         if (res.error) {
           setErrorMsg(res.error);
           triggerError();
@@ -728,6 +731,8 @@ export default function LoginPage() {
               </Link>
             </div>
 
+            {isSignUp && <ConsentFields value={consent} onChange={setConsent} />}
+
             {/* Honeypot: hidden from people and screen readers; bots fill it in. */}
             {isSignUp && (
               <div aria-hidden="true" className="absolute -left-[9999px] w-px h-px overflow-hidden">
@@ -750,34 +755,11 @@ export default function LoginPage() {
             </button>
             {isSignUp && (
               <p className="text-[11px] text-ghost text-center">
-                By creating an account you agree to the{" "}
-                <Link href="/terms" className="text-phosphor hover:underline">Terms</Link> and{" "}
-                <Link href="/privacy" className="text-phosphor hover:underline">Privacy policy</Link>.
+                Using BitFlow also means following the{" "}
+                <Link href="/terms" className="text-phosphor hover:underline">Terms</Link>.
               </p>
             )}
           </form>
-
-          <div className="flex items-center gap-3 my-5 text-[11px] text-dim">
-            <div className="flex-1 h-px bg-rim" />
-            Or
-            <div className="flex-1 h-px bg-rim" />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setErrorMsg("Google sign-in isn't connected yet — coming soon.")}
-            onMouseEnter={() => setExcited(true)}
-            onMouseLeave={() => setExcited(false)}
-            className="w-full flex items-center justify-center gap-2.5 py-2.5 rounded-lg border border-rim bg-shaft text-[12.5px] text-pale hover:border-muted hover:text-bright transition-colors"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.26 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.85A11 11 0 0012 23z" />
-              <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 010-4.2V7.05H2.18a11 11 0 000 9.9l3.66-2.85z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1a11 11 0 00-9.82 6.05l3.66 2.85C6.71 7.31 9.14 5.38 12 5.38z" />
-            </svg>
-            Continue with Google
-          </button>
 
           <div className="mt-6 text-center border-t border-rim/40 pt-4">
             <button

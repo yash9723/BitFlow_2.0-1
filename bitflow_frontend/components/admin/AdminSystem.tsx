@@ -45,10 +45,42 @@ function Database() {
   );
 }
 
+/** A notice every visitor sees until they dismiss it: how users are told about a data breach (docs/breach-runbook.md). */
+function SiteNoticeAdmin() {
+  const [text, setText] = useState("");
+  const [current, setCurrent] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = useCallback(() => {
+    fetch("/api/notice").then((r) => r.json()).then((d) => setCurrent(d.notice?.message ?? null)).catch(() => {});
+  }, []);
+  useEffect(load, [load]);
+  const send = async (method: "POST" | "DELETE") => {
+    setMsg(null);
+    const r = await fetch("/api/notice", { method, headers: { "Content-Type": "application/json" }, body: method === "POST" ? JSON.stringify({ message: text }) : undefined });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) setMsg(d.error ?? `Failed (${r.status})`); else { setMsg(method === "POST" ? "Published." : "Taken down."); setText(""); load(); }
+  };
+  return (
+    <Card title="Site notice" subtitle="Shown to every visitor until dismissed. For a personal-data breach, publish within 72 hours (see docs/breach-runbook.md).">
+      <div className="space-y-2 text-[12px]">
+        <p className="text-ghost">Now showing: {current ? <span className="text-warn">{current}</span> : <span className="text-dim">nothing</span>}</p>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={2000} aria-label="Notice text"
+                  className="w-full bg-void border border-rim rounded px-2 py-1.5 text-pale" placeholder="What happened, what data, what users should do, how to contact us" />
+        <div className="flex gap-2">
+          <button onClick={() => send("POST")} disabled={text.trim().length < 5} className="px-3 py-1 rounded border border-warn/50 text-warn disabled:opacity-40">Publish</button>
+          <button onClick={() => send("DELETE")} disabled={!current} className="px-3 py-1 rounded border border-rim text-ghost disabled:opacity-40">Take down</button>
+        </div>
+        {msg && <p role="status" className="text-dim">{msg}</p>}
+      </div>
+    </Card>
+  );
+}
+
 export default function AdminSystem() {
   return (
     <div className="space-y-6">
       <Database />
+      <SiteNoticeAdmin />
       <Panel><ErrorLogAdmin /></Panel>
     </div>
   );

@@ -22,7 +22,13 @@ async function signIn(page: Page, register: boolean) {
   }
   await page.getByPlaceholder("e.g. system_operator").fill(username);
   await page.getByPlaceholder("••••••••").first().fill(password);
-  if (register) await page.waitForTimeout(3_500);   // the sign-up form's minimum time (lib/bot-check.ts)
+  if (register) {
+    // DPDP: month/year of birth (an adult) and the notice (components/ConsentFields.tsx)
+    await page.getByLabel("Birth month").selectOption("1");
+    await page.getByLabel("Birth year").selectOption("2000");
+    await page.getByLabel(/I have read the privacy notice/).check();
+    await page.waitForTimeout(3_500);   // the sign-up form's minimum time (lib/bot-check.ts)
+  }
   await page.locator('button[type="submit"]').click();
   await page.waitForURL((url) => /^\/(sandbox|dashboard)/.test(url.pathname), { timeout: 30_000 });   // not /login?next=/sandbox
 }

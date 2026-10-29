@@ -4,6 +4,8 @@ import { rateLimit } from "@/lib/rate-limit";
 import { prisma } from "@/lib/prisma";
 import { profileStats } from "@/lib/profile";
 import { reportError } from "@/lib/error-log";
+import { isMinor } from "@/lib/privacy";
+import { audit, deleteAccount } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +21,26 @@ export async function GET() {
   }
 }
 
-// PATCH /api/profile { publicProfile: boolean } — opt in or out of the public page /u/<username>
+// PATCH /api/profile { publicProfile?: boolean, nomineeName?, nomineeContact? } — opt in or out of
+// the public page /u/<username> (never for under-18s), or name the person who may exercise your
+// data rights if you can't (DPDP s.14; empty strings remove the nominee).
 export async function PATCH(request: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   const body = await request.json().catch(() => ({}));
+  if ("nomineeName" in (body ?? {}) || "nomineeContact" in (body ?? {})) {
+    const clean = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 120) : "");
+    const nomineeName = clean(body.nomineeName), nomineeContact = clean(body.nomineeContact);
+    if (!!nomineeName !== !!nomineeContact) return NextResponse.json({ error: "Give both the nominee's name and how to contact them." }, { status: 400 });
+    await prisma.user.update({ where: { id: user.id }, data: { nomineeName: nomineeName || null, nomineeContact: nomineeContact || null } });
+    await audit(user.id, nomineeName ? "consent.nominee.set" : "consent.nominee.removed", user.id);
+    return NextResponse.json({ nomineeName: nomineeName || null, nomineeContact: nomineeContact || null });
+  }
   if (typeof body?.publicProfile !== "boolean") {
     return NextResponse.json({ error: "publicProfile must be true or false." }, { status: 400 });
+  }
+  if (body.publicProfile && isMinor(user)) {
+    return NextResponse.json({ error: "Public profiles aren't available for students under 18." }, { status: 403 });
   }
   await prisma.user.update({ where: { id: user.id }, data: { publicProfile: body.publicProfile } });
   return NextResponse.json({ publicProfile: body.publicProfile });
@@ -48,11 +63,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "That password is wrong." }, { status: 400 });
   }
   try {
-    // Comment reports have no relation to cascade through; everything else goes with the user.
-    await prisma.$transaction([
-      prisma.commentReport.deleteMany({ where: { userId: user.id } }),
-      prisma.user.delete({ where: { id: user.id } }),
-    ]);
+    await deleteAccount(user.id, user.id, "deleted by the user (erasure / consent withdrawn)");
   } catch (err) {
     await reportError("Account deletion failed:", err);
     return NextResponse.json({ error: "The account couldn't be deleted. Please try again." }, { status: 500 });

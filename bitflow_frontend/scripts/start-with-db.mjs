@@ -106,12 +106,21 @@ try {
 //    columns/tables fails loudly here instead of silently deleting user data.
 //    ponytail: db push has no migration history; switch to `prisma migrate
 //    deploy` once schema changes need to be reviewed and replayed.
-console.log("[DB Setup] Pushing schema to database...");
-runPrisma(["db", "push", "--skip-generate"], !setupOnly);
+// Previews of the release branch get promoted to production (`vercel promote` reuses the
+// build), so they must push the schema. Previews of any other branch must not touch the
+// database: it may be production's. BITFLOW_DB_BRANCH names the release branch.
+const releaseBranch = process.env.BITFLOW_DB_BRANCH || "bitflow-hardening-and-features";
+const skipDb = process.env.VERCEL_ENV === "preview" && process.env.VERCEL_GIT_COMMIT_REF !== releaseBranch;
+if (skipDb) {
+  console.log(`[DB Setup] Preview of ${process.env.VERCEL_GIT_COMMIT_REF}: skipping db push and seed.`);
+} else {
+  console.log("[DB Setup] Pushing schema to database...");
+  runPrisma(["db", "push", "--skip-generate"], !setupOnly);
 
-// 4. Seed database (non-fatal)
-console.log("[DB Setup] Seeding database...");
-runPrisma(["db", "seed"], true);
+  // 4. Seed database (non-fatal)
+  console.log("[DB Setup] Seeding database...");
+  runPrisma(["db", "seed"], true);
+}
 
 if (setupOnly) process.exit(0);
 

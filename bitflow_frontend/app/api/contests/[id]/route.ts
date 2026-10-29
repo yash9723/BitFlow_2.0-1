@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { contestStatus, parseSlugs, PENALTY_MINUTES, standings } from "@/lib/contests";
 import { problemHref } from "@/lib/problem-href";
+import { PRIVACY_SELECT, publicName } from "@/lib/privacy";
 
 export const dynamic = "force-dynamic";
 
@@ -41,14 +42,15 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       problemId: { in: questions.map((q) => q.id) }, submissionType: "SUBMIT", userId: { not: null },
       createdAt: { gte: contest.startsAt, lt: contest.endsAt },
     },
-    select: { userId: true, accepted: true, createdAt: true, question: { select: { slug: true } }, user: { select: { username: true } } },
+    select: { userId: true, accepted: true, createdAt: true, question: { select: { slug: true } }, user: { select: { id: true, username: true, ...PRIVACY_SELECT } } },
     take: 20_000,
   });
+  const me = await getSessionUser();
   const rows = standings(subs.map((s) => ({
-    userId: s.userId!, username: s.user?.username ?? "unknown", slug: s.question.slug, accepted: s.accepted, createdAt: s.createdAt,
+    // under-18s appear as "Student xxxx" (lib/privacy.ts)
+    userId: s.userId!, username: s.user ? publicName(s.user, me?.id) : "unknown", slug: s.question.slug, accepted: s.accepted, createdAt: s.createdAt,
   })), contest.startsAt);
 
-  const me = await getSessionUser();
   const strip = ({ userId, ...r }: (typeof rows)[number]) => ({ ...r, isMe: !!me && userId === me.id });
   const mine = me ? rows.find((r) => r.userId === me.id) : undefined;
   return NextResponse.json({ ...base, problems, standings: rows.slice(0, 100).map(strip), me: mine ? strip(mine) : null });

@@ -17,16 +17,31 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { recordSubmission } from "@/lib/record-submission";
 import { reportError } from "@/lib/error-log";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
+// Size caps (characters). A request over MAX_BODY is refused; the VCD is dropped when too big.
+const MAX_BODY = 4_000_000;
+const MAX_CODE = 200_000;
+const MAX_TEXT = 64_000;
+const MAX_VCD  = 2_000_000;
+const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : null);
+
 // ─────────────────────────────────────────────────────────────────────────────
-// POST — Save a run
+// POST — Save a run (signed-in users only: guests' runs are not stored)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: "Sign in to save runs." }, { status: 401 });
+    const { success } = await rateLimit(request, { limit: 30, windowMs: 60_000, prefix: "runsave", key: `user:${user.id}` });
+    if (!success) return NextResponse.json({ error: "Too many runs saved; try again in a minute." }, { status: 429 });
+
+    const raw = await request.text();
+    if (raw.length > MAX_BODY) return NextResponse.json({ error: "Run too large to save." }, { status: 413 });
+    const body = JSON.parse(raw);
 
     const {
       problemSlug,      // string (required) — used to find Question.id
@@ -42,11 +57,15 @@ export async function POST(request: Request) {
     } = body;
     const language = ["vhdl", "python"].includes(body?.language) ? body.language as "vhdl" | "python" : "verilog";
 
-    if (!problemSlug || !designCode || !testbenchCode) {
+    if (typeof problemSlug !== "string" || typeof designCode !== "string" || typeof testbenchCode !== "string"
+        || !problemSlug || !designCode || !testbenchCode) {
       return NextResponse.json(
         { error: "problemSlug, designCode, and testbenchCode are required." },
         { status: 400 }
       );
+    }
+    if (designCode.length > MAX_CODE || testbenchCode.length > MAX_CODE) {
+      return NextResponse.json({ error: "Code too large to save." }, { status: 413 });
     }
     if (submissionType && submissionType !== "RUN") {
       return NextResponse.json(
@@ -68,22 +87,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await getSessionUser();
+    const SIM_STATUSES = ["SUCCESS", "COMPILE_ERROR", "RUNTIME_ERROR", "TIMEOUT"];
+    const vcd = str(waveformVcd, MAX_VCD + 1);
 
     const submission = await recordSubmission({
-      userId:          user?.id ?? null,
+      userId:          user.id,
       question,
       designCode,
       testbenchCode,
       language,
       submissionType:  "RUN",
-      simStatus:       simStatus ?? "SUCCESS",
-      simStdout:       simStdout ?? null,
-      simStderr:       simStderr ?? null,
-      simExitCode:     simExitCode ?? null,
-      durationMs:      durationMs ?? null,
+      simStatus:       SIM_STATUSES.includes(simStatus) ? simStatus : "SUCCESS",
+      simStdout:       str(simStdout, MAX_TEXT),
+      simStderr:       str(simStderr, MAX_TEXT),
+      simExitCode:     Number.isInteger(simExitCode) ? simExitCode : null,
+      durationMs:      Number.isFinite(durationMs) ? Math.round(durationMs) : null,
       testcaseResults: [],
-      waveformVcd:     waveformVcd ?? null,
+      waveformVcd:     vcd && vcd.length <= MAX_VCD ? vcd : null,
       xpEarned:        0,
       accepted:        false,
     });

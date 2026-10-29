@@ -5,6 +5,8 @@ import { createSession, hashPassword, passwordProblem, usernameProblem } from "@
 import { botProblem, newFormToken } from "@/lib/bot-check";
 import { rateLimit } from "@/lib/rate-limit";
 import { reportError } from "@/lib/error-log";
+import { CONSENT_VERSION, birthProblem, isMinor } from "@/lib/privacy";
+import { audit } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +59,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: weak }, { status: 400 });
     }
 
+    // DPDP: the notice is accepted before anything is stored, and the age decides
+    // whether a parent must consent (lib/privacy.ts).
+    if (body.consent !== true) {
+      return NextResponse.json({ error: "Please read and accept the privacy notice to create an account." }, { status: 400 });
+    }
+    const birthYear = Number(body.birthYear), birthMonth = Number(body.birthMonth);
+    const badBirth = birthProblem(birthYear, birthMonth);
+    if (badBirth) {
+      return NextResponse.json({ error: badBirth }, { status: 400 });
+    }
+    const minor = isMinor({ birthYear, birthMonth });
+    if (minor && role === "ADMIN") {
+      return NextResponse.json({ error: "Admin accounts need an adult." }, { status: 400 });
+    }
+
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
       where: { username: normalizedUsername },
@@ -95,6 +112,11 @@ export async function POST(request: Request) {
         username: normalizedUsername,
         password: passwordHash,
         role,
+        birthYear,
+        birthMonth,
+        guardianStatus: minor ? "pending" : "none",
+        consentVersion: CONSENT_VERSION,
+        consentAt:      new Date(),
         xp: {
           create: {
             totalXp: 0,
@@ -111,8 +133,9 @@ export async function POST(request: Request) {
     });
 
     await createSession(user.id);
+    await audit(user.id, "consent.given", user.id, `notice ${CONSENT_VERSION}${minor ? "; under 18, parent consent pending" : ""}`);
 
-    return NextResponse.json({ user });
+    return NextResponse.json({ user, guardianPending: minor });
   } catch (err: any) {
     await reportError("Registration error:", err);
     return NextResponse.json(

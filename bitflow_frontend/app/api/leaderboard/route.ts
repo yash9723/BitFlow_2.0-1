@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
+import { PRIVACY_SELECT, isMinor, publicName } from "@/lib/privacy";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET() {
       where:   RANKED,
       orderBy: [{ totalXp: "desc" }, { updatedAt: "asc" }],
       take:    LIMIT,
-      select:  { userId: true, totalXp: true, user: { select: { username: true, publicProfile: true } } },
+      select:  { userId: true, totalXp: true, user: { select: { id: true, username: true, publicProfile: true, ...PRIVACY_SELECT } } },
     });
 
     const solvedCounts = await prisma.userProgress.groupBy({
@@ -42,8 +43,8 @@ export async function GET() {
       }
       return {
         rank,
-        username: t.user.username,
-        profile:  t.user.publicProfile,   // links to /u/<username> only when opted in
+        username: publicName(t.user, me?.id),   // under-18s appear as "Student xxxx" (lib/privacy.ts)
+        profile:  t.user.publicProfile && !isMinor(t.user),   // links to /u/<username> only when opted in
         totalXp:  t.totalXp,
         solved:   solvedBy.get(t.userId) ?? 0,
         isMe:     t.userId === me?.id,

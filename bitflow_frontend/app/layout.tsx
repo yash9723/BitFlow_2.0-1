@@ -17,6 +17,8 @@ import PageViewTracker from "@/components/PageViewTracker";
 import SimulatorWakeNotice from "@/components/SimulatorWakeNotice";
 import CommandPalette from "@/components/CommandPalette";
 import Analytics from "@/components/Analytics";
+import ConsentGate from "@/components/ConsentGate";
+import SiteNotice from "@/components/SiteNotice";
 import { inter, mono } from "@/lib/fonts";
 import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL, jsonLd } from "@/lib/site";
 import "./globals.css";
@@ -95,6 +97,8 @@ export default function RootLayout({
           <SimulatorWakeNotice />
           <CommandPalette />
           <Analytics />
+          <SiteNotice />
+          <ConsentGate />
         </AuthProvider>
       </body>
     </html>
