@@ -6,6 +6,7 @@
 import { GateSim, toNumber, type BoardNetlist } from "../gate-sim";
 import { UartReceiver, UartTransmitter } from "../uart";
 import { BOARDS, type BoardId } from "../synth/boards";
+import { Keypad, ShiftRegister595 } from "./peripherals";
 
 export type Dir = "input" | "output";
 /** The ports a lesson's module has: name → [direction, width]. */
@@ -52,6 +53,9 @@ export class Tester {
   /** Text the design sent on tx. */
   serial = "";
   serialErrors = 0;
+  /** The keypad on row/col (press keys with keypad.pressed) and the 74HC595 on sr_* (read sr.out). */
+  readonly keypad = new Keypad();
+  readonly sr = new ShiftRegister595();
   private toDesign = new UartTransmitter(UART_CYCLES);
   private fromDesign = new UartReceiver(UART_CYCLES);
   private failed = new Map<number, string>();
@@ -59,7 +63,7 @@ export class Tester {
 
   constructor(net: BoardNetlist) {
     this.sim = new GateSim(net);
-    for (const [name, p] of Object.entries(this.sim.ports)) if (p.direction === "input") this.sim.set(name, p.bits.map(() => (name === "rx" ? 1 : 0)));
+    for (const [name, p] of Object.entries(this.sim.ports)) if (p.direction === "input") this.sim.set(name, p.bits.map(() => (name === "rx" || name === "col" ? 1 : 0)));   // a serial line and keypad columns rest high
   }
   has = (port: string) => port in this.sim.ports;
   set(port: string, value: number) {
@@ -72,10 +76,13 @@ export class Tester {
   /** n clock cycles; each() sees the design after every one. */
   run(n: number, each?: (cycle: number) => void) {
     const clk = this.has("clk"), rx = this.has("rx"), tx = this.has("tx");
+    const keypad = this.has("row") && this.has("col"), sr = this.has("sr_clk");
     for (let i = 0; i < n; i++) {
       if (rx) this.sim.set("rx", [this.toDesign.next()]);
+      if (keypad) this.set("col", this.keypad.cols(this.get("row")));
       if (clk) { this.sim.set("clk", [1]); this.sim.set("clk", [0]); }
       this.cycle++;
+      if (sr) this.sr.step(this.get("sr_data"), this.get("sr_clk"), this.get("sr_latch"));
       if (tx) {
         const r = this.fromDesign.sample(this.sim.get("tx")[0]);
         if (r === "error") this.serialErrors++;
@@ -155,5 +162,9 @@ export function missingParts(ports: LabPorts, boardId: BoardId): string[] {
   if (names.includes("rgb")) out.push("an RGB LED");
   if (names.includes("btn") && b.buttons.length < (ports.btn?.[1] ?? 0)) out.push("enough buttons");
   if (names.includes("tx") && !b.uartTx) out.push("a USB serial port");
+  if (names.includes("buzz")) out.push("a buzzer");
+  if (names.includes("servo")) out.push("a servo");
+  if (names.includes("sr_clk")) out.push("a shift register");
+  if (names.includes("row")) out.push("a keypad");
   return out;
 }

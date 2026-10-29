@@ -16,7 +16,7 @@ import { emitConstraints, type ConstraintEntry, type ConstraintFormat } from "./
 
 export type Family = "ice40" | "ecp5" | "gowin" | "xilinx" | "intel";
 export type BoardId =
-  | "icestick" | "icebreaker"
+  | "icestick" | "icebreaker" | "icezum" | "tinyfpga-bx"
   | "ulx3s-12f" | "ulx3s-25f" | "ulx3s-45f" | "ulx3s-85f" | "orangecrab-25f"
   | "tangnano9k" | "tangnano20k"
   | "basys3" | "arty-a7-35t" | "nexys-a7-100t" | "de10-lite";
@@ -129,6 +129,45 @@ export const BOARDS: Record<BoardId, Board> = {
     ],
     gpio: [...pmod("PMOD 1A", [4, 2, 47, 45, 3, 48, 46, 44]), ...pmod("PMOD 1B", [43, 38, 34, 31, 42, 36, 32, 28])],
     notes: "LEDs and buttons labelled snap-off are on the PMOD board that ships attached (or plugged into PMOD 2).",
+  },
+  // Pins from FPGAwars/icezum examples/user-test/icezum.pcf; buttons have pull-downs (active high).
+  icezum: {
+    loader: "ice40_generic",
+    ...ICE40,
+    name: "FPGAwars Icezum Alhambra (iCE40-HX1K)",
+    nextpnr: ["--hx1k", "--package", "tq144"],
+    chip: "chipdb-1k.bin",
+    grid: { width: 14, height: 18 },
+    downloadMb: 11,
+    clockMhz: 12,
+    clock:  { pin: "21", label: "12 MHz oscillator" },
+    uartRx: { pin: "9",  label: "USB serial RX" },
+    uartTx: { pin: "8",  label: "USB serial TX" },
+    leds: list([95, 96, 97, 98, 99, 101, 102, 104], (i) => `LED${i}`),
+    buttons: list([10, 11], (i) => `SW${i + 1} button`).map((p) => ({ ...p, activeLow: false })),
+    gpio: [
+      ...list([119, 118, 117, 116, 115, 114, 113, 112, 138, 139, 141, 142, 143, 144], (i) => `D${i}`),
+      ...list([78, 79, 80, 81, 88, 87], (i) => `DD${i}`),
+      ...list([37, 38, 39, 41, 42, 43, 49, 50], (i) => `GP${i}`),
+    ],
+  },
+  // Pins from tinyfpga/TinyFPGA-BX icestorm_template/pins.pcf. Programmed over USB by its bootloader (tinyprog).
+  "tinyfpga-bx": {
+    loader: "",
+    ...ICE40,
+    name: "TinyFPGA BX (iCE40-LP8K)",
+    nextpnr: ["--lp8k", "--package", "cm81"],
+    chip: "chipdb-8k.bin",
+    grid: { width: 34, height: 34 },
+    downloadMb: 14,
+    clockMhz: 16,
+    clock:  { pin: "B2", label: "16 MHz oscillator" },
+    leds: [{ pin: "B3", label: "user LED" }],
+    buttons: [],
+    // USBPU (A3) must stay low or unassigned for the bootloader; it is never assigned.
+    gpio: ["A2", "A1", "B1", "C2", "C1", "D2", "D1", "E2", "E1", "G2", "H1", "J1", "H2", "H9", "D9", "D8", "C9", "A9", "B8", "A8", "B7", "A7", "B6", "A6",
+           "G1", "J3", "J4", "G9", "J9", "E8", "J2"].map((p, i) => ({ pin: p, label: `PIN_${i + 1}` })),
+    notes: "The TinyFPGA BX is programmed by its USB bootloader: download the .bin and run tinyprog -p top.bin.",
   },
   "ulx3s-12f": ulx3s("12"),
   "ulx3s-25f": ulx3s("25"),

@@ -50,7 +50,58 @@ const BOARDS = [
     credit: "OrangeCrab r0.2.1 by Greg Davill (github.com/orangecrab-fpga), hardware licensed under CERN OHL v1.2.",
     rgb: "D1", buttons: ["SW1"],
   },
+  {
+    id: "icezum", repo: "https://github.com/FPGAwars/icezum", pcb: "src-kicad/icezum.kicad_pcb", licence: "LICENSE",
+    credit: "Icezum Alhambra by Eladio Delgado and Juan González (Obijuan), FPGAwars (github.com/FPGAwars/icezum), GPL-3.0.",
+    leds: ["LD0", "LD1", "LD2", "LD3", "LD4", "LD5", "LD6", "LD7"], buttons: ["SW1", "SW2"],
+  },
+  {
+    id: "tinyfpga-bx", repo: "https://github.com/tinyfpga/TinyFPGA-BX", pcb: "board/TinyFPGA-BX.kicad_pcb", licence: "LICENSE",
+    credit: "TinyFPGA BX by Luke Valenty (github.com/tinyfpga/TinyFPGA-BX), CERN OHL v1.2.",
+    leds: ["D2"], buttons: [],   // D1 is the power LED; SW1 resets into the bootloader
+  },
+  {
+    id: "fomu", repo: "https://github.com/im-tomu/fomu-hardware", pcb: "archive/pvt/pcb/tomu-fpga.kicad_pcb", licence: "LICENSE",
+    credit: "Fomu (PVT) by the Tomu project (github.com/im-tomu/fomu-hardware), CC BY-SA 4.0.",
+    rgb: "U10", buttons: [],
+  },
 ];
+
+/**
+ * Old or project-local part models (VRML, or KiCad 4 library names) → today's KiCad library STEP
+ * model of the same package, by file name. kicad-cli's GLB export only reads STEP.
+ */
+const EQUIVALENTS = {
+  C_0201_0603Metric: "Capacitor_SMD.3dshapes/C_0201_0603Metric", R_0201_0603Metric: "Resistor_SMD.3dshapes/R_0201_0603Metric",
+  L_0201_0603Metric: "Inductor_SMD.3dshapes/L_0201_0603Metric", C_0402_1005Metric: "Capacitor_SMD.3dshapes/C_0402_1005Metric",
+  C_0402: "Capacitor_SMD.3dshapes/C_0402_1005Metric", R_0402: "Resistor_SMD.3dshapes/R_0402_1005Metric",
+  C_0603: "Capacitor_SMD.3dshapes/C_0603_1608Metric", C_1206: "Capacitor_SMD.3dshapes/C_1206_3216Metric",
+  L_0603: "Inductor_SMD.3dshapes/L_0603_1608Metric", L_0805: "Inductor_SMD.3dshapes/L_0805_2012Metric",
+  LED_0603: "LED_SMD.3dshapes/LED_0603_1608Metric", LED_0603_white: "LED_SMD.3dshapes/LED_0603_1608Metric",
+  "SOT23-3": "Package_TO_SOT_SMD.3dshapes/SOT-23", "SOT-23-5": "Package_TO_SOT_SMD.3dshapes/SOT-23-5",
+  "SC-70-5": "Package_TO_SOT_SMD.3dshapes/SOT-353_SC-70-5", "SOT-563": "Package_TO_SOT_SMD.3dshapes/SOT-563",
+  "SOD-323": "Diode_SMD.3dshapes/D_SOD-323", "DO-214AC": "Diode_SMD.3dshapes/D_SMA",
+  "SOIC-8_3.9x4.9mm_Pitch1.27mm": "Package_SO.3dshapes/SOIC-8_3.9x4.9mm_P1.27mm",
+  "MSOP-8_3x3mm_Pitch0.65mm": "Package_SO.3dshapes/MSOP-8_3x3mm_P0.65mm",
+  "TQFP-144-iCE40": "Package_QFP.3dshapes/TQFP-144_20x20mm_P0.5mm", "FTDI_QFN-64": "Package_DFN_QFN.3dshapes/QFN-64-1EP_9x9mm_P0.5mm_EP4.1x4.1mm",
+  "UCBGA-81_9x9_4x4mm_Pitch0.4mm": "Package_BGA.3dshapes/BGA-81_4.496x4.377mm_Layout9x9_P0.4mm_Ball0.25mm_Pad0.2mm_NSMD",
+  "USB-micro-B": "Connector_USB.3dshapes/USB_Micro-B_Molex_47346-0001", "USB-Micro": "Connector_USB.3dshapes/USB_Micro-B_Molex_47346-0001",
+  "jack-2.1mm": "Connector_BarrelJack.3dshapes/BarrelJack_Horizontal", Xtal_3_2x2_5: "Crystal.3dshapes/Crystal_SMD_3225-4Pin_3.2x2.5mm",
+  "Xtal-3_2x2_5": "Crystal.3dshapes/Crystal_SMD_3225-4Pin_3.2x2.5mm",
+  Oscillator_SMD_TCXO_G158: "Oscillator.3dshapes/Oscillator_SMD_TCXO_G158",
+  "LED_WS2812B-PLCC4": "LED_SMD.3dshapes/LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+  WE_434331013822: "Button_Switch_SMD.3dshapes/SW_SPST_PTS645Sx43SMTR92", "sw-vert-tht-7.5x6x6.5": "Button_Switch_THT.3dshapes/SW_PUSH_6mm",
+  "slide-sw-spdt-right-angle": "Button_Switch_SMD.3dshapes/SW_SPDT_PCM12",
+  "Pin_Header_Straight_1x14_Pitch2.54mm": "Connector_PinHeader_2.54mm.3dshapes/PinHeader_1x14_P2.54mm_Vertical",
+  "Pin_Header_Straight_2x08_Pitch2.54mm_SMD": "Connector_PinHeader_2.54mm.3dshapes/PinHeader_2x08_P2.54mm_Vertical_SMD",
+  "Pin_Header_Straight_2x03_Pitch2.54mm_SMD": "Connector_PinHeader_2.54mm.3dshapes/PinHeader_2x03_P2.54mm_Vertical_SMD",
+  ...Object.fromEntries([3, 4, 6, 8].flatMap((n) => ["", "-red", "-gray", "-cyan"].map((c) =>
+    [`1x${n}-pin-header-2.54mm${c}`, `Connector_PinHeader_2.54mm.3dshapes/PinHeader_1x0${n}_P2.54mm_Vertical`]))),
+  "2x4-pin-header-2.54mm-yellow": "Connector_PinHeader_2.54mm.3dshapes/PinHeader_2x04_P2.54mm_Vertical",
+  "1x6-socket-header-2.54mm": "Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x06_P2.54mm_Vertical",
+  "1x8-socket-header-2.54mm": "Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x08_P2.54mm_Vertical",
+  "1x10-socket-header-2.54mm": "Connector_PinSocket_2.54mm.3dshapes/PinSocket_1x10_P2.54mm_Vertical",
+};
 
 /** Footprints of a .kicad_pcb (KiCad 5 or later): reference, position (mm), side. */
 function footprints(text) {
@@ -110,6 +161,10 @@ for (const b of BOARDS) {
   for (const s of b.submodules ?? []) run("git", ["-C", repo, "submodule", "update", "--init", "--depth", "1", s]);
   const src = join(repo, b.pcb);
   let text = readFileSync(src, "utf8");
+  text = text.replace(/\(model "?([^\s")]+)"?/g, (all, path) => {
+    const lib = EQUIVALENTS[path.split(/[/\\]/).pop().replace(/\.(wrl|step|stp)$/i, "")];
+    return lib ? `(model \${KISYS3DMOD}/${lib}.step` : all;
+  });
   for (const [re, to] of b.substitute ?? []) {
     text = text.replace(re, to.startsWith("lib:") ? `\${KISYS3DMOD}/${to.slice(4)}.step` : join(repo, to.slice(5)));
   }

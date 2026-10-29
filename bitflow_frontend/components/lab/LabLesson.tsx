@@ -13,11 +13,13 @@ import { UartReceiver, UartTransmitter } from "@/lib/uart";
 import { isHex, isSeg, segmentsOf } from "@/lib/board-io";
 import { BOARDS, buildsInBrowser, type BoardId } from "@/lib/synth/boards";
 import { FLASH } from "@/lib/flash";
+import { downloadBlob } from "@/lib/api";
 import { putBitstream } from "@/lib/bitstream-handoff";
 import { LESSONS, lessonBySlug, lessonIndex } from "@/lib/lab/lessons";
 import { UART_CYCLES, boardDesign, grade, missingParts, simHz, simParams, withParams, type GoalResult } from "@/lib/lab/run";
 import { doneLessons, loadDraft, markDone, saveDraft } from "@/lib/lab/progress";
-import { EMPTY_VIEW, type BoardHandle, type BoardView } from "./Board3D";
+import { EMPTY_VIEW, type Addon, type BoardHandle, type BoardView } from "./Board3D";
+import { KEY_FACES, Keypad, ServoMeter, ShiftRegister595 } from "@/lib/lab/peripherals";
 import { VIEWS, viewFor, type ViewId } from "@/lib/lab/boards3d";
 import { rich } from "./rich";
 
@@ -25,7 +27,8 @@ const Editor = dynamic(() => import("@/components/Editor"), { ssr: false, loadin
 const ModelShelf = dynamic(() => import("./ModelShelf"), { ssr: false });
 const Board3D = dynamic(() => import("./Board3D"), { ssr: false, loading: () => <div className="h-full grid place-items-center font-mono text-[11px] text-dim">Loading the board…</div> });
 
-const FLASH_BOARDS = (Object.keys(FLASH) as BoardId[]).filter((id) => buildsInBrowser(BOARDS[id]));
+/** Boards a lesson can be built for here; those in FLASH are also programmed from /flash. */
+const BUILD_BOARDS = (Object.keys(BOARDS) as BoardId[]).filter((id) => buildsInBrowser(BOARDS[id]));
 const LOG_LINES = 60;
 const LOG_GAP_MS = 150;   // a port that changes faster than this is logged at most this often
 
@@ -61,6 +64,12 @@ export default function LabLesson({ slug }: { slug: string }) {
   const timeRef = useRef<HTMLSpanElement>(null);
   const io = useRef({ toDesign: new UartTransmitter(UART_CYCLES), fromDesign: new UartReceiver(UART_CYCLES) });
   const logged = useRef<Record<string, { value: number; at: number }>>({});
+  const extras = useRef({ keypad: new Keypad(), sr: new ShiftRegister595(), servo: new ServoMeter() });
+  const audio = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode } | null>(null);
+  const [sound, setSound] = useState(false);
+  const soundRef = useRef(false);
+  const [typedLine, setTypedLine] = useState("");
+  const [keysDown, setKeysDown] = useState<boolean[]>(Array(16).fill(false));
 
   useEffect(() => {
     const draft = loadDraft(slug);
@@ -94,6 +103,8 @@ export default function LabLesson({ slug }: { slug: string }) {
     try {
       const s = new GateSim(n);
       drive(s, "rx", [1]);
+      drive(s, "col", [1, 1, 1, 1]);   // keypad columns are pulled up
+      extras.current = { keypad: extras.current.keypad, sr: new ShiftRegister595(), servo: new ServoMeter() };
       drive(s, "btn", inputsRef.current.btn);
       drive(s, "sw", inputsRef.current.sw);
       sim.current = s;
@@ -122,6 +133,9 @@ export default function LabLesson({ slug }: { slug: string }) {
       const digitPorts = outs.filter(([name, p]) => isSeg({ name, width: p.bits.length }) || isHex({ name, width: p.bits.length }));
       const leds = Array(6).fill(0), rgb = [0, 0, 0], digits = EMPTY_VIEW.digits.map((d) => d.map(() => 0));
       let received = "";
+      const ex = extras.current, hasKeys = "row" in s.ports && "col" in s.ports, hasSr = "sr_clk" in s.ports;
+      const hasServo = "servo" in s.ports, hasBuzz = "buzz" in s.ports;
+      let buzzEdges = 0, buzzLast = hasBuzz ? s.get("buzz")[0] : 0;
       const sample = () => {
         if ("led" in s.ports) s.get("led").forEach((b, i) => { if (i < 6) leds[i] += b; });
         if ("rgb" in s.ports) { const [b, g, r] = s.get("rgb"); rgb[0] += r; rgb[1] += g; rgb[2] += b; }
@@ -133,7 +147,11 @@ export default function LabLesson({ slug }: { slug: string }) {
       try {
         for (let i = 0; i < n; i++) {
           drive(s, "rx", [io.current.toDesign.next()]);
+          if (hasKeys) { const c = ex.keypad.cols(toNumber(s.get("row"))); drive(s, "col", [0, 1, 2, 3].map((b) => (c >> b) & 1)); }
           s.set("clk", [1]); s.set("clk", [0]);
+          if (hasSr) ex.sr.step(s.get("sr_data")[0], s.get("sr_clk")[0], s.get("sr_latch")[0]);
+          if (hasServo) ex.servo.sample(s.get("servo")[0]);
+          if (hasBuzz) { const b = s.get("buzz")[0]; if (b && !buzzLast) buzzEdges++; buzzLast = b; }
           if ("tx" in s.ports) {
             const r = io.current.fromDesign.sample(s.get("tx")[0]);
             if (r !== null) received += r === "error" ? "�" : String.fromCharCode(r);
@@ -148,7 +166,16 @@ export default function LabLesson({ slug }: { slug: string }) {
       }
       clock.current += n;
       const k = Math.max(n, 1);
-      const v: BoardView = { leds: leds.map((x) => x / k), rgb: rgb.map((x) => x / k), digits: digits.map((d) => d.map((x) => x / k)), ...inputsRef.current };
+      const buzzHz = n > 0 ? (buzzEdges * hz) / n : 0;
+      const v: BoardView = {
+        leds: leds.map((x) => x / k), rgb: rgb.map((x) => x / k), digits: digits.map((d) => d.map((x) => x / k)), ...inputsRef.current,
+        extra: { buzz: buzzHz, servo: ex.servo.angle(hz), sr: Array.from({ length: 8 }, (_, i) => (ex.sr.out >> i) & 1), keys: Array.from({ length: 16 }, (_, i) => ex.keypad.pressed.has(i)) },
+      };
+      const a = audio.current;
+      if (a) {
+        a.gain.gain.setTargetAtTime(soundRef.current && buzzHz > 20 ? 0.04 : 0, a.ctx.currentTime, 0.01);
+        if (buzzHz > 20) a.osc.frequency.setTargetAtTime(buzzHz, a.ctx.currentTime, 0.01);
+      }
       boardRef.current?.update(v);
       if (timeRef.current) timeRef.current.textContent = `${(clock.current / hz).toFixed(1)} s`;
       if (received) setSerial((t) => (t + received.replace(/\r/g, "")).slice(-2000));
@@ -178,6 +205,34 @@ export default function LabLesson({ slug }: { slug: string }) {
   }, []);
   const onButton = useCallback((i: number, down: boolean) => setInput("btn", i, down ? 1 : 0), [setInput]);
   const onSwitch = useCallback((i: number) => setInput("sw", i, 1 - inputsRef.current.sw[i]), [setInput]);
+  const onKey = useCallback((k: number, down: boolean) => {
+    const pressed = extras.current.keypad.pressed;
+    if (down) pressed.add(k); else pressed.delete(k);
+    setKeysDown(Array.from({ length: 16 }, (_, i) => pressed.has(i)));
+  }, []);
+  /** Sound needs a click to start (browsers' autoplay rule): the toggle is that click. */
+  const toggleSound = () => {
+    if (!audio.current) {
+      const ctx = new AudioContext(), osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = "square"; gain.gain.value = 0;
+      osc.connect(gain).connect(ctx.destination); osc.start();
+      audio.current = { ctx, osc, gain };
+    }
+    soundRef.current = !soundRef.current;
+    setSound(soundRef.current);
+    if (soundRef.current) audio.current.ctx.resume();
+  };
+  useEffect(() => () => { audio.current?.ctx.close(); }, []);
+  const sendLine = () => {
+    if (!typedLine) return;
+    io.current.toDesign.send(new TextEncoder().encode(`${typedLine}\n`));
+    setSerial((t) => `${t}> ${typedLine}\n`);
+    setTypedLine("");
+  };
+  const addons: Addon[] = [
+    ...("buzz" in lesson.ports ? ["buzzer" as const] : []), ...("servo" in lesson.ports ? ["servo" as const] : []),
+    ...("sr_clk" in lesson.ports ? ["sr" as const] : []), ...("row" in lesson.ports ? ["keypad" as const] : []),
+  ];
 
   const check = async () => {
     const n = await synthesize();
@@ -205,7 +260,7 @@ export default function LabLesson({ slug }: { slug: string }) {
   const next = LESSONS[lessonIndex(slug) + 1];
   const missing = missingParts(lesson.ports, board);
   const shown = VIEWS.find((v) => v.id === view)!;
-  const notShown = shown.flash ? missingParts(lesson.ports, shown.flash).filter((m) => m !== "a USB serial port") : [];
+  const notShown = shown.flash ? missingParts(lesson.ports, shown.flash).filter((m) => m !== "a USB serial port" && !shown.has?.includes(m)) : [];
   // The board on screen and the board to build for follow each other where a view exists.
   const pickView = (id: ViewId) => {
     setView(id);
@@ -262,9 +317,12 @@ export default function LabLesson({ slug }: { slug: string }) {
             ))}
           </div>
           <div className="relative h-[300px] sm:h-[360px] lg:h-[400px]">
-            <Board3D handle={boardRef} onButton={onButton} onSwitch={onSwitch} view={view} onStatus={setBoardStatus}
+            <Board3D handle={boardRef} onButton={onButton} onSwitch={onSwitch} view={view} onStatus={setBoardStatus} addons={view === "lab" ? addons : []} onKey={onKey}
                      ledColors={view === "lab" ? lesson.ledColors : undefined} />
             {boardStatus && <p className="absolute top-2 left-3 font-mono text-[10px] text-info pointer-events-none">{boardStatus}</p>}
+            {shown.showcase && (
+              <p className="absolute top-7 left-3 right-3 font-mono text-[10px] text-ghost pointer-events-none">{shown.showcase}</p>
+            )}
             {notShown.length > 0 && (
               <p className="absolute top-2 right-3 max-w-[60%] text-right font-mono text-[10px] text-warn pointer-events-none">
                 The {shown.name} has no {notShown.join(" or ")}: switch to the Lab board to see them.
@@ -346,10 +404,37 @@ export default function LabLesson({ slug }: { slug: string }) {
               {log.length ? log.join("\n") : ready ? "Outputs show here as they change." : "Run the design to see its outputs change."}
             </pre>
           </div>
-          {"tx" in lesson.ports && (
+          {("tx" in lesson.ports || "rx" in lesson.ports) && (
             <div className="space-y-1">
-              <h2 className={heading}>Serial terminal (tx)</h2>
+              <h2 className={heading}>Serial terminal{"rx" in lesson.ports ? " (type to send on rx)" : " (tx)"}</h2>
               <pre className="h-20 overflow-auto rounded bg-void border border-rim p-2 font-mono text-[11px] text-phosphor whitespace-pre-wrap">{serial || " "}</pre>
+              {"rx" in lesson.ports && (
+                <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); sendLine(); }}>
+                  <input value={typedLine} onChange={(e) => setTypedLine(e.target.value)} disabled={!ready} aria-label="Text to send to the design"
+                         placeholder={ready ? "Type and press Enter (a new line is added)" : "Run the design first"}
+                         className="flex-1 min-w-0 bg-void border border-rim rounded px-2 py-1 font-mono text-[11px] text-pale disabled:opacity-50" />
+                  <button type="submit" disabled={!ready} className={`${btnCls} border-rim text-ghost hover:text-bright`}>Send</button>
+                </form>
+              )}
+            </div>
+          )}
+          {"buzz" in lesson.ports && (
+            <button onClick={toggleSound} aria-pressed={sound} className={`${btnCls} ${sound ? "border-warn/60 text-warn" : "border-rim text-ghost"}`}>
+              {sound ? "Sound on (click to mute)" : "Turn sound on"}
+            </button>
+          )}
+          {"row" in lesson.ports && (
+            <div className="space-y-1">
+              <h2 className={heading}>Keypad (hold a key)</h2>
+              <div className="grid grid-cols-4 gap-1 w-40">
+                {KEY_FACES.map((f, k) => (
+                  <button key={k} aria-pressed={keysDown[k]}
+                          onPointerDown={() => onKey(k, true)} onPointerUp={() => onKey(k, false)} onPointerLeave={() => { if (keysDown[k]) onKey(k, false); }}
+                          onKeyDown={(e) => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); onKey(k, true); } }}
+                          onKeyUp={(e) => { if (e.key === " " || e.key === "Enter") onKey(k, false); }}
+                          className={`h-8 rounded border font-mono text-[11px] select-none ${keysDown[k] ? "border-phosphor/60 text-phosphor bg-phosphor/10" : "border-rim text-pale"}`}>{f}</button>
+                ))}
+              </div>
             </div>
           )}
           <div className="space-y-2">
@@ -357,13 +442,16 @@ export default function LabLesson({ slug }: { slug: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <select value={board} onChange={(e) => pickBoard(e.target.value as BoardId)} aria-label="Board"
                       className="bg-void border border-rim rounded px-2 py-1.5 font-mono text-[11px] text-pale max-w-full">
-                {FLASH_BOARDS.map((id) => <option key={id} value={id}>{BOARDS[id].name}</option>)}
+                {BUILD_BOARDS.map((id) => <option key={id} value={id}>{BOARDS[id].name}</option>)}
               </select>
               <button className={`${btnCls} border-info/50 text-info hover:bg-info/10`} onClick={buildForBoard} disabled={flash.kind === "building"}>
                 {flash.kind === "building" ? "Building…" : "Build for this board"}
               </button>
-              {flash.kind === "ready" && (
+              {flash.kind === "ready" && FLASH[board] && (
                 <button className={`${btnCls} border-phosphor/60 text-phosphor hover:bg-phosphor/10`} onClick={openFlasher}>Open the flasher →</button>
+              )}
+              {flash.kind === "ready" && (
+                <button className={`${btnCls} border-rim text-ghost hover:text-bright`} onClick={() => downloadBlob(flash.name, new Uint8Array(flash.bytes), "application/octet-stream")}>Download {flash.name}</button>
               )}
             </div>
             {flash.kind === "building" && (
@@ -372,11 +460,12 @@ export default function LabLesson({ slug }: { slug: string }) {
               </p>
             )}
             {flash.kind === "error" && <pre className="whitespace-pre-wrap font-mono text-[10px] text-danger">{flash.text}</pre>}
-            {flash.kind === "ready" && <p className="font-mono text-[10px] text-phosphor">Built {flash.name}. The flasher opens with it loaded.</p>}
+            {flash.kind === "ready" && <p className="font-mono text-[10px] text-phosphor">Built {flash.name}.{FLASH[board] ? " The flasher opens with it loaded." : ""}</p>}
             <ul className="font-mono text-[10px] text-dim space-y-0.5">
               {missing.length > 0 && <li>The {BOARDS[board].name} has no {missing.join(" or ")}: those ports go to header pins, where you can wire them.</li>}
               <li>The clock is set to the board&apos;s {BOARDS[board].clockMhz} MHz{flipped ? ", and its active-low buttons and LEDs are flipped for you" : ""}.</li>
               {flash.kind === "ready" && flash.notes.map((n, k) => <li key={k}>{n}</li>)}
+              {board === "tinyfpga-bx" && <li>The TinyFPGA BX is programmed by its own USB bootloader: download the file and run tinyprog -p {flash.kind === "ready" ? flash.name : "the file"}.</li>}
             </ul>
           </div>
         </section>

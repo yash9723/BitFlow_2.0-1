@@ -26,7 +26,7 @@ assert.match(wrapped, /assign led = ~led_on;/, "Tang Nano LEDs are active low");
 assert.match(boardDesign(LESSONS[3].starter, LESSONS[3].ports, "tangnano9k"), /CLK_HZ = 27000000/, "the board's clock");
 assert.doesNotMatch(boardDesign(LESSONS[1].starter, LESSONS[1].ports, "icebreaker"), /led_on/, "iCEBreaker LEDs are active high");
 assert.deepEqual(missingParts(LESSONS[2].ports, "tangnano9k"), ["switches"]);
-assert.equal(LESSONS.length, 17);
+assert.equal(LESSONS.length, 30);
 assert.equal(new Set(LESSONS.map((l) => l.slug)).size, LESSONS.length, "slugs are unique");
 console.log("lab: unit checks passed");
 
@@ -68,8 +68,7 @@ lessons().catch((e) => { console.error(e); process.exit(1); });
     const dir = join(__dirname, "..", "public", "models");
     assert.ok(has(join(dir, `${v.model}.glb`)), `${v.id}: ${v.model}.glb is built (scripts/board-models.mjs)`);
     const parts = JSON.parse(readFileSync(join(dir, `${v.model}.json`), "utf8"));
-    assert.ok(parts.buttons.length >= 1, `${v.id}: has a button`);
-    assert.ok(v.ledsAsRgb ? parts.rgb : parts.leds.length >= 6, `${v.id}: has the lights the lessons use`);
+    assert.ok(v.ledsAsRgb ? parts.rgb : parts.leds.length >= 1, `${v.id}: has a light the lessons can drive`);
     for (const [x, z] of [...parts.leds, ...parts.buttons, ...parts.switches, ...(parts.rgb ? [parts.rgb] : [])]) assert.ok(x > 0 && x < 1 && z > 0 && z < 1, `${v.id}: part positions are in metres`);
   }
   const credits = JSON.parse(readFileSync(join(__dirname, "..", "public", "models", "CREDITS.json"), "utf8"));

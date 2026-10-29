@@ -12,7 +12,7 @@ const DESCRIPTION =
   `${LESSONS.length} free hands-on lessons: write Verilog, watch it run on a 3D FPGA board in your browser, get it checked, then put it on a real Tang Nano, ULX3S or OrangeCrab.`;
 export const metadata: Metadata = pageMeta("/lab", TITLE, DESCRIPTION);
 
-const PARTS: [RegExp, string][] = [[/^led$/, "LEDs"], [/^btn$/, "buttons"], [/^sw$/, "switches"], [/^(hex|seg)/, "display"], [/^rgb$/, "RGB LED"], [/^tx$/, "serial"], [/^clk$/, "clock"]];
+const PARTS: [RegExp, string][] = [[/^led$/, "LEDs"], [/^btn$/, "buttons"], [/^sw$/, "switches"], [/^(hex|seg)/, "display"], [/^rgb$/, "RGB LED"], [/^(tx|rx)$/, "serial"], [/^buzz$/, "buzzer"], [/^servo$/, "servo"], [/^sr_clk$/, "shift register"], [/^row$/, "keypad"], [/^clk$/, "clock"]];
 const parts = (ports: string[]) => PARTS.filter(([re]) => ports.some((p) => re.test(p))).map(([, label]) => label);
 
 export default function LabIndex() {

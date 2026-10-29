@@ -17,7 +17,12 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { VIEWS, type ModelParts, type ViewId } from "@/lib/lab/boards3d";
 
 /** leds[i], digits[d][segment] (d = 0 is the rightmost), rgb [r, g, b]: 0–1; btn / sw: 0 or 1. */
-export interface BoardView { leds: number[]; digits: number[][]; rgb: number[]; btn: number[]; sw: number[] }
+export interface BoardView {
+  leds: number[]; digits: number[][]; rgb: number[]; btn: number[]; sw: number[];
+  /** The add-on parts: buzzer pitch (Hz, 0 = quiet), servo angle (°), the 74HC595's 8 LEDs (0–1), keys held. */
+  extra?: { buzz: number; servo: number | null; sr: number[]; keys: boolean[] };
+}
+export type Addon = "buzzer" | "servo" | "sr" | "keypad";
 export interface BoardHandle { update(v: BoardView): void }
 interface Props {
   /** Set to the board's update() once it is drawn. */
@@ -29,6 +34,10 @@ interface Props {
   ledColors?: string[];
   /** "Loading the ULX3S…", or null when the board is up. */
   onStatus?: (text: string | null) => void;
+  /** Add-on parts the lesson uses, on a second board behind the lab board. */
+  addons?: Addon[];
+  /** A keypad key (0–15, row * 4 + col) pressed or released. */
+  onKey?: (k: number, down: boolean) => void;
 }
 
 export const EMPTY_VIEW: BoardView = { leds: Array(6).fill(0), digits: Array.from({ length: 4 }, () => Array(8).fill(0)), rgb: [0, 0, 0], btn: [0, 0], sw: [0, 0, 0, 0] };
@@ -40,8 +49,6 @@ const FRONT = 2.45, LED_Z = 0.55, DISPLAY_Z = -1.95, CHIP_X = -3.4, CHIP_Z = -0.
 const GREEN = "#2bff88";
 /** Every board is drawn 12 units across, so the camera fits them all the same way. */
 const WIDTH = 12;
-/** The ULX3S's LED colours, D0–D7, as fitted (from its KiCad values). */
-const ULX3S_LEDS = ["#ff3030", "#ff9a1f", "#2bff6a", "#3d7bff", "#ff3030", "#ff9a1f", "#2bff6a", "#3d7bff"];
 const TANG_LED = "#ffb030";
 
 /** Segments a–g in a digit's top-view coordinates: [x, z, horizontal]. */
@@ -98,16 +105,21 @@ interface Parts {
   digits: ((b: number) => void)[][];
   buttons: ((down: boolean) => void)[];
   switches: ((on: boolean) => void)[];
+  buzz: ((hz: number) => void) | null;
+  servo: ((deg: number | null) => void) | null;
+  sr: ((b: number) => void)[];
+  keys: ((down: boolean) => void)[];
   pickable: THREE.Object3D[];
 }
-const noParts = (): Parts => ({ leds: [], rgb: null, digits: [], buttons: [], switches: [], pickable: [] });
+const noParts = (): Parts => ({ leds: [], rgb: null, digits: [], buttons: [], switches: [], buzz: null, servo: null, sr: [], keys: [], pickable: [] });
 
-export default function Board3D({ handle, onButton, onSwitch, view = "lab", ledColors, onStatus }: Props) {
+export default function Board3D({ handle, onButton, onSwitch, view = "lab", ledColors, onStatus, addons = [], onKey }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const updateRef = useRef<(v: BoardView) => void>(() => {});
   const last = useRef<BoardView>(EMPTY_VIEW);
-  const handlers = useRef({ onButton, onSwitch, onStatus });
-  handlers.current = { onButton, onSwitch, onStatus };
+  const handlers = useRef({ onButton, onSwitch, onStatus, onKey });
+  handlers.current = { onButton, onSwitch, onStatus, onKey };
+  const addonKey = addons.join(",");
   const [flat, setFlat] = useState<BoardView | null>(null);   // set when WebGL is missing
   const colours = (ledColors ?? []).concat(Array(6).fill(GREEN)).slice(0, 6).join(",");
 
@@ -250,57 +262,180 @@ export default function Board3D({ handle, onButton, onSwitch, view = "lab", ledC
         p.pickable.push(body, knob);
         return (on: boolean) => { knob.position.z = FRONT + (on ? -0.24 : 0.24); };
       });
+      if (addonKey) buildAddons(p, addonKey.split(",") as Addon[]);
       return p;
     };
 
-    // ── Tang Nano 9K, built to its layout (58.5 × 22.5 mm) ───────────────────
-    const buildTang = (): Parts => {
+    // ── Add-on board behind the lab board: buzzer, servo, 74HC595 + 8 LEDs, 4×4 keypad ──
+    const buildAddons = (p: Parts, want: Addon[]) => {
+      const Z0 = -5.6, D = 3.4;
+      add(new THREE.BoxGeometry(12, 0.16, D), std("#0d3a27", { roughness: 0.7 }), 0, 0, Z0);
+      flatOnTop(12, D, new THREE.MeshBasicMaterial({ transparent: true, map: silk(12, D, (text) => {
+        if (want.includes("buzzer")) text("BUZZER (buzz)", -4.8, 1.35, 20);
+        if (want.includes("servo")) text("SERVO (servo)", -2.2, 1.35, 20);
+        if (want.includes("sr")) { text("74HC595", 1.0, 0.55, 20); for (let i = 0; i < 8; i++) text(`Q${7 - i}`, -0.2 + i * 0.42, 1.25, 14); }
+        if (want.includes("keypad")) text("KEYPAD (row / col)", 4.6, 1.45, 20);
+      }) }), 0, 0.081, Z0);
+      // A ribbon of wires from the lab board, for the look of it
+      add(new THREE.BoxGeometry(3, 0.04, 0.5), std("#c8c8c8", { roughness: 0.8 }), 0, 0.1, -3.7);
+      if (want.includes("buzzer")) {
+        const body = add(new THREE.CylinderGeometry(0.55, 0.55, 0.5, 32), std("#111111", { roughness: 0.5 }), -4.8, 0.33, Z0);
+        add(new THREE.CylinderGeometry(0.08, 0.08, 0.02, 16), std("#333333"), -4.8, 0.59, Z0);
+        const ring = glow("#ffd23c", -4.8, 0.9, Z0, 1.6);
+        let phase = 0;
+        p.buzz = (hz) => { ring.material.opacity = hz > 20 ? 0.45 : 0; body.position.y = 0.33 + (hz > 20 ? ((phase = 1 - phase) ? 0.012 : 0) : 0); };
+      }
+      if (want.includes("servo")) {
+        add(new THREE.BoxGeometry(1.2, 0.7, 0.6), std("#1d4fd6", { roughness: 0.4 }), -2.2, 0.43, Z0);
+        add(new THREE.CylinderGeometry(0.14, 0.14, 0.16, 20), std("#f2f2f2"), -2.6, 0.86, Z0);
+        const arm = new THREE.Group();
+        arm.position.set(-2.6, 0.97, Z0);
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, 0.16), std("#f2f2f2"));
+        blade.position.x = 0.45;
+        arm.add(blade);
+        scene.add(arm);
+        p.servo = (deg) => { if (deg !== null) arm.rotation.y = THREE.MathUtils.degToRad(90 - deg); };
+      }
+      if (want.includes("sr")) {
+        add(new THREE.BoxGeometry(1.5, 0.18, 0.55), std("#17191c"), 1.0, 0.17, Z0 - 0.2);
+        // Q7 on the left, Q0 on the right, like the bits of the number they show.
+        p.sr = Array.from({ length: 8 }, (_, i) => smdLed("#ff4b3c", -0.2 + (7 - i) * 0.42, 0.08, Z0 + 0.6, 0.22, 0.14));
+      }
+      if (want.includes("keypad")) {
+        add(new THREE.BoxGeometry(2.3, 0.08, 2.3), std("#202226", { roughness: 0.6 }), 4.6, 0.12, Z0 - 0.15);
+        const faces = ["1", "2", "3", "A", "4", "5", "6", "B", "7", "8", "9", "C", "*", "0", "#", "D"];
+        p.keys = faces.map((f, k) => {
+          const r = k >> 2, c = k & 3, x = 4.6 + (c - 1.5) * 0.52, z = Z0 - 0.15 + (r - 1.5) * 0.52;
+          const key = add(new THREE.BoxGeometry(0.42, 0.1, 0.42), std(c === 3 ? "#c0392b" : "#e8e8e8", { roughness: 0.6 }), x, 0.21, z);
+          const label = canvasTexture(64, 64, (g) => { g.fillStyle = "#222"; g.font = "700 40px ui-monospace, monospace"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(f, 32, 34); });
+          flatOnTop(0.36, 0.36, new THREE.MeshBasicMaterial({ map: label, transparent: true }), x, 0.262, z).userData = { kind: "key", i: k };
+          key.userData = { kind: "key", i: k };
+          p.pickable.push(key);
+          return (down: boolean) => { key.position.y = down ? 0.17 : 0.21; };
+        });
+      }
+    };
+
+    // ── Tang Nano 9K (58.5 × 22.5 mm) and 20K (54 × 22.5 mm), built to their layout ─────
+    const buildTang = (variant: "9k" | "20k"): Parts => {
       const p = noParts();
-      const mm = WIDTH / 58.5, D = 22.5 * mm, T = 1.6 * mm;
-      const X = (x: number) => (x - 29.25) * mm, Z = (y: number) => (y - 11.25) * mm, top = T / 2;
+      const L = variant === "9k" ? 58.5 : 54, mid = L / 2;
+      const mm = WIDTH / L, D = 22.5 * mm, T = 1.6 * mm;
+      const X = (x: number) => (x - mid) * mm, Z = (y: number) => (y - 11.25) * mm, top = T / 2;
       const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number) => add(new THREE.BoxGeometry(w * mm, h * mm, d * mm), mat, X(x), top + (h * mm) / 2, Z(y));
       add(new THREE.BoxGeometry(WIDTH, T, D), std("#16181d", { roughness: 0.6 }), 0, 0, 0);
-      const leds = [23.5, 25.5, 27.5, 29.5, 31.5, 33.5];
+      const chipX = variant === "9k" ? 36 : 31;
+      const leds = Array.from({ length: 6 }, (_, i) => (variant === "9k" ? 23.5 : 19) + i * 2);
+      const btnX = variant === "9k" ? 8.6 : 44;
       flatOnTop(WIDTH, D, new THREE.MeshBasicMaterial({ transparent: true, map: silk(WIDTH, D, (text) => {
-        text("TANG NANO 9K", X(14), Z(19.6), 34);
+        text(variant === "9k" ? "TANG NANO 9K" : "TANG NANO 20K", X(variant === "9k" ? 14 : 12), Z(19.6), 34);
         leds.forEach((x, i) => text(String(i), X(x), Z(17.2), 22));
-        text("S1", X(8.6), Z(6.4), 22); text("S2", X(8.6), Z(16.2), 22);
-        text("GW1NR-9", X(36), Z(17.4), 20);
+        text("S1", X(btnX), Z(6.4), 22); text("S2", X(btnX), Z(16.2), 22);
+        text(variant === "9k" ? "GW1NR-9" : "GW2AR-18", X(chipX), Z(17.4), 20);
       }) }), 0, top + 0.002, 0);
 
       // Pin header pads along both long edges (the board ships without headers fitted).
       const gold = std("#d4b25a", { metalness: 0.9, roughness: 0.25 });
-      const pad = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.85 * mm, 0.85 * mm, 0.08 * mm, 16), gold, 48);
-      const hole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.45 * mm, 0.45 * mm, 0.1 * mm, 12), std("#050505"), 48);
+      const n = Math.floor((L - 3) / 2.4);
+      const pad = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.85 * mm, 0.85 * mm, 0.08 * mm, 16), gold, n * 2);
+      const hole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.45 * mm, 0.45 * mm, 0.1 * mm, 12), std("#050505"), n * 2);
       const m4 = new THREE.Matrix4();
-      for (let k = 0; k < 24; k++) for (const [row, y] of [[0, 1.27], [1, 21.23]] as const) {
-        m4.makeTranslation(X(1.5 + k * 2.4), top, Z(y)); pad.setMatrixAt(row * 24 + k, m4);
-        m4.makeTranslation(X(1.5 + k * 2.4), top + 0.06 * mm, Z(y)); hole.setMatrixAt(row * 24 + k, m4);
+      for (let k = 0; k < n; k++) for (const [row, y] of [[0, 1.27], [1, 21.23]] as const) {
+        m4.makeTranslation(X(1.5 + k * 2.4), top, Z(y)); pad.setMatrixAt(row * n + k, m4);
+        m4.makeTranslation(X(1.5 + k * 2.4), top + 0.06 * mm, Z(y)); hole.setMatrixAt(row * n + k, m4);
       }
       scene.add(pad, hole);
 
       const steel = std("#c9cdd2", { metalness: 0.95, roughness: 0.22 });
-      box(8.9, 3.2, 7.3, steel, 3.4, 11.25);                         // USB-C
-      box(11.5, 5.6, 15, steel, 52.6, 11.25);                        // HDMI
-      add(new THREE.BoxGeometry(8 * mm, 4 * mm, 9.5 * mm), std("#050505"), X(56), top + 2.9 * mm, Z(11.25));
-      box(10, 0.9, 10, std("#17191c", { roughness: 0.4 }), 36, 11.25);   // GW1NR-9 (QFN88)
-      flatOnTop(9.6 * mm, 9.6 * mm, new THREE.MeshStandardMaterial({ map: chipLabel(["GOWIN", "GW1NR-9C"]), roughness: 0.45 }), X(36), top + 0.92 * mm, Z(11.25));
-      box(5, 0.8, 5, std("#1b1d20"), 17, 11.25);                     // BL702 (USB-JTAG)
-      box(3.2, 1, 2.5, steel, 27, 6);                                // 27 MHz oscillator
-      box(5, 1.2, 4, std("#1b1d20"), 26.5, 14.8);                    // flash
-      box(12, 2, 3.6, std("#efe6cf", { roughness: 0.7 }), 43.5, 3.6); // LCD connector
-      box(12, 0.6, 1.2, std("#1a1a1a"), 43.5, 2.2);
-      for (const [x, y] of [[13, 4], [21.5, 17.5], [30.5, 4.2], [42, 17.5]]) box(1.6, 0.6, 0.8, std("#9a7a55"), x, y);   // a few passives
+      box(8.9, 3.2, 7.3, steel, 3.4, 11.25);                                  // USB-C
+      box(11.5, 5.6, 15, steel, L - 5.9, 11.25);                              // HDMI
+      add(new THREE.BoxGeometry(8 * mm, 4 * mm, 9.5 * mm), std("#050505"), X(L - 2.5), top + 2.9 * mm, Z(11.25));
+      box(10, 0.9, 10, std("#17191c", { roughness: 0.4 }), chipX, 11.25);    // the FPGA (QFN88)
+      flatOnTop(9.6 * mm, 9.6 * mm, new THREE.MeshStandardMaterial({ map: chipLabel(["GOWIN", variant === "9k" ? "GW1NR-9C" : "GW2AR-18C"]), roughness: 0.45 }), X(chipX), top + 0.92 * mm, Z(11.25));
+      box(5, 0.8, 5, std("#1b1d20"), variant === "9k" ? 17 : 13, 11.25);     // USB-JTAG bridge
+      box(3.2, 1, 2.5, steel, chipX - 9, 6);                                  // 27 MHz oscillator
+      box(5, 1.2, 4, std("#1b1d20"), chipX - 9.5, 14.8);                      // flash
+      if (variant === "9k") {
+        box(12, 2, 3.6, std("#efe6cf", { roughness: 0.7 }), 43.5, 3.6);       // LCD connector
+        box(12, 0.6, 1.2, std("#1a1a1a"), 43.5, 2.2);
+      } else {
+        box(5, 1.5, 5, std("#f4f4f0", { roughness: 0.4 }), 39.5, 5.5);         // WS2812 RGB LED
+      }
+      for (const [x, y] of [[13, 4], [21.5, 17.5], [30.5, 4.2], [42, 17.5]]) box(1.6, 0.6, 0.8, std("#9a7a55"), x * (L / 58.5), y);   // a few passives
 
       p.leds = leds.map((x) => smdLed(TANG_LED, X(x), top, Z(18.8), 1.6 * mm, 0.9 * mm));
-      p.buttons = [[8.6, 3.6], [8.6, 18.9]].map(([x, y], i) => {
-        box(4.2, 1.6, 3.2, std("#d8d8d8", { metalness: 0.6, roughness: 0.35 }), x, y);
-        const cap = add(new THREE.BoxGeometry(1.6 * mm, 0.9 * mm, 1.2 * mm), std("#1a1a1a"), X(x), top + 2 * mm, Z(y));
-        const hit = hitBox(X(x), top + 1.2 * mm, Z(y), 5.5 * mm, 3 * mm, 4.5 * mm, { kind: "btn", i });
+      p.buttons = [3.6, 18.9].map((y, i) => {
+        box(4.2, 1.6, 3.2, std("#d8d8d8", { metalness: 0.6, roughness: 0.35 }), btnX, y);
+        const cap = add(new THREE.BoxGeometry(1.6 * mm, 0.9 * mm, 1.2 * mm), std("#1a1a1a"), X(btnX), top + 2 * mm, Z(y));
+        const hit = hitBox(X(btnX), top + 1.2 * mm, Z(y), 5.5 * mm, 3 * mm, 4.5 * mm, { kind: "btn", i });
         p.pickable.push(hit, cap);
         cap.userData = { kind: "btn", i };
         return (down: boolean) => { cap.position.y = top + (down ? 1.75 : 2) * mm; };
       });
+      return p;
+    };
+
+    // ── Digilent Basys 3 (132 × 101 mm), built to its layout ────────────────
+    // led[i] → LD i and sw[i] → SW i, counting from the right; btn[0] → BTNC, btn[1] → BTNU;
+    // hex0 is the rightmost digit.
+    const buildBasys3 = (): Parts => {
+      const p = noParts();
+      const L = 132, DD = 101, mm = WIDTH / L, T = 1.6 * mm;
+      const X = (x: number) => (x - L / 2) * mm, Z = (y: number) => (y - DD / 2) * mm, top = T / 2;
+      const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number) => add(new THREE.BoxGeometry(w * mm, h * mm, d * mm), mat, X(x), top + (h * mm) / 2, Z(y));
+      add(new THREE.BoxGeometry(WIDTH, T, DD * mm), std("#1d2b22", { roughness: 0.6 }), 0, 0, 0);
+      const colX = (i: number) => 112 - i * 6;
+      flatOnTop(WIDTH, DD * mm, new THREE.MeshBasicMaterial({ transparent: true, map: silk(WIDTH, DD * mm, (text) => {
+        text("BASYS 3", X(26), Z(8), 44);
+        text("DIGILENT", X(26), Z(15), 26);
+        for (let i = 0; i < 16; i++) { text(`LD${i}`, X(colX(i)), Z(83.5), 15); text(`SW${i}`, X(colX(i)), Z(99), 15); }
+        text("BTNC", X(118), Z(55.5), 16); text("BTNU", X(118), Z(45.5), 16);
+        text("BTNL", X(108), Z(55.5), 16); text("BTNR", X(128), Z(55.5), 16); text("BTND", X(118), Z(65.5), 16);
+        text("VGA", X(108), Z(14), 18); text("JA", X(126), Z(11), 18); text("JB", X(126), Z(25), 18); text("JC", X(7), Z(33), 18); text("JXADC", X(9), Z(53), 16);
+      }) }), 0, top + 0.002, 0);
+
+      const steel = std("#c9cdd2", { metalness: 0.95, roughness: 0.22 });
+      box(27, 3, 21, std("#17191c", { roughness: 0.4 }), 66, 40);                          // Artix-7 (BGA)
+      flatOnTop(25 * mm, 19 * mm, new THREE.MeshStandardMaterial({ map: chipLabel(["XILINX", "ARTIX-7"]), roughness: 0.45 }), X(66), top + 3.02 * mm, Z(40));
+      box(31, 12, 12, std("#2a4a8a", { roughness: 0.4 }), 98, 6);                          // VGA connector
+      box(8, 3, 6, steel, 50, 3.5);                                                        // micro-USB (UART / JTAG)
+      box(14, 7, 10, steel, 24, 30);                                                       // USB host (type A)
+      for (const y of [18, 32]) box(6, 8, 13, std("#1a1a1a"), 129, y);                    // Pmod JA, JB
+      for (const y of [40, 60]) box(6, 8, 13, std("#1a1a1a"), 3, y);                       // Pmod JC, JXADC
+      box(5, 4, 10, std("#e8e8e8"), 8, 8);                                                 // power switch
+
+      // 4-digit 7-segment display
+      box(40, 6, 19, std("#101112", { roughness: 0.4 }), 34, 72);
+      const k = 12 * mm;   // SEGS is in units of a 12 mm digit
+      const segH = new THREE.BoxGeometry(0.42 * k, 0.3 * mm, 0.09 * k), segV = new THREE.BoxGeometry(0.09 * k, 0.3 * mm, 0.42 * k), dot = new THREE.CylinderGeometry(0.055 * k, 0.055 * k, 0.3 * mm, 12);
+      p.digits = Array.from({ length: 4 }, (_, d) => {
+        const cx = X(49 - d * 10), cz = Z(72), y = top + 6.15 * mm;
+        const lit = () => { const m = std("#2a1414", { emissive: new THREE.Color("#ff3b2f"), emissiveIntensity: 0 }); return [m, (b: number) => { m.emissiveIntensity = b * 2.6; }] as const; };
+        const segs = SEGS.map(([x, z, h]) => { const [m, set] = lit(); add(h ? segH : segV, m, cx + x * k, y, cz + z * k); return set; });
+        const [dpm, dp] = lit();
+        add(dot, dpm, cx + 0.42 * k, y, cz + 0.55 * k);
+        return [...segs, dp];
+      });
+
+      p.leds = Array.from({ length: 16 }, (_, i) => smdLed(GREEN, X(colX(i)), top, Z(87), 2 * mm, 1.2 * mm));
+      p.switches = Array.from({ length: 16 }, (_, i) => {
+        const body = box(3.5, 4, 8, std("#1a1a1a"), colX(i), 93);
+        const knob = add(new THREE.BoxGeometry(2 * mm, 2.5 * mm, 2.6 * mm), std("#f2f2f2"), X(colX(i)), top + 5 * mm, Z(94.5));
+        body.userData = knob.userData = { kind: "sw", i };
+        p.pickable.push(body, knob);
+        return (on: boolean) => { knob.position.z = Z(on ? 91.5 : 94.5); };
+      });
+      const button = (x: number, y: number, i: number | null) => {
+        box(6, 3.5, 6, std("#2b2f33"), x, y);
+        const cap = add(new THREE.CylinderGeometry(1.8 * mm, 1.8 * mm, 1.5 * mm, 20), std("#1a1a1a"), X(x), top + 4.2 * mm, Z(y));
+        if (i === null) return () => {};
+        const hit = hitBox(X(x), top + 2.5 * mm, Z(y), 7 * mm, 6 * mm, 7 * mm, { kind: "btn", i });
+        p.pickable.push(hit, cap);
+        cap.userData = { kind: "btn", i };
+        return (down: boolean) => { cap.position.y = top + (down ? 3.6 : 4.2) * mm; };
+      };
+      p.buttons = [button(118, 60, 0), button(118, 50, 1)];
+      button(108, 60, null); button(128, 60, null); button(118, 70, null);   // BTNL, BTNR, BTND
       return p;
     };
 
@@ -316,16 +451,24 @@ export default function Board3D({ handle, onButton, onSwitch, view = "lab", ledC
       const gltf = await loader.loadAsync(`/models/${id}.glb`);
       const model = gltf.scene;
       // Centre it and scale it to WIDTH; part positions (metres, board frame) get the same transform.
+      // A board drawn upright (longer front to back, like the TinyFPGA BX) is turned to lie across.
       const box = new THREE.Box3().setFromObject(model);
-      const s = WIDTH / (box.max.x - box.min.x), cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
+      const w = box.max.x - box.min.x, d = box.max.z - box.min.z, turn = d > w * 1.15;
+      const s = WIDTH / Math.max(w, d), cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
       model.scale.setScalar(s);
       model.position.set(-cx * s, -box.min.y * s, -cz * s);
-      scene.add(model);
-      const pos = ([x, z]: [number, number]): [number, number] => [(x - cx) * s, (z - cz) * s];
+      const holder = new THREE.Group();
+      holder.add(model);
+      if (turn) holder.rotation.y = Math.PI / 2;   // (x, z) → (z, -x)
+      scene.add(holder);
+      const pos = ([x, z]: [number, number]): [number, number] => {
+        const dx = (x - cx) * s, dz = (z - cz) * s;
+        return turn ? [dz, -dx] : [dx, dz];
+      };
       const board = (0.0016 - box.min.y) * s;   // top of the 1.6 mm board (the model was lifted by -min.y: parts hang below it)
       const mm = s / 1000;
       const p = noParts();
-      p.leds = parts.leds.map((xz, i) => { const [x, z] = pos(xz); return smdLed(ULX3S_LEDS[i] ?? GREEN, x, board, z, 2 * mm, 1.25 * mm); });
+      p.leds = parts.leds.map((xz, i) => { const [x, z] = pos(xz); return smdLed(def.ledColors?.[i] ?? GREEN, x, board, z, 2 * mm, 1.25 * mm); });
       if (parts.rgb) {
         const [x, z] = pos(parts.rgb);
         const halo = glow("#ffffff", x, board + 2 * mm, z, 14 * mm);
@@ -383,6 +526,12 @@ export default function Board3D({ handle, onButton, onSwitch, view = "lab", ledC
       v.digits.forEach((segs, d) => segs.forEach((b, s) => parts.digits[d]?.[s]?.(b)));
       v.btn.forEach((b, i) => parts.buttons[i]?.(!!b));
       v.sw.forEach((b, i) => parts.switches[i]?.(!!b));
+      if (v.extra) {
+        parts.buzz?.(v.extra.buzz);
+        parts.servo?.(v.extra.servo);
+        v.extra.sr.forEach((b, i) => parts.sr[i]?.(b));
+        v.extra.keys.forEach((d, i) => parts.keys[i]?.(d));
+      }
       request();
     };
     const def = VIEWS.find((d) => d.id === view) ?? VIEWS[0];
@@ -394,7 +543,7 @@ export default function Board3D({ handle, onButton, onSwitch, view = "lab", ledC
         handlers.current.onStatus?.(`Couldn't load the ${def.name} model; showing the lab board.`);
         parts = buildLab(); apply(last.current); updateRef.current = apply;
       });
-    } else ready(view === "tangnano9k" ? buildTang() : buildLab());
+    } else ready(view === "tangnano9k" ? buildTang("9k") : view === "tangnano20k" ? buildTang("20k") : view === "basys3" ? buildBasys3() : buildLab());
 
     // Picking: hold a button, click a switch; dragging anywhere else turns the board.
     const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -402,19 +551,21 @@ export default function Board3D({ handle, onButton, onSwitch, view = "lab", ledC
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
-      return ray.intersectObjects(parts.pickable, false)[0]?.object.userData as { kind: "btn" | "sw"; i: number } | undefined;
+      return ray.intersectObjects(parts.pickable, false)[0]?.object.userData as { kind: "btn" | "sw" | "key"; i: number } | undefined;
     };
-    let held = -1;
+    let held = -1, heldKey = -1;
     const down = (e: PointerEvent) => {
       const hit = pick(e);
       if (!hit) return;
       controls.enabled = false;
       if (hit.kind === "btn") { held = hit.i; handlers.current.onButton(hit.i, true); }
+      else if (hit.kind === "key") { heldKey = hit.i; handlers.current.onKey?.(hit.i, true); }
       else handlers.current.onSwitch(hit.i);
     };
     const up = () => {
       if (held >= 0) handlers.current.onButton(held, false);
-      held = -1;
+      if (heldKey >= 0) handlers.current.onKey?.(heldKey, false);
+      held = -1; heldKey = -1;
       controls.enabled = true;
     };
     const hover = (e: PointerEvent) => { if (e.buttons === 0) renderer.domElement.style.cursor = pick(e) ? "pointer" : "grab"; };
@@ -443,7 +594,7 @@ export default function Board3D({ handle, onButton, onSwitch, view = "lab", ledC
       renderer.domElement.remove();
       updateRef.current = () => {};
     };
-  }, [colours, view]);
+  }, [colours, view, addonKey]);
 
   return (
     <div ref={host} className="relative w-full h-full min-h-[260px]" role="img"

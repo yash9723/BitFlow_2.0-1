@@ -8,6 +8,18 @@
   "credit": "OrangeCrab r0.2.1 by Greg Davill (github.com/orangecrab-fpga), hardware licensed under CERN OHL v1.2."
  },
  {
+  "id": "icezum",
+  "credit": "Icezum Alhambra by Eladio Delgado and Juan González (Obijuan), FPGAwars (github.com/FPGAwars/icezum), GPL-3.0."
+ },
+ {
+  "id": "tinyfpga-bx",
+  "credit": "TinyFPGA BX by Luke Valenty (github.com/tinyfpga/TinyFPGA-BX), CERN OHL v1.2."
+ },
+ {
+  "id": "fomu",
+  "credit": "Fomu (PVT) by the Tomu project (github.com/im-tomu/fomu-hardware), CC BY-SA 4.0."
+ },
+ {
   "id": "mcu-arduino-uno",
   "credit": "\"Arduino Uno\" by kakaeka, sketchfab.com/3d-models/arduino-uno-775a2bf901a74fd190f175f5f0dcf2d0, CC Attribution 4.0"
  },

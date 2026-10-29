@@ -54,7 +54,7 @@ export const needsWinUsbOnWindows = (board: BoardId) => FLASH[board]?.usb[0] ===
 
 /** Boards that can be programmed from here; the DE10-Lite's USB-Blaster needs Quartus. */
 export const FLASH: Partial<Record<BoardId, FlashTarget>> = {
-  icestick: ice40, icebreaker: ice40,
+  icestick: ice40, icebreaker: ice40, icezum: ice40,   // the Icezum programs through an FT2232H, like the iCEstick
   "ulx3s-12f": ulx3s, "ulx3s-25f": ulx3s, "ulx3s-45f": ulx3s, "ulx3s-85f": ulx3s,
   "orangecrab-25f": { usb: [{ vendorId: 0x1209, productId: 0x5af0 }], modes: ["flash"], files: [".bit"],
     prepare: "Hold the button down while you plug the OrangeCrab in: it starts its bootloader (the LED fades in and out)." },

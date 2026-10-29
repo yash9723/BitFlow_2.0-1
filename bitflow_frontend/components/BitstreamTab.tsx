@@ -190,6 +190,13 @@ export default function BitstreamTab({ designCode, language }: { designCode: str
 function ProgramHelp({ boardId, file }: { boardId: BoardId; file: string }) {
   const b = BOARDS[boardId];
   const cmd = `openFPGALoader -b ${b.loader} ${file}`;
+  if (boardId === "tinyfpga-bx") return (
+    <div className="text-[10px] text-dim space-y-1 max-w-2xl">
+      <p>The TinyFPGA BX is programmed by its own USB bootloader. Install <span className="text-ghost">tinyprog</span> (pip install tinyprog), plug the board in and run:</p>
+      <pre className="bg-void border border-rim rounded px-2 py-1 text-pale">tinyprog -p {file}</pre>
+      <p>The design is written to its flash, so it stays after power-off.</p>
+    </div>
+  );
   return (
     <div className="text-[10px] text-dim space-y-1 max-w-2xl">
       <p>

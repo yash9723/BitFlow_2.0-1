@@ -1,5 +1,5 @@
 /**
- * lib/lab/lessons.ts — the Board Lab track: 17 hands-on lessons on the virtual lab board
+ * lib/lab/lessons.ts — the Board Lab track: the basics on the virtual lab board
  * (6 LEDs, 2 buttons, 4 switches, a 4-digit 7-segment display, an RGB LED, a serial port).
  * Each has a starter, goals and a check run on the gate simulator (lib/lab/run.ts).
  * Reference solutions are kept with scripts/lab.check.ts and never ship to the browser.
@@ -8,6 +8,7 @@
  */
 import { HEX_SEGS } from "../board-io";
 import type { LabLesson, Tester } from "./run";
+import { PROJECT_LESSONS } from "./lessons-projects";
 
 const bin = (n: number, w: number) => n.toString(2).padStart(w, "0");
 const bit = (n: number, i: number) => (n >> i) & 1;
@@ -21,7 +22,7 @@ function changes(t: Tester, port: string, n: number, mask = ~0) {
 }
 const near = (got: number, want: number, tol = 0.03) => Math.abs(got - want) <= Math.max(2, want * tol);
 
-export const LESSONS: LabLesson[] = [
+const BASICS: LabLesson[] = [
   {
     slug: "light-an-led",
     title: "Light an LED",
@@ -704,6 +705,9 @@ endmodule
     },
   },
 ];
+
+/** The basics, then the practical projects (lib/lab/lessons-projects.ts), then the final project. */
+export const LESSONS: LabLesson[] = [...BASICS.slice(0, -1), ...PROJECT_LESSONS, BASICS[BASICS.length - 1]];
 
 export const lessonBySlug = (slug: string) => LESSONS.find((l) => l.slug === slug) ?? null;
 export const lessonIndex = (slug: string) => LESSONS.findIndex((l) => l.slug === slug);

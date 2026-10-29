@@ -23,7 +23,8 @@ for (const [id, b] of Object.entries(BOARDS)) {
   const all = [b.clock, b.uartRx, b.uartTx, ...b.leds, ...b.buttons, ...(b.switches ?? []), ...b.gpio].filter(Boolean).map((p) => p!.pin);
   const dup = all.filter((p, i) => all.indexOf(p) !== i);
   assert.deepEqual(dup, [], `${id}: pins listed twice`);
-  assert.ok(b.loader && b.clockMhz > 0, `${id}: loader and clock`);
+  // The TinyFPGA BX has its own USB bootloader (tinyprog), not an openFPGALoader board.
+  assert.ok((b.loader || id === "tinyfpga-bx") && b.clockMhz > 0, `${id}: loader and clock`);
 }
 assert.ok(!BOARDS["orangecrab-25f"].gpio.some((p) => p.pin === "V17"), "OrangeCrab V17 reboots into the bootloader");
 
@@ -126,7 +127,7 @@ async function builds() {
   if (process.env.YOWASP_NEXTPNR) {
     const n = await load("YOWASP_NEXTPNR");
     const tools = { runYosys, runNextpnr: n.runNextpnrIce40, runPack: n.runIcepack };
-    await family("iCE40", ["icestick", "icebreaker"], tools,
+    await family("iCE40", ["icestick", "icebreaker", "icezum", "tinyfpga-bx"], tools,
       (bin) => assert.equal(Buffer.from(bin.slice(0, 8)).toString("hex"), "ff0000ff7eaa997e", "iCE40 preamble"));
     const bad = await buildBitstream(tools, "icestick", "module broken(input a; endmodule");
     assert.ok(!bad.ok && /syntax error/.test(bad.error), "a syntax error is reported");
