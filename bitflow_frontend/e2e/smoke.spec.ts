@@ -93,4 +93,9 @@ test("Board Lab: a lesson is checked in the browser", async ({ page }) => {
   await page.getByRole("button", { name: "Check my design" }).click();
   await expect(page.getByLabel("passed")).toHaveCount(2, { timeout: 60_000 });
   await expect(page.getByText("✓ lesson complete")).toBeVisible();
+  // A real board, from its KiCad design: the model loads and is credited.
+  await page.getByRole("radio", { name: "ULX3S" }).click();
+  await expect(page.getByText(/3D model: ULX3S by EMARD and Radiona/)).toBeVisible();
+  await expect(page.getByText("Loading the ULX3S…")).toBeHidden({ timeout: 30_000 });
+  await expect(page.getByText(/Couldn't load the ULX3S/)).toHaveCount(0);
 });

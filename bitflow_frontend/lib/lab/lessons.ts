@@ -1,5 +1,5 @@
 /**
- * lib/lab/lessons.ts — the Board Lab track: 16 hands-on lessons on the virtual lab board
+ * lib/lab/lessons.ts — the Board Lab track: 17 hands-on lessons on the virtual lab board
  * (6 LEDs, 2 buttons, 4 switches, a 4-digit 7-segment display, an RGB LED, a serial port).
  * Each has a starter, goals and a check run on the gate simulator (lib/lab/run.ts).
  * Reference solutions are kept with scripts/lab.check.ts and never ship to the browser.
@@ -140,6 +140,45 @@ endmodule
         const gap = c[i].at - c[i - 1].at;
         t.expect(1, near(gap, 500), `LED 0 changed after ${(gap / 1000).toFixed(3)} s; it should change every 0.5 s.`);
       }
+    },
+  },
+  {
+    slug: "fpga-vs-microcontroller",
+    title: "FPGA vs microcontroller",
+    summary: "Two LEDs blinking at their own pace: what a circuit does that a processor can't.",
+    intro: [
+      "An Arduino or an ESP32 is a microcontroller: one processor running your program one instruction after another. To blink two LEDs at different rates it has to take turns, checking one timer, then the other, in a loop.",
+      "An FPGA has no program counter. What you write becomes hardware, and every `always` block is its own circuit, running at the same time as all the others. Two blinkers are just two counters side by side, and adding a third doesn't slow the first two down.",
+      "The starter already blinks LED 0 twice a second. Add a second, separate counter that makes LED 1 change every 0.15 s.",
+    ],
+    goals: ["LED 0 still changes every 0.5 s", "LED 1 changes every 0.15 s, on its own"],
+    hints: ["Copy the first counter and its `always` block, with new names (`count1`, `on1`).", "`CLK_HZ * 15 / 100` cycles is 0.15 s."],
+    ports: { clk: ["input", 1], led: ["output", 6] },
+    models: ["mcu-arduino-uno", "mcu-esp32", "mcu-nodemcu"],
+    starter: `module lab #(parameter CLK_HZ = 27_000_000) (
+  input        clk,
+  output [5:0] led
+);
+  reg [31:0] count0 = 0;
+  reg        on0 = 0;
+  always @(posedge clk)
+    if (count0 == CLK_HZ / 2 - 1) begin count0 <= 0; on0 <= ~on0; end
+    else count0 <= count0 + 1;
+
+  // A second counter for LED 1, every 0.15 s: it runs alongside the first.
+  reg on1 = 0;
+
+  assign led = {4'b0, on1, on0};
+endmodule
+`,
+    check(t) {
+      const c0: number[] = [], c1: number[] = [];
+      let last = t.get("led");
+      t.run(3200, (c) => { const v = t.get("led"); if ((v ^ last) & 1) c0.push(c); if ((v ^ last) & 2) c1.push(c); last = v; });
+      t.expect(0, c0.length >= 2, "LED 0 stopped blinking.");
+      for (let i = 1; i < c0.length; i++) t.expect(0, near(c0[i] - c0[i - 1], 500), `LED 0 changed after ${((c0[i] - c0[i - 1]) / 1000).toFixed(3)} s; it should still change every 0.5 s.`);
+      t.expect(1, c1.length >= 2, "LED 1 never changed.");
+      for (let i = 1; i < c1.length; i++) t.expect(1, near(c1[i] - c1[i - 1], 150), `LED 1 changed after ${((c1[i] - c1[i - 1]) / 1000).toFixed(3)} s; it should change every 0.15 s.`);
     },
   },
   {

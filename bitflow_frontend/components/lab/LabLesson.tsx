@@ -18,9 +18,11 @@ import { LESSONS, lessonBySlug, lessonIndex } from "@/lib/lab/lessons";
 import { UART_CYCLES, boardDesign, grade, missingParts, simHz, simParams, withParams, type GoalResult } from "@/lib/lab/run";
 import { doneLessons, loadDraft, markDone, saveDraft } from "@/lib/lab/progress";
 import { EMPTY_VIEW, type BoardHandle, type BoardView } from "./Board3D";
+import { VIEWS, viewFor, type ViewId } from "@/lib/lab/boards3d";
 import { rich } from "./rich";
 
 const Editor = dynamic(() => import("@/components/Editor"), { ssr: false, loading: () => <div className="h-full bg-pit" /> });
+const ModelShelf = dynamic(() => import("./ModelShelf"), { ssr: false });
 const Board3D = dynamic(() => import("./Board3D"), { ssr: false, loading: () => <div className="h-full grid place-items-center font-mono text-[11px] text-dim">Loading the board…</div> });
 
 const FLASH_BOARDS = (Object.keys(FLASH) as BoardId[]).filter((id) => buildsInBrowser(BOARDS[id]));
@@ -47,6 +49,8 @@ export default function LabLesson({ slug }: { slug: string }) {
   const [serial, setSerial] = useState("");
   const [inputs, setInputs] = useState({ btn: [0, 0], sw: [0, 0, 0, 0] });
   const [board, setBoard] = useState<BoardId>("tangnano9k");
+  const [view, setView] = useState<ViewId>("lab");
+  const [boardStatus, setBoardStatus] = useState<string | null>(null);
   const [flash, setFlash] = useState<Flash>({ kind: "idle" });
 
   const boardRef = useRef<BoardHandle>(null);
@@ -200,6 +204,20 @@ export default function LabLesson({ slug }: { slug: string }) {
   const passed = results?.every((g) => g.ok) ?? false;
   const next = LESSONS[lessonIndex(slug) + 1];
   const missing = missingParts(lesson.ports, board);
+  const shown = VIEWS.find((v) => v.id === view)!;
+  const notShown = shown.flash ? missingParts(lesson.ports, shown.flash).filter((m) => m !== "a USB serial port") : [];
+  // The board on screen and the board to build for follow each other where a view exists.
+  const pickView = (id: ViewId) => {
+    setView(id);
+    const v = VIEWS.find((x) => x.id === id)!;
+    if (v.flash && viewFor(board) !== id) { setBoard(v.flash); setFlash({ kind: "idle" }); }
+  };
+  const pickBoard = (id: BoardId) => {
+    setBoard(id);
+    setFlash({ kind: "idle" });
+    const v = viewFor(id);
+    if (v) setView(v);
+  };
   const hasClock = "clk" in lesson.ports;
   const flipped = BOARDS[board].ledsActiveLow || BOARDS[board].buttons.some((b) => b.activeLow);
   const btnCls = "px-3 py-1.5 rounded border font-mono text-[11px] select-none disabled:opacity-40";
@@ -207,6 +225,7 @@ export default function LabLesson({ slug }: { slug: string }) {
 
   return (
     <div className="space-y-4">
+      {lesson.models && <ModelShelf ids={lesson.models} />}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Editor */}
         <section className="flex flex-col rounded-lg border border-rim bg-pit/40 overflow-hidden min-w-0" aria-label="Your Verilog">
@@ -234,8 +253,23 @@ export default function LabLesson({ slug }: { slug: string }) {
               {ready ? <>{hasClock ? `clock ${hzText(hz)} · ` : ""}<span ref={timeRef}>0.0 s</span></> : "drag to turn · scroll to zoom"}
             </span>
           </div>
+          <div className="flex flex-wrap items-center gap-1 px-3 py-1.5 border-b border-rim" role="radiogroup" aria-label="Board to show">
+            {VIEWS.map((v) => (
+              <button key={v.id} role="radio" aria-checked={view === v.id} onClick={() => pickView(v.id)}
+                      className={`px-2 py-1 rounded font-mono text-[10px] ${view === v.id ? "bg-phosphor/10 text-phosphor border border-phosphor/40" : "text-dim hover:text-ghost border border-transparent"}`}>
+                {v.name}
+              </button>
+            ))}
+          </div>
           <div className="relative h-[300px] sm:h-[360px] lg:h-[400px]">
-            <Board3D handle={boardRef} onButton={onButton} onSwitch={onSwitch} ledColors={lesson.ledColors} />
+            <Board3D handle={boardRef} onButton={onButton} onSwitch={onSwitch} view={view} onStatus={setBoardStatus}
+                     ledColors={view === "lab" ? lesson.ledColors : undefined} />
+            {boardStatus && <p className="absolute top-2 left-3 font-mono text-[10px] text-info pointer-events-none">{boardStatus}</p>}
+            {notShown.length > 0 && (
+              <p className="absolute top-2 right-3 max-w-[60%] text-right font-mono text-[10px] text-warn pointer-events-none">
+                The {shown.name} has no {notShown.join(" or ")}: switch to the Lab board to see them.
+              </p>
+            )}
             {!ready && status.kind !== "building" && (
               <p className="absolute bottom-2 left-3 right-3 font-mono text-[10px] text-ghost pointer-events-none">
                 Press Run on the board: your Verilog is turned into gates in this browser and runs here, cycle by cycle.
@@ -262,6 +296,9 @@ export default function LabLesson({ slug }: { slug: string }) {
                       className={`${btnCls} ${inputs.btn[k] ? "border-phosphor/60 text-phosphor" : "border-rim text-ghost"}`}>BTN{k} (hold)</button>
             ))}
           </div>
+          {shown.credit && (
+            <p className="px-3 pb-2 font-mono text-[9px] text-dim">3D model: {shown.credit}. <Link href="/lab/credits" className="hover:text-ghost underline">Credits</Link></p>
+          )}
         </section>
       </div>
 
@@ -318,7 +355,7 @@ export default function LabLesson({ slug }: { slug: string }) {
           <div className="space-y-2">
             <h2 className={heading}>Put it on a real board</h2>
             <div className="flex flex-wrap items-center gap-2">
-              <select value={board} onChange={(e) => { setBoard(e.target.value as BoardId); setFlash({ kind: "idle" }); }} aria-label="Board"
+              <select value={board} onChange={(e) => pickBoard(e.target.value as BoardId)} aria-label="Board"
                       className="bg-void border border-rim rounded px-2 py-1.5 font-mono text-[11px] text-pale max-w-full">
                 {FLASH_BOARDS.map((id) => <option key={id} value={id}>{BOARDS[id].name}</option>)}
               </select>

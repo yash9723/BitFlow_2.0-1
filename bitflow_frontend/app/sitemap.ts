@@ -9,7 +9,7 @@ import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import { LESSONS } from "@/lib/lab/lessons";
 
 const PAGES: [path: string, priority: number][] = [
-  ["/", 1], ["/about", 0.8], ["/studio", 0.8], ["/lab", 0.9],
+  ["/", 1], ["/about", 0.8], ["/studio", 0.8], ["/lab", 0.9], ["/lab/credits", 0.3],
   ...LESSONS.map((l): [string, number] => [`/lab/${l.slug}`, 0.7]), ["/leaderboard", 0.6], ["/login", 0.5], ["/privacy", 0.3], ["/terms", 0.3], ["/contact", 0.4], ["/flash", 0.7],
   ...STUDIO_TOOLS.map((t): [string, number] => [t.href, 0.7]),
 ];

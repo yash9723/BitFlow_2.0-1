@@ -1,5 +1,5 @@
 /**
- * app/lab/page.tsx — the Board Lab: 16 hands-on lessons on a 3D FPGA board (lib/lab/lessons.ts).
+ * app/lab/page.tsx — the Board Lab: hands-on lessons on a 3D FPGA board (lib/lab/lessons.ts).
  */
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -9,7 +9,7 @@ import { LabCount, LabDone } from "@/components/lab/LabProgress";
 
 const TITLE = "Board Lab: learn FPGAs on a 3D board";
 const DESCRIPTION =
-  "16 free hands-on lessons: write Verilog, watch it run on a 3D FPGA board in your browser, get it checked, then put it on a real Tang Nano or iCEstick.";
+  `${LESSONS.length} free hands-on lessons: write Verilog, watch it run on a 3D FPGA board in your browser, get it checked, then put it on a real Tang Nano, ULX3S or OrangeCrab.`;
 export const metadata: Metadata = pageMeta("/lab", TITLE, DESCRIPTION);
 
 const PARTS: [RegExp, string][] = [[/^led$/, "LEDs"], [/^btn$/, "buttons"], [/^sw$/, "switches"], [/^(hex|seg)/, "display"], [/^rgb$/, "RGB LED"], [/^tx$/, "serial"], [/^clk$/, "clock"]];

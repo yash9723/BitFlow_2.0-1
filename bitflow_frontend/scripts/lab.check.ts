@@ -26,8 +26,8 @@ assert.match(wrapped, /assign led = ~led_on;/, "Tang Nano LEDs are active low");
 assert.match(boardDesign(LESSONS[3].starter, LESSONS[3].ports, "tangnano9k"), /CLK_HZ = 27000000/, "the board's clock");
 assert.doesNotMatch(boardDesign(LESSONS[1].starter, LESSONS[1].ports, "icebreaker"), /led_on/, "iCEBreaker LEDs are active high");
 assert.deepEqual(missingParts(LESSONS[2].ports, "tangnano9k"), ["switches"]);
-assert.equal(LESSONS.length, 16);
-assert.equal(new Set(LESSONS.map((l) => l.slug)).size, 16, "slugs are unique");
+assert.equal(LESSONS.length, 17);
+assert.equal(new Set(LESSONS.map((l) => l.slug)).size, LESSONS.length, "slugs are unique");
 console.log("lab: unit checks passed");
 
 // ── Every lesson, synthesized and graded ────────────────────────────────────
@@ -59,3 +59,20 @@ async function lessons() {
   console.log(`lab lessons: all ${LESSONS.length} passed`);
 }
 lessons().catch((e) => { console.error(e); process.exit(1); });
+
+// ── Real-board models: each view's model and part positions exist ───────────
+{
+  const { readFileSync, existsSync: has } = require("node:fs") as typeof import("node:fs");
+  const { VIEWS } = require("../lib/lab/boards3d") as typeof import("../lib/lab/boards3d");
+  for (const v of VIEWS.filter((x) => x.model)) {
+    const dir = join(__dirname, "..", "public", "models");
+    assert.ok(has(join(dir, `${v.model}.glb`)), `${v.id}: ${v.model}.glb is built (scripts/board-models.mjs)`);
+    const parts = JSON.parse(readFileSync(join(dir, `${v.model}.json`), "utf8"));
+    assert.ok(parts.buttons.length >= 1, `${v.id}: has a button`);
+    assert.ok(v.ledsAsRgb ? parts.rgb : parts.leds.length >= 6, `${v.id}: has the lights the lessons use`);
+    for (const [x, z] of [...parts.leds, ...parts.buttons, ...parts.switches, ...(parts.rgb ? [parts.rgb] : [])]) assert.ok(x > 0 && x < 1 && z > 0 && z < 1, `${v.id}: part positions are in metres`);
+  }
+  const credits = JSON.parse(readFileSync(join(__dirname, "..", "public", "models", "CREDITS.json"), "utf8"));
+  for (const v of VIEWS.filter((x) => x.model)) assert.ok(credits.some((c: { id: string }) => c.id === v.model), `${v.id} is credited`);
+  console.log("lab: board models checked");
+}

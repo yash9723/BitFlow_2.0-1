@@ -23,6 +23,8 @@ export interface LabLesson {
   ports: LabPorts;
   /** Simulated clock rate (Hz) and the parameter values it needs; default 1000 Hz, CLK_HZ = 1000. */
   sim?: { hz: number; params?: Record<string, number> };
+  /** Microcontroller models shown with the lesson (public/models/<id>.glb, components/lab/ModelShelf.tsx). */
+  models?: string[];
   /** LED colours on the 3D board (LED 0 first), when they mean something. */
   ledColors?: string[];
   /** Drives the design and calls t.expect(goal, ok, message). */
