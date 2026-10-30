@@ -30,6 +30,7 @@ const chapter: AcademyTopic = {
         p("Notice the outputs are stricter than the inputs. That gap is the **noise margin**: how much noise a signal can pick up on its way from one gate to the next and still be read correctly."),
         { kind: "formula", text: "high margin = 2.4 − 2.0 = 0.4 V     low margin = 0.8 − 0.4 = 0.4 V" },
         p("There is one more trick. Every gate drives its output to a clean level again, however messy its input was, as long as the input stayed in range. So noise doesn't build up along a chain of gates. In an analog chain each stage adds its noise to the signal for good, which is why a photocopy of a photocopy looks worse, while a copied file is identical to the original."),
+        { kind: "anim", id: "noise-chain" },
         { kind: "practice", question: "A family guarantees outputs of at most 0.2 V for low and at least 3.0 V for high. Its inputs accept up to 0.7 V as low and from 2.2 V as high. What is its low noise margin?", options: ["0.2 V", "0.5 V", "0.7 V", "0.8 V"], correctIndex: 1, explanation: "Low margin = highest accepted low input − highest guaranteed low output = 0.7 − 0.2 = **0.5 V**. The high margin here is 3.0 − 2.2 = 0.8 V, and the two don't have to match." },
       ],
     },
@@ -54,7 +55,7 @@ const chapter: AcademyTopic = {
             const a = d.sw("a", 40, 70), b = d.sw("b", 40, 190);
             d.led("both", 420, 70, d.gate("and", "series", 220, 60, a, b));
             d.led("either", 420, 190, d.gate("or", "parallel", 220, 180, a, b));
-          }), caption: "This circuit is live. Click the switches a and b, and watch the wires and lights.", tryThis: ["Turn on only **a**. Which light comes on, and why not the other?", "Turn on both. Now every wire is green.", "Can you make **both** light up without **either**? Try it, then think about why not."],
+          }), caption: "This circuit is live. Click the switches a and b, and watch the wires and lights.", tryThis: ["Turn on only **a**. Which light comes on, and why not the other?", "Press **Slow motion**, then flip a switch and watch the change travel through the gate.", "Turn on both. Now every wire is green.", "Can you make **both** light up without **either**? Try it, then think about why not."],
           checks: [{ set: { a: 0, b: 0 }, expect: { both: 0, either: 0 } }, { set: { a: 1, b: 0 }, expect: { both: 0, either: 1 } }, { set: { a: 0, b: 1 }, expect: { both: 0, either: 1 } }, { set: { a: 1, b: 1 }, expect: { both: 1, either: 1 } }] },
         p("You can list everything a circuit does in a **truth table**: one row for every combination of inputs. Two inputs make 2² = 4 rows."),
         { kind: "table", headers: ["a", "b", "both (AND)", "either (OR)"], rows: [["0", "0", "0", "0"], ["0", "1", "0", "1"], ["1", "0", "0", "1"], ["1", "1", "1", "1"]] },

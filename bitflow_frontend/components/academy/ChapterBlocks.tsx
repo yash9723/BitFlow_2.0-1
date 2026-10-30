@@ -8,10 +8,12 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { KmapStudy } from "@/components/studio/Kmap";
+import Animation from "@/components/academy/anim";
+import { Controls, btn, useSteps } from "@/components/academy/anim/Player";
+import { KmapStudy, QmWorking } from "@/components/studio/Kmap";
 import InteractiveWidget from "@/components/academy/InteractiveWidget";
 import type { AcademyBlock } from "@/lib/academy-types";
-import { minimizePos, minimizeSop, posText, sopText } from "@/lib/studio/logic-min";
+import { type Cell, minimizePos, minimizeSop, posText, sopText } from "@/lib/studio/logic-min";
 import { diagramSvg } from "@/lib/studio/wave";
 
 const CircuitViewer = dynamic(() => import("@/components/studio/CircuitViewer"), {
@@ -70,14 +72,42 @@ function Practice({ block }: { block: Extract<AcademyBlock, { kind: "practice" }
   );
 }
 
+const NEXT_CELL: Record<string, Cell> = { 0: 1, 1: "x", x: 0 };
+
 function KmapBlock({ block }: { block: Extract<AcademyBlock, { kind: "kmap" }> }) {
   const form = block.form ?? "sop", n = block.names.length;
-  const terms = useMemo(() => (form === "sop" ? minimizeSop : minimizePos)(n, block.cells), [form, n, block.cells]);
+  const [cells, setCells] = useState(block.cells);
+  const terms = useMemo(() => (form === "sop" ? minimizeSop : minimizePos)(n, cells), [form, n, cells]);
+  const onCell = block.editable ? (m: number) => setCells(cells.map((c, i) => (i === m ? NEXT_CELL[c] : c))) : undefined;
   return (
     <figure className="rounded-xl border border-rim/60 bg-pit/50 p-4 space-y-3">
-      <KmapStudy names={block.names} cells={block.cells} terms={terms} form={form} title={block.output} />
-      <p className="font-mono text-[14px] text-bright">{block.output} = {(form === "sop" ? sopText : posText)(terms, block.names, "math")}</p>
+      {block.editable && (
+        <div className="flex flex-wrap items-center gap-2 text-[13px] text-ghost">
+          Click a cell to change it (0, 1, then don&apos;t-care). The groups and the answer update.
+          <button type="button" className={btn} onClick={() => setCells(block.cells)}>Reset</button>
+        </div>
+      )}
+      <KmapStudy names={block.names} cells={cells} terms={terms} form={form} title={block.output} onCell={onCell} />
+      <p className="font-mono text-[14px] text-bright" role="status">{block.output} = {(form === "sop" ? sopText : posText)(terms, block.names, "math")}</p>
       <figcaption className="text-[13px] text-ghost"><Rich text={block.caption} /></figcaption>
+    </figure>
+  );
+}
+
+function Simplify({ block }: { block: Extract<AcademyBlock, { kind: "simplify" }> }) {
+  const s = useSteps(block.steps.length, block.title, 1500);
+  return (
+    <figure className="rounded-xl border border-rim/60 bg-pit/50 p-4 space-y-3">
+      <figcaption className="text-[14px] font-semibold text-bright">{block.title}</figcaption>
+      <ol className="space-y-1.5 min-h-[7em]">
+        {block.steps.slice(0, s.step + 1).map((line, i) => (
+          <li key={i} className={`anim-in flex flex-wrap items-baseline gap-x-3 rounded px-2 py-1 ${i === s.step ? "bg-info/10" : ""}`}>
+            <span className="font-mono text-[15px] text-bright">{i ? "= " : ""}{line.expr}</span>
+            <span className="text-[13px] text-ghost">{line.law}</span>
+          </li>
+        ))}
+      </ol>
+      <Controls s={s} />
     </figure>
   );
 }
@@ -117,7 +147,7 @@ export default function ChapterBlock({ block }: { block: AcademyBlock }) {
     case "circuit":
       return (
         <figure className="space-y-2">
-          <CircuitViewer circuit={block.circuit} />
+          <CircuitViewer circuit={block.circuit} slow={block.slow} />
           <figcaption className="text-[13px] text-ghost"><Rich text={block.caption} /></figcaption>
           {block.tryThis && (
             <ul className="text-[14px] leading-relaxed text-pale pl-5 list-disc space-y-0.5">
@@ -158,5 +188,18 @@ export default function ChapterBlock({ block }: { block: AcademyBlock }) {
       );
     case "widget":
       return <InteractiveWidget id={block.id} />;
+    case "anim":
+      return <Animation id={block.id} />;
+    case "simplify":
+      return <Simplify block={block} />;
+    case "qm":
+      return <div className="rounded-xl border border-rim/60 bg-pit/50 p-4"><QmWorking names={block.names} cells={block.cells} form="sop" /></div>;
+    case "code":
+      return (
+        <figure className="space-y-2">
+          <pre className="overflow-x-auto rounded-lg border border-rim/60 bg-pit p-3 font-mono text-[13px] leading-relaxed text-pale">{block.text}</pre>
+          {block.caption && <figcaption className="text-[13px] text-ghost"><Rich text={block.caption} /></figcaption>}
+        </figure>
+      );
   }
 }

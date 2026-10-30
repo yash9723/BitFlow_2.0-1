@@ -15,6 +15,9 @@ import { compile, toBits, validate } from "../lib/studio/circuit";
 import { challengeById } from "../lib/studio/circuit-challenges";
 import { crossesPart, routeAll } from "../lib/studio/circuit-route";
 import { wireRoute } from "../lib/studio/circuit-edit";
+import { ANIM_IDS, LEVEL, addColumns, asSigned, cmosState, divideSteps, encoderError, fromGray, neighbours, noiseChain, qmSteps, reads, toGray, wheelMove } from "../lib/academy/anim";
+import { type Cell, type Implicant, minimizationSteps, primeImplicants } from "../lib/studio/logic-min";
+import { type Parsed, counterexample, parseBool } from "../lib/studio/boolexpr";
 import { minimizePos, minimizeSop, posText, sopText } from "../lib/studio/logic-min";
 
 const ROOT = process.cwd();
@@ -59,6 +62,7 @@ function checkLink(where: string, href: string) {
 }
 
 let circuits = 0, kmaps = 0, practice = 0;
+const anims = new Set<string>();
 const topicIds = new Set<string>();
 for (const t of ACADEMY_TOPICS) {
   assert.ok(!topicIds.has(t.slug), `duplicate chapter ${t.slug}`);
@@ -76,7 +80,7 @@ for (const t of ACADEMY_TOPICS) {
   assert.ok(t.quiz.length >= 10, `${t.slug}: needs at least 10 quiz questions`);
   assert.ok(t.flashcards.length >= 8, `${t.slug}: needs at least 8 flashcards`);
   // Text supports **bold** and `code` only: a stray * or ` would show up literally on the page.
-  for (const m of JSON.stringify({ sections: t.sections.map((s) => (s.blocks ?? []).map((b) => (b.kind === "circuit" ? b.caption : b))), quiz: t.quiz, cards: t.flashcards })
+  for (const m of JSON.stringify({ sections: t.sections.map((s) => (s.blocks ?? []).map((b) => (b.kind === "circuit" ? b.caption : b.kind === "code" ? "" : b))), quiz: t.quiz, cards: t.flashcards })
     .replace(/`[^`]*`/g, "").replace(/\*\*[^*]+\*\*/g, "").matchAll(/.{0,30}[*`].{0,30}/g)) assert.fail(`${t.slug}: stray markup in "${m[0]}"`);
   for (const s of t.sections) {
     const where = `${t.slug}/${s.id}`;
@@ -99,12 +103,23 @@ for (const t of ACADEMY_TOPICS) {
           break;
         case "table": for (const r of b.rows) assert.equal(r.length, b.headers.length, `${at}: row width`); break;
         case "link": checkLink(at, b.href); break;
+        case "anim": anims.add(b.id); assert.ok(ANIM_IDS.includes(b.id), `${at}: unknown animation ${b.id}`); break;
+        case "simplify": {
+          // Every line of a derivation really is equal to the first.
+          const lines = b.steps.map((s) => parseBool(s.expr));
+          lines.forEach((l, k) => assert.ok(typeof l !== "string", `${at}: line ${k}: ${l}`));
+          for (const l of lines.slice(1)) {
+            const diff = counterexample(lines[0] as Parsed, l as Parsed);
+            assert.equal(diff, null, `${at}: ${b.steps[0].expr} is not equal to a later line`);
+          }
+          break;
+        }
         case "timing": for (const sig of b.diagram.signals) assert.ok(sig.dir === "clock" || sig.values.length === b.diagram.cycles, `${at}: ${sig.name} needs ${b.diagram.cycles} values`); break;
       }
     });
   }
 }
-assert.ok(circuits >= 6 && kmaps >= 1 && practice >= 10, "chapters lost their circuits or practice questions");
+assert.ok(circuits >= 9 && kmaps >= 9 && practice >= 25, "chapters lost their circuits or practice questions");
 
 // ── Worked figures in the text are computed here, not trusted ─────────────────
 function says(slug: string, ...facts: string[]) {
@@ -153,6 +168,88 @@ assert.equal(parity(0b1011), 1);
   assert.equal(Math.min(...dist), 3);
 }
 
+{
+  const eq = (a: string, b: string) => {
+    const x = parseBool(a), y = parseBool(b);
+    assert.ok(typeof x !== "string" && typeof y !== "string", `${a} / ${b}`);
+    return counterexample(x as Parsed, y as Parsed) === null;
+  };
+  // Claims the chapters state in words, each tested as logic.
+  for (const [a, b] of [["AB + AB'", "A"], ["(AB)'", "A' + B'"], ["(A + B)'", "A'B'"], ["A + BC", "(A + B)(A + C)"], ["A + A'B", "A + B"], ["(A + B)(A + B')", "A"],
+    ["A + A'B + A'B'", "1"], ["(A + B'C)'", "A'(B + C')"], ["XY + X'Z + YZ", "XY + X'Z"], ["(A ^ B) ^ A", "B"]] as const) {
+    assert.ok(eq(a, b), `${a} should equal ${b}`);
+  }
+  assert.ok(!eq("(AB)'", "A'B'"), "the Not equal preset really isn't equal");
+  says("boolean-algebra", "Σm(1, 2, 6)", "ΠM(0, 3, 4, 5, 7)", "2⁸ = **256**", "2⁴ = **16**");
+  says("karnaugh-maps", "**b'd'**", "a'b'd + cd", "**2**");
+  // The essential-prime counts and prime lists stated for the two K-maps in the chapter.
+  const primesOf = (n: number, ones: number[]) => minimizationSteps(n, ones.reduce<Cell[]>((c, m) => { c[m] = 1; return c; }, Array(2 ** n).fill(0)), "sop");
+  const m1 = primesOf(4, [0, 2, 4, 5, 7, 8, 10, 13, 15]);
+  assert.equal(m1.primes.length, 4); assert.equal(m1.essentials.length, 2);
+  const m2 = primesOf(3, [0, 1, 2, 5, 6, 7]);
+  assert.equal(m2.primes.length, 6); assert.equal(m2.essentials.length, 0);
+  const m3 = primesOf(4, [0, 1, 2, 5, 6, 7, 8, 9, 10, 14]);
+  assert.equal(m3.primes.length, 6); assert.equal(m3.essentials.length, 2);
+  says("quine-mccluskey", "Six primes reduce to three terms");
+  // Petrick: exactly the example's three minimal covers.
+  assert.ok(eq("(P + R)(P + Q)(Q + R)", "PQ + PR + QR"));
+  // NAND gate counts stated in the gates chapter, as circuits they'd be: F = ab + cd in 3.
+  assert.ok(eq("((AB)'(CD)')'", "AB + CD"));
+  says("gates", "F = NAND(NAND(a, b), NAND(c, d))", "**4**");
+}
+
+// ── The animations' logic ─────────────────────────────────────────────────────
+assert.deepEqual([...anims].sort(), [...ANIM_IDS].sort(), "every animation is used by a chapter");
+{
+  // Below the margin a digital chain stays right, and an analog one drifts out of range; above it, both fail.
+  const margin = LEVEL.high - LEVEL.inHigh;
+  const small = noiseChain(1, 0.5), big = noiseChain(1, margin + 0.1);
+  assert.ok(small.digital.every((v) => v === LEVEL.high));
+  assert.notEqual(reads(small.analog[5]), 1);
+  assert.notEqual(reads(big.digital[5]), 1);
+  assert.ok(noiseChain(0, 0.4).digital.every((v) => v === LEVEL.low));
+
+  for (const n of [1, 2, 45, 255]) assert.equal(divideSteps(n).map((s) => s.r).reverse().join(""), n.toString(2));
+  for (let a = 0; a < 256; a += 7) for (let b = 0; b < 256; b += 11) {
+    const cols = addColumns(a, b, 8), sum = cols.reduce((v, c, i) => v + c.sum * 2 ** i, 0) + cols[7].cout * 256;
+    assert.equal(sum, a + b);
+    const trueSum = asSigned(a, 8) + asSigned(b, 8);
+    assert.equal(cols[7].cin !== cols[7].cout, trueSum > 127 || trueSum < -128, "overflow is carry in XOR carry out");
+  }
+  assert.deepEqual(wheelMove(7, 1, 4), { next: 8, carry: false, overflow: true });
+  assert.deepEqual(wheelMove(15, 1, 4), { next: 0, carry: true, overflow: false });
+  assert.deepEqual(wheelMove(8, -1, 4), { next: 7, carry: false, overflow: true });
+  assert.deepEqual(wheelMove(0, -3, 4), { next: 13, carry: true, overflow: false });
+
+  for (let n = 0; n < 256; n++) {
+    assert.equal(fromGray(toGray(n)), n);
+    assert.equal((toGray(n) ^ toGray((n + 1) % 256)).toString(2).replace(/0/g, ""), "1", "Gray neighbours differ in one bit");
+  }
+  // The encoder claim on the page: with misaligned sensors Gray is never more than a sector off, and binary is.
+  let grayWorst = 0, binaryWorst = 0;
+  for (let i = 0; i < 800; i++) { grayWorst = Math.max(grayWorst, encoderError(i / 100, "gray", 0.12)); binaryWorst = Math.max(binaryWorst, encoderError(i / 100, "binary", 0.12)); }
+  assert.ok(grayWorst <= 1, "Gray stays within a sector");
+  assert.ok(binaryWorst > 1, "binary jumps");
+
+  for (const [gate, fn] of [["not", (a: number) => a ^ 1], ["nand", (a: number, b: number) => (a & b) ^ 1], ["nor", (a: number, b: number) => (a | b) ^ 1]] as const) {
+    for (const a of [0, 1]) for (const b of [0, 1]) {
+      const st = cmosState(gate, a, b);
+      assert.equal(st.y, fn(a, b), `${gate}(${a},${b})`);
+      assert.notEqual(st.up, st.down, `${gate}(${a},${b}) must connect the output to exactly one rail`);
+    }
+  }
+  assert.deepEqual(neighbours(5, 4).sort((a, b) => a - b), [1, 4, 7, 13]);
+
+  const ones = [0, 1, 2, 5, 6, 7, 8, 9, 10, 14], { steps } = qmSteps(ones, []), last = steps[steps.length - 1];
+  const keyed = (ts: Implicant[]) => ts.map((t) => `${t.value},${t.mask}`).sort();
+  assert.ok(last.kind === "done");
+  if (last.kind === "done") assert.deepEqual(keyed(last.primes), keyed(primeImplicants(ones, [])));
+  for (const st of steps) if (st.kind === "merge") {
+    assert.equal(st.result.mask & st.result.value, 0);
+    assert.equal(st.a.value | st.result.mask, st.b.value | st.result.mask, "merged terms agree outside the new dash");
+  }
+}
+
 // ── The chapter list that client pages use ────────────────────────────────────
 assert.deepEqual(
   ACADEMY_TOPIC_META,
@@ -174,4 +271,4 @@ for (const f of ["app", "components", "hooks"].flatMap((d) => (fs.existsSync(pat
   if (/^\s*["']use client["']/.test(src)) assert.ok(!src.includes("academy-content"), `${path.relative(ROOT, f)} is client code importing lib/academy-content`);
 }
 
-console.log(`academy: ${ACADEMY_TOPICS.length} chapters OK (${circuits} circuits, ${kmaps} K-maps, ${practice} practice questions tested)`);
+console.log(`academy: ${ACADEMY_TOPICS.length} chapters OK (${circuits} circuits, ${kmaps} K-maps, ${practice} practice questions, ${anims.size} animations tested)`);

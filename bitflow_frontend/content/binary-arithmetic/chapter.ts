@@ -17,6 +17,7 @@ const chapter: AcademyTopic = {
       blocks: [
         p("Binary addition works just like the column addition you learned at school, with fewer facts to remember. When a column reaches two, write 0 and carry 1 into the next column."),
         { kind: "table", headers: ["Column adds up to", "Write", "Carry"], rows: [["0", "0", "0"], ["1", "1", "0"], ["2 (1 + 1)", "0", "1"], ["3 (1 + 1 + carry)", "1", "1"]] },
+        { kind: "anim", id: "column-add" },
         { kind: "example", title: "11 + 6", problem: "Add 1011 and 0110.", steps: ["Rightmost column: 1 + 0 = 1, carry 0.", "Next: 1 + 1 = 2, write 0, carry 1.", "Next: 0 + 1 + 1 = 2, write 0, carry 1.", "Next: 1 + 0 + 1 = 2, write 0, carry 1.", "The last carry becomes a new leftmost digit."], answer: "**10001**, which is 17." },
         p("Four bits can only hold up to 15, so that sum needed a fifth bit. If the hardware has only four bits, it keeps 0001 and raises its **carry out**. For unsigned numbers, a carry out of the top bit means the result didn't fit. This is called **overflow**."),
       ],
@@ -73,6 +74,7 @@ const chapter: AcademyTopic = {
         p("Overflow means the true answer doesn't fit in the bits you have. For signed numbers it isn't the same thing as a carry out, as the last example shows: it had a carry out and a correct answer."),
         p("The signs tell you. Adding a positive and a negative can never overflow, because the result lies between them. Adding two numbers of the **same sign** overflows if the result has the **opposite sign**."),
         { kind: "table", headers: ["Sum", "True answer", "Result in 4 bits", "Overflow?"], rows: [["0111 + 0001", "7 + 1 = 8", "1000 = −8", "Yes: two positives gave a negative"], ["1000 + 1111", "−8 + −1 = −9", "0111 = +7", "Yes: two negatives gave a positive"], ["0110 + 1101", "6 + −3 = 3", "0011 = +3", "No: the signs differ"]] },
+        { kind: "anim", id: "number-wheel" },
         p("Hardware uses an equivalent rule that takes a single gate:"),
         { kind: "formula", text: "overflow = carry into the top bit ⊕ carry out of the top bit" },
         { kind: "practice", question: "In 8-bit two's complement, what does 100 + 50 give?", options: ["150, with no overflow", "−106, with overflow", "22, with overflow", "−150, with overflow"], correctIndex: 1, explanation: "150 is above the limit of 127, so it overflows. The bits 1001 0110 read as −128 + 22 = **−106**. A positive plus a positive gave a negative, which is the sign of overflow." },

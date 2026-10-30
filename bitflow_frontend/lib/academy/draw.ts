@@ -4,6 +4,7 @@
  * behaviour tested by scripts/academy.check.ts.
  */
 import type { Circuit, Part, PartKind, PinRef } from "@/lib/studio/circuit";
+import type { Cell } from "@/lib/studio/logic-min";
 
 export interface Draw {
   /** A 1-bit input. */
@@ -41,6 +42,10 @@ export function draw(module: string, build: (d: Draw) => void): Circuit {
   });
   return c;
 }
+
+/** A K-map's cells from its minterms and don't-cares. */
+export const cells = (n: number, ones: number[], dontCares: number[] = []): Cell[] =>
+  Array.from({ length: 2 ** n }, (_, m) => (ones.includes(m) ? 1 : dontCares.includes(m) ? "x" : 0));
 
 /** Shorthand for the two most common chapter blocks. */
 export const p = (text: string) => ({ kind: "text" as const, text });

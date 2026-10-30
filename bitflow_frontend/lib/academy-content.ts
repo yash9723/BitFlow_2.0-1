@@ -12,9 +12,11 @@ import whatIsDigital    from "@/content/what-is-digital/chapter";
 import numberSystems    from "@/content/number-systems/chapter";
 import binaryArithmetic from "@/content/binary-arithmetic/chapter";
 import codes            from "@/content/codes/chapter";
+import gates            from "@/content/gates/chapter";
+import booleanAlgebra   from "@/content/boolean-algebra/chapter";
+import karnaughMaps     from "@/content/karnaugh-maps/chapter";
+import quineMcCluskey   from "@/content/quine-mccluskey/chapter";
 
-import booleanAlgebra   from "@/content/boolean-algebra/index.json";
-import gates            from "@/content/gates/index.json";
 import combinational    from "@/content/combinational/index.json";
 import sequential       from "@/content/sequential/index.json";
 import timing           from "@/content/timing/index.json";
@@ -26,8 +28,10 @@ const RAW_TOPICS: AcademyTopic[] = [
   numberSystems,
   binaryArithmetic,
   codes,
-  booleanAlgebra,
   gates,
+  booleanAlgebra,
+  karnaughMaps,
+  quineMcCluskey,
   combinational,
   sequential,
   timing,

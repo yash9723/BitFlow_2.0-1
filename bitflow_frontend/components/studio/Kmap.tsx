@@ -61,7 +61,7 @@ export function Kmap({ names, cells, groups, form, onCell, mark, title }: {
                 return groupRects(part, k).map((g, pi) => {
                   const inset = 4 + (gi % 4) * 3, stroke = KMAP_COLORS[color % KMAP_COLORS.length];
                   return (
-                    <rect key={`${gi}-${pi}`} x={L + g.c * C + inset} y={T + g.r * C + inset} width={g.w * C - 2 * inset} height={g.h * C - 2 * inset}
+                    <rect key={`${gi}-${pi}`} className="anim-in" x={L + g.c * C + inset} y={T + g.r * C + inset} width={g.w * C - 2 * inset} height={g.h * C - 2 * inset}
                           rx={10} fill={stroke} fillOpacity={0.07} stroke={stroke} strokeWidth={2} pointerEvents="none">
                       <title>{textOf(form)([term], names, "math")}</title>
                     </rect>
@@ -84,8 +84,15 @@ export function KmapStudy({ names, cells, terms, form, onCell, mark, title }: {
   const n = names.length;
   const m = useMemo(() => minimizationSteps(n, cells, form), [n, cells, form]);
   const [shown, setShown] = useState<number | null>(null);     // null: every group
+  const [playing, setPlaying] = useState(false);
   const stepKey = JSON.stringify([cells, form]);
-  useEffect(() => setShown(null), [stepKey]);
+  useEffect(() => { setShown(null); setPlaying(false); }, [stepKey]);
+  useEffect(() => {
+    if (!playing) return;
+    if (shown === null || shown >= m.steps.length) { setPlaying(false); return; }
+    const id = window.setTimeout(() => setShown(shown + 1), 1600);
+    return () => window.clearTimeout(id);
+  }, [playing, shown, m.steps.length]);
   const colorOf = (t: Implicant) => Math.max(0, terms.findIndex((x) => x.value === t.value && x.mask === t.mask));
   const visible = shown === null ? m.steps : m.steps.slice(0, shown);
   const btn = "px-2 py-0.5 rounded border border-rim/60 text-ghost hover:text-bright disabled:opacity-40";
@@ -97,10 +104,11 @@ export function KmapStudy({ names, cells, terms, form, onCell, mark, title }: {
         <div className="font-mono text-[11px] space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-dim">Grouping</span>
-            <button className={btn} onClick={() => setShown(0)} disabled={shown === 0}>Start</button>
-            <button className={btn} onClick={() => setShown(Math.max(0, (shown ?? m.steps.length) - 1))} disabled={shown === 0}>Back</button>
-            <button className={btn} onClick={() => setShown(Math.min(m.steps.length, (shown ?? 0) + 1))} disabled={shown !== null && shown >= m.steps.length}>Next</button>
-            <button className={btn} onClick={() => setShown(null)} disabled={shown === null}>All</button>
+            <button className={btn} onClick={() => { if (playing) { setPlaying(false); return; } if (shown === null || shown >= m.steps.length) setShown(0); setPlaying(true); }}>{playing ? "Pause" : "Play"}</button>
+            <button className={btn} onClick={() => { setPlaying(false); setShown(0); }} disabled={shown === 0}>Start</button>
+            <button className={btn} onClick={() => { setPlaying(false); setShown(Math.max(0, (shown ?? m.steps.length) - 1)); }} disabled={shown === 0}>Back</button>
+            <button className={btn} onClick={() => { setPlaying(false); setShown(Math.min(m.steps.length, (shown ?? 0) + 1)); }} disabled={shown !== null && shown >= m.steps.length}>Next</button>
+            <button className={btn} onClick={() => { setPlaying(false); setShown(null); }} disabled={shown === null}>All</button>
             {shown !== null && <span className="text-dim">{shown} of {m.steps.length}</span>}
           </div>
           {shown === 0 && <p className="text-ghost">Every {what} must end up in a group. A group holds 1, 2, 4, 8... cells in a rectangle, wrapping around the edges. Don&apos;t-cares can join a group but needn&apos;t be covered.</p>}

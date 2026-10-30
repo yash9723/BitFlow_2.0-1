@@ -19,6 +19,7 @@ const chapter: AcademyTopic = {
         p("You already use a positional number system. In 372, the 3 means three hundreds because of where it sits: 3×100 + 7×10 + 2×1. Each position is worth ten times the one to its right, because we count in **base 10**."),
         p("Nothing about this needs ten. In **base 2**, or **binary**, the digits are only 0 and 1, and each position is worth twice the one to its right: 1, 2, 4, 8, 16, 32 and so on. Binary suits hardware because each digit is one wire."),
         { kind: "formula", text: "(d₃d₂d₁d₀)ᵣ = d₃×r³ + d₂×r² + d₁×r¹ + d₀×r⁰", note: "r is the base, or radix. A subscript shows the base when it isn't obvious." },
+        { kind: "anim", id: "place-value" },
         { kind: "example", title: "Binary to decimal", problem: "What is 101101₂ in decimal?", steps: ["Write the position values above the digits: 32, 16, 8, 4, 2, 1.", "Keep the values where the digit is 1: 32 + 8 + 4 + 1."], answer: "**45**" },
         { kind: "circuit", circuit: draw("show_bits", (d) => {
             const n = d.hex("n", 4, 40, 130);
@@ -35,6 +36,7 @@ const chapter: AcademyTopic = {
       blocks: [
         p("To convert a whole number, **divide by 2 repeatedly** and keep the remainders. The first remainder is the rightmost bit."),
         { kind: "table", headers: ["Step", "Remainder"], rows: [["45 ÷ 2 = 22", "1 (rightmost)"], ["22 ÷ 2 = 11", "0"], ["11 ÷ 2 = 5", "1"], ["5 ÷ 2 = 2", "1"], ["2 ÷ 2 = 1", "0"], ["1 ÷ 2 = 0", "1 (leftmost)"]], caption: "Reading the remainders from the bottom up gives 101101, which matches the earlier example." },
+        { kind: "anim", id: "divide-by-two" },
         p("A fraction works the other way around: **multiply by 2 repeatedly** and keep the whole-number part each time. The first one you get is the bit right after the point."),
         { kind: "example", title: "A fraction in binary", problem: "Convert 0.625 to binary.", steps: ["0.625 × 2 = 1.25, so the first bit is 1. Carry on with 0.25.", "0.25 × 2 = 0.5, so the next bit is 0. Carry on with 0.5.", "0.5 × 2 = 1.0, so the next bit is 1. Nothing is left, so stop."], answer: "**0.101₂**, which is 1/2 + 1/8." },
         { kind: "callout", tone: "warning", text: "Many simple decimals never end in binary. 0.1 becomes 0.000110011… with the 0011 repeating forever. A machine has to cut it off somewhere, which is why 0.1 + 0.2 isn't exactly 0.3 on most computers." },

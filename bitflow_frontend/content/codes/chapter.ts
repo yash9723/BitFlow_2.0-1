@@ -49,6 +49,7 @@ const chapter: AcademyTopic = {
             d.display("gray", 4, 640, 150, d.pin("code", "out"));
           }), caption: "Binary to Gray with three XOR gates. Both displays are in hex.", tryThis: ["Set bin to B (1011). The output is E (1110), as in the rule above.", "Count up and write down the outputs in binary. Only one bit changes per step."],
           checks: [{ set: { bin: 11 }, expect: { gray: 14 } }, { set: { bin: 0 }, expect: { gray: 0 } }, { set: { bin: 15 }, expect: { gray: 8 } }] },
+        { kind: "anim", id: "encoder-disc" },
         p("You'll meet Gray code again in rotary position sensors, in FIFO pointers that cross between clocks, and in **K-maps**, whose rows and columns follow Gray order so that neighbouring cells differ by one variable. That's what lets you spot simplifications at a glance. Here's a preview of Chapter 7:"),
         { kind: "kmap", names: ["a", "b", "c"], cells: [0, 0, 0, 1, 0, 1, 1, 1], output: "maj", caption: "The majority function: the output is 1 when at least two inputs are 1. The columns run 00, 01, 11, 10, so neighbours differ in one bit, and each loop is one simple term.", expect: "bc + ac + ab" },
       ],
