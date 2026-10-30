@@ -4,6 +4,10 @@ export interface StudioTool { href: string; title: string; blurb: string; icon: 
 
 export const STUDIO_TOOLS: StudioTool[] = [
   {
+    href: "/studio/challenges", title: "Circuit challenges", icon: "✓",
+    blurb: "Build circuits against a gate budget, from XOR out of four NANDs to a 101 sequence detector. Each is checked by simulation and earns XP.",
+  },
+  {
     href: "/studio/circuit", title: "Circuit editor", icon: "⏚",
     blurb: "Wire gates, flip-flops, switches and LEDs on a canvas and watch the circuit run live, then export Verilog with a testbench.",
   },

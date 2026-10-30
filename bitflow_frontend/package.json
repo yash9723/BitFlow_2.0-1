@@ -30,6 +30,7 @@
     "check-fsm": "tsx scripts/fsm-gen.check.ts",
     "check-wave": "tsx scripts/wave.check.ts",
     "check-circuit": "tsx scripts/circuit.check.ts",
+    "check-circuit-challenges": "tsx scripts/circuit-challenges.check.ts",
     "check-pnr": "tsx scripts/pnr.check.ts",
     "check-riscv": "tsx scripts/riscv.check.ts",
     "check-report": "tsx scripts/report.check.ts",

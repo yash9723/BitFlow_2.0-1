@@ -53,6 +53,7 @@ jobs:
       - run: npm run check-fsm
       - run: npm run check-wave
       - run: npm run check-circuit
+      - run: npm run check-circuit-challenges
       - run: npm run check-pnr
       - run: npm run check-riscv
       - run: npm run check-report

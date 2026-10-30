@@ -7,7 +7,35 @@
  * lesson certificates say they are self-checked; re-run the goals on the server if that matters.
  */
 import { prisma } from "@/lib/prisma";
-import { LESSON_XP, counts, type LessonItem } from "@/lib/lessons";
+import { LESSON_XP, MAX_DRAFT_CHARS, counts, type LessonItem } from "@/lib/lessons";
+
+/** Only the request that flips done from false gets the XP, however many arrive at once. */
+async function awardOnce(rowId: string, userId: string, xp: number): Promise<number> {
+  const { count } = await prisma.lessonProgress.updateMany({
+    where: { id: rowId, done: false },
+    data:  { done: true, completedAt: new Date(), xpAwarded: xp },
+  });
+  if (count !== 1) return 0;
+  await prisma.userXp.upsert({
+    where:  { userId },
+    create: { userId, totalXp: xp, unlockedModules: JSON.stringify(["mod_logic_gates", "mod_arithmetic"]) },
+    update: { totalXp: { increment: xp } },
+  });
+  return xp;
+}
+
+/** A circuit challenge the server has just graded as passed: keep the solution, and award XP on the first pass. */
+export async function recordChallenge(userId: string, slug: string, xp: number, solution: string): Promise<number> {
+  const key = { userId_kind_slug: { userId, kind: "challenge", slug } };
+  const draft = solution.length <= MAX_DRAFT_CHARS ? solution : null;
+  const row = await prisma.lessonProgress.upsert({
+    where:  key,
+    create: { userId, kind: "challenge", slug, draft },
+    update: { draft },
+    select: { id: true },
+  });
+  return awardOnce(row.id, userId, xp);
+}
 
 /** Upsert the items; returns the XP this call awarded. Items must have passed lessonProblem(). */
 export async function recordLessons(userId: string, items: LessonItem[]): Promise<number> {
@@ -24,20 +52,7 @@ export async function recordLessons(userId: string, items: LessonItem[]): Promis
     });
     if (!done || !counts(kind, slug, best)) continue;
 
-    // Only the request that flips done from false gets the XP, however many arrive at once.
-    const xp = LESSON_XP[kind];
-    const { count } = await prisma.lessonProgress.updateMany({
-      where: { id: row.id, done: false },
-      data:  { done: true, completedAt: new Date(), xpAwarded: xp },
-    });
-    if (count === 1) {
-      await prisma.userXp.upsert({
-        where:  { userId },
-        create: { userId, totalXp: xp, unlockedModules: JSON.stringify(["mod_logic_gates", "mod_arithmetic"]) },
-        update: { totalXp: { increment: xp } },
-      });
-      awarded += xp;
-    }
+    awarded += await awardOnce(row.id, userId, LESSON_XP[kind]);
   }
   return awarded;
 }

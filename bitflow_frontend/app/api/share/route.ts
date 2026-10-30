@@ -1,7 +1,8 @@
 /**
- * POST /api/share { title?, designCode, testbenchCode, files? } — save a Sandbox design
+ * POST /api/share { title?, designCode, testbenchCode, files?, kind? } — save a Sandbox design
  * as a read-only link, /s/<id>. Signed-in users only; anyone with the link can
  * view and fork it. Sandbox code only: graded-problem solutions are never shared here.
+ * kind "circuit": designCode is a drawn circuit's JSON. Under-18s need a parent's consent to share.
  */
 
 import crypto from "crypto";
@@ -10,6 +11,8 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
 import { fileNameProblem, type ProjectFile } from "@/lib/project-files";
+import { guardianPending } from "@/lib/privacy";
+import { parseCircuit } from "@/lib/studio/circuit-json";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +28,7 @@ const firstModule = (code: string) => code.match(/\bmodule\s+([A-Za-z_]\w*)/)?.[
 export async function POST(request: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Sign in to share designs." }, { status: 401 });
+  if (guardianPending(user)) return NextResponse.json({ error: "A parent or guardian needs to approve your account before you can share." }, { status: 403 });
 
   const { success } = await rateLimit(request, { limit: 10, windowMs: 60_000, prefix: "share", key: `user:${user.id}` });
   if (!success) return NextResponse.json({ error: "Too many share links. Please wait a moment." }, { status: 429 });
@@ -47,10 +51,13 @@ export async function POST(request: Request) {
   }
   if (files.length > MAX_FILES) return NextResponse.json({ error: `At most ${MAX_FILES} extra files can be shared.` }, { status: 413 });
 
-  const title = (typeof body.title === "string" && body.title.trim() ? body.title.trim() : firstModule(designCode) ?? "Untitled design").slice(0, 80);
+  const kind = body.kind === "circuit" ? "circuit" : "sandbox";
+  const circuit = kind === "circuit" ? parseCircuit(designCode) : null;
+  if (typeof circuit === "string") return NextResponse.json({ error: circuit }, { status: 400 });
+  const title = (typeof body.title === "string" && body.title.trim() ? body.title.trim() : circuit?.module ?? firstModule(designCode) ?? "Untitled design").slice(0, 80);
 
   const shared = await prisma.sharedDesign.create({
-    data: { id: newId(), ownerId: user.id, title, designCode, testbenchCode, files: files.length ? JSON.stringify(files) : null },
+    data: { id: newId(), ownerId: user.id, title, designCode, testbenchCode, kind, files: files.length ? JSON.stringify(files) : null },
     select: { id: true },
   });
   return NextResponse.json({ id: shared.id, url: `/s/${shared.id}` }, { status: 201 });

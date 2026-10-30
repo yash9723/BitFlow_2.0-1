@@ -18,6 +18,8 @@
  * Import Verilog synthesizes a module in the browser and draws it (lib/studio/circuit-import.ts).
  * R and F turn the selection; Auto-route redraws the wires around the parts (lib/studio/circuit-route.ts).
  * The Timing panel steps an input with real gate delays, to show glitches (lib/studio/delay-sim.ts).
+ * Save keeps circuits on the account (components/studio/CircuitProjects.tsx). With challengeId
+ * this is a graded challenge (lib/studio/circuit-challenges.ts): its own draft, only its parts.
  * The K-map panel shows a combinational circuit's function, and can rebuild it from the
  * minimal form; the truth-table tool sends circuits here the same way (lib/studio/logic-circuit.ts).
  */
@@ -25,6 +27,8 @@
 import { Fragment, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GeneratedCode from "@/components/studio/GeneratedCode";
+import CircuitChallengeBar from "@/components/studio/CircuitChallengeBar";
+import CircuitProjects, { type OpenProject } from "@/components/studio/CircuitProjects";
 import { KmapStudy, QmWorking } from "@/components/studio/Kmap";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { GateSim, toNumber } from "@/lib/gate-sim";
@@ -37,6 +41,7 @@ import {
   type Clip, type Point, type Selection, History, NONE, SNAP, baseSize, blockNameIssue, bounds, copy, forward, frameTransform, inRect, isEmpty, junctions, localPin, makeBlock, merge, move, nextLabel,
   noteLines, noteSize, paste, pathOf, pinDir, pinPos, remove, renameBlock, selectAll, size, turnParts, ungroupBlock, uprightTransform, usesBlock, wireRoute, withBlock,
 } from "@/lib/studio/circuit-edit";
+import { FREE_PARTS, challengeById, challengeKey, starterCircuit } from "@/lib/studio/circuit-challenges";
 import { routeAll } from "@/lib/studio/circuit-route";
 import { type Delays, type Hazard, DEFAULT_DELAYS, DelaySim, findHazards, transientToParsed } from "@/lib/studio/delay-sim";
 import { MAX_IMPORT_CELLS, netlistToCircuit } from "@/lib/studio/circuit-import";
@@ -150,10 +155,19 @@ function writeClip(clip: Clip) {
 type Live = { sim: GateSim; bitsOf: ReturnType<typeof compile>["bitsOf"] } | null;
 type View = { x: number; y: number; z: number };
 
-export default function CircuitTool() {
+export default function CircuitTool({ challengeId, solved = false }: { challengeId?: string; solved?: boolean }) {
   const router = useRouter();
-  const [stored, setStored] = useLocalStorage<Circuit>("bitflow_studio_circuit", CIRCUIT_EXAMPLES[0].circuit);
-  const top = valid(stored) ? stored : CIRCUIT_EXAMPLES[0].circuit;
+  const challenge = challengeId ? challengeById(challengeId) : undefined;
+  const fresh = useMemo(() => (challenge ? starterCircuit(challenge) : CIRCUIT_EXAMPLES[0].circuit), [challenge]);
+  const [stored, setStored] = useLocalStorage<Circuit>(challenge ? challengeKey(challenge.id) : "bitflow_studio_circuit", fresh);
+  const top = valid(stored) ? stored : fresh;
+  const palette = useMemo(() => {
+    if (!challenge) return PALETTE;
+    const allowed = new Set<PartKind>([...challenge.parts, ...FREE_PARTS]);
+    return PALETTE.map((g) => ({ ...g, items: g.items.filter((i) => allowed.has(i.kind)) })).filter((g) => g.items.length);
+  }, [challenge]);
+  const [project, setProject] = useState<OpenProject | null>(null);
+  const [saving, setSaving] = useState(false);
   const lib: Library = top.blocks ?? {};
   // The block being edited (and the blocks it was opened from); [] = the top circuit
   const [openPath, setPath] = useState<string[]>([]);
@@ -440,6 +454,7 @@ export default function CircuitTool() {
   const load = (circuit: Circuit) => {
     inputsRef.current = {};
     commit(circuit);
+    setProject(null);                        // Save must not overwrite the project this came from
     setPath([]);
     setSel(NONE);
     setHz(0);
@@ -447,6 +462,7 @@ export default function CircuitTool() {
   };
   // A circuit sent over by the truth-table tool: loaded once, undoable like any other load
   useEffect(() => {
+    if (challenge) return;
     let raw: string | null = null;
     try { raw = localStorage.getItem(CIRCUIT_INCOMING_KEY); if (raw) localStorage.removeItem(CIRCUIT_INCOMING_KEY); } catch { return; }
     if (!raw) return;
@@ -518,7 +534,8 @@ export default function CircuitTool() {
   const btn = "px-2 py-1 rounded border border-rim/60 text-ghost hover:text-bright font-mono text-[11px] disabled:opacity-40";
   return (
     <div ref={wrapRef} className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      {challenge && <CircuitChallengeBar ch={challenge} circuit={top} solved={solved} onStartOver={() => load(starterCircuit(challenge))} onLoadSolution={load} />}
+      {!challenge && <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[12px] text-ghost max-w-3xl">
             Add parts from the palette, drag them into place, and drag from pin to pin to wire them. Click a switch, button or
@@ -531,8 +548,9 @@ export default function CircuitTool() {
           {CIRCUIT_EXAMPLES.map((e) => <button key={e.label} onClick={() => load(e.circuit)} className={btn}>{e.label}</button>)}
           <button onClick={() => load(EMPTY)} className="px-2 py-1 rounded border border-dashed border-rim text-ghost hover:text-bright"
                   title="Start an empty circuit (Ctrl+Z brings the old one back)">New</button>
+          <a href="/studio/challenges" className="px-2 py-1 text-info hover:underline">Challenges →</a>
         </div>
-      </div>
+      </div>}
 
       <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
         {cur ? (
@@ -575,14 +593,17 @@ export default function CircuitTool() {
         <span className="text-rim">|</span>
         <button className={btn} onClick={() => exportImage("svg")} title="Download the circuit as an SVG drawing">⤓ SVG</button>
         <button className={btn} onClick={() => exportImage("png")} title="Download the circuit as a PNG image">⤓ PNG</button>
-        <button className={`${btn} ${importing ? "border-info/60 text-info" : ""}`} onClick={() => setImporting((v) => !v)}
-                title="Draw a circuit from a Verilog module">⇣ Import Verilog</button>
+        {!challenge && <button className={`${btn} ${importing ? "border-info/60 text-info" : ""}`} onClick={() => setImporting((v) => !v)}
+                title="Draw a circuit from a Verilog module">⇣ Import Verilog</button>}
+        {!challenge && <button className={`${btn} ${saving ? "border-info/60 text-info" : ""}`} onClick={() => setSaving((v) => !v)}
+                title="Save this circuit to your account, or get a share link">Save…</button>}
       </div>
       {importing && <ImportPanel onCancel={() => setImporting(false)} onImport={imported} />}
+      {saving && !challenge && <CircuitProjects circuit={top} current={project} setCurrent={setProject} onOpen={load} />}
       {timingOpen && ok && simRef.current && <TimingPanel c={c} lib={lib} live={simRef.current} inputs={inputsRef.current} probes={probes} drive={drive} />}
       {kmapOpen && tableable && (typeof table === "string"
         ? <p className="font-mono text-[11px] text-warn -mt-2">{table}</p>
-        : table && <CircuitKmap t={table} row={inputRow} current={gateCount(c)} module={c.module} onBuild={load} />)}
+        : table && <CircuitKmap t={table} row={inputRow} current={gateCount(c)} module={c.module} onBuild={challenge ? undefined : load} />)}
       {conflicts.length > 0 && (
         <p role="alert" className="font-mono text-[11px] text-danger -mt-2">
           Bus conflict on {conflicts.join(", ")}: more than one tri-state driver is enabled. On real wires they would fight each other; here the bus reads the OR of them.
@@ -600,7 +621,7 @@ export default function CircuitTool() {
 
       <div className="grid gap-5 xl:grid-cols-[150px_minmax(0,1fr)_280px]">
         <div className="flex xl:flex-col flex-wrap gap-1.5 font-mono text-[11px] xl:max-h-[640px] xl:overflow-y-auto xl:pr-1">
-          {PALETTE.map((g) => (
+          {palette.map((g) => (
             <div key={g.group} className="contents xl:block xl:space-y-1">
               <div className="hidden xl:block text-[9px] uppercase tracking-wider text-dim pt-1">{g.group}</div>
               {g.items.map((p) => (
@@ -1510,7 +1531,7 @@ function RomEditor({ p, onChange }: { p: Part; onChange: (data: number[]) => voi
 }
 
 /** A combinational circuit's K-map, with the row the switches are on; can rebuild the circuit from the minimal form. */
-function CircuitKmap({ t, row, current, module, onBuild }: { t: TruthTable; row: number; current: number; module: string; onBuild: (c: Circuit) => void }) {
+function CircuitKmap({ t, row, current, module, onBuild }: { t: TruthTable; row: number; current: number; module: string; onBuild?: (c: Circuit) => void }) {
   const [sel, setSel] = useState(0);
   const [form, setForm] = useState<"sop" | "pos">("sop");
   const o = Math.min(sel, t.outputs.length - 1), out = t.outputs[o], n = t.inputs.length;
@@ -1535,7 +1556,7 @@ function CircuitKmap({ t, row, current, module, onBuild }: { t: TruthTable; row:
         <div className="text-dim break-words">NAND only: {invertingText(sop, t.inputs, "nand")} · NOR only: {invertingText(pos, t.inputs, "nor")}</div>
       </div>
       <QmWorking names={t.inputs} cells={out.cells} form={form} />
-      <div className="flex flex-wrap items-center gap-2">
+      {onBuild && <div className="flex flex-wrap items-center gap-2">
         <span className="text-ghost">Rebuild from the minimal form ({current} gate{current === 1 ? "" : "s"} now):</span>
         {forms.map((f, i) => (
           <button key={f} onClick={() => onBuild(builds[i])} className="px-2 py-0.5 rounded border border-phosphor/40 text-phosphor hover:bg-phosphor/10">
@@ -1543,7 +1564,7 @@ function CircuitKmap({ t, row, current, module, onBuild }: { t: TruthTable; row:
           </button>
         ))}
         <span className="text-dim">Ctrl+Z undoes it.</span>
-      </div>
+      </div>}
     </div>
   );
 }

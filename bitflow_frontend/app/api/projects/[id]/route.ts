@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
 import { MAX_VERSIONS, contentOf, projectContent, projectName, versionAction } from "@/lib/projects";
+import { parseCircuit } from "@/lib/studio/circuit-json";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const { success } = await rateLimit(request, { limit: 90, windowMs: 60_000, prefix: "project-save", key: `user:${me.id}` });
   if (!success) return NextResponse.json({ error: "Saving too often. Please wait a moment." }, { status: 429 });
 
-  const project = await prisma.project.findFirst({ where: { id: params.id, ownerId: me.id }, select: { id: true } });
+  const project = await prisma.project.findFirst({ where: { id: params.id, ownerId: me.id }, select: { id: true, kind: true } });
   if (!project) return notFound();
   const body = await request.json().catch(() => ({}));
   const rename = typeof body.name === "string" && body.name.trim() ? { name: projectName(body.name, "") } : {};
@@ -46,6 +47,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
   const checked = projectContent(body);
   if ("error" in checked) return NextResponse.json({ error: checked.error }, { status: checked.status });
+  if (project.kind === "circuit") {
+    const problem = parseCircuit(checked.content.designCode);
+    if (typeof problem === "string") return NextResponse.json({ error: problem }, { status: 400 });
+  }
   const message = typeof body.message === "string" && body.message.trim() ? body.message.trim().slice(0, 120) : null;
   const latest = await prisma.projectVersion.findFirst({ where: { projectId: project.id }, orderBy: { createdAt: "desc" } });
   const action = versionAction(latest ? { ...contentOf(latest), createdAt: latest.createdAt, message: latest.message } : null, checked.content, message);
