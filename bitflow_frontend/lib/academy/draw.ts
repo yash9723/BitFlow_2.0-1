@@ -3,7 +3,7 @@
  * place parts by label and connect outputs to inputs. Each circuit is compiled and its stated
  * behaviour tested by scripts/academy.check.ts.
  */
-import type { Circuit, Part, PartKind, PinRef } from "@/lib/studio/circuit";
+import { type Circuit, type Part, type PartKind, type PinRef, blockPorts } from "@/lib/studio/circuit";
 import type { Cell } from "@/lib/studio/logic-min";
 
 export interface Draw {
@@ -20,6 +20,8 @@ export interface Draw {
   part: (kind: PartKind, label: string, x: number, y: number, extra?: Partial<Part>) => string;
   wire: (from: PinRef, part: string, pin: string) => void;
   pin: (part: string, pin: string) => PinRef;
+  /** An instance of a subcircuit, shown as one box. Returns its part id; read its pins with pin(). */
+  block: (def: Circuit, label: string, x: number, y: number) => string;
 }
 
 export function draw(module: string, build: (d: Draw) => void): Circuit {
@@ -29,6 +31,10 @@ export function draw(module: string, build: (d: Draw) => void): Circuit {
   const pin: Draw["pin"] = (p, name) => ({ part: p, pin: name });
   build({
     part, wire, pin,
+    block: (def, label, x, y) => {
+      c.blocks = { ...c.blocks, [def.module]: def };
+      return part("block", label, x, y, { block: def.module, ports: blockPorts(def) });
+    },
     sw: (label, x, y) => pin(part("switch", label, x, y), "out"),
     clock: (label, x, y) => pin(part("clock", label, x, y), "out"),
     hex: (label, w, x, y) => pin(part("hexin", label, x, y, { w }), "out"),

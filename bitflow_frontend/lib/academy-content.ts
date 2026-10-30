@@ -16,8 +16,11 @@ import gates            from "@/content/gates/chapter";
 import booleanAlgebra   from "@/content/boolean-algebra/chapter";
 import karnaughMaps     from "@/content/karnaugh-maps/chapter";
 import quineMcCluskey   from "@/content/quine-mccluskey/chapter";
+import logicFamilies    from "@/content/logic-families/chapter";
+import addersComparators from "@/content/adders-comparators/chapter";
+import combinational    from "@/content/combinational/chapter";
+import arithmeticCircuits from "@/content/arithmetic-circuits/chapter";
 
-import combinational    from "@/content/combinational/index.json";
 import sequential       from "@/content/sequential/index.json";
 import timing           from "@/content/timing/index.json";
 import fsms             from "@/content/fsms/index.json";
@@ -32,7 +35,10 @@ const RAW_TOPICS: AcademyTopic[] = [
   booleanAlgebra,
   karnaughMaps,
   quineMcCluskey,
+  logicFamilies,
+  addersComparators,
   combinational,
+  arithmeticCircuits,
   sequential,
   timing,
   fsms,

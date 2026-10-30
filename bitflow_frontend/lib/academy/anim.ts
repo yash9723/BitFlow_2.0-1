@@ -7,6 +7,7 @@ import { type Implicant, primeImplicants, qmPasses } from "@/lib/studio/logic-mi
 export const ANIM_IDS = [
   "noise-chain", "place-value", "divide-by-two", "column-add", "number-wheel", "encoder-disc",
   "cmos-gate", "venn", "kmap-neighbours", "qm-merge",
+  "inverter-curve", "load-delay", "compare-bits", "mux-router", "adder-race", "shift-add", "booth",
 ] as const;
 export type AnimId = (typeof ANIM_IDS)[number];
 
@@ -91,6 +92,90 @@ export function cmosState(gate: CmosGate, a: number, b: number) {
   const up = gate === "not" ? pa : gate === "nand" ? pa || pb : pa && pb;
   const down = gate === "not" ? na : gate === "nand" ? na && nb : na || nb;
   return { pa, pb, na, nb, up, down, y: up ? 1 : 0 };
+}
+
+/**
+ * A 5 V CMOS inverter's transfer curve. ponytail: a smooth illustrative curve, not a transistor
+ * model; the shape and the thresholds are right, the exact voltages in between aren't measured.
+ */
+export const inverterOut = (vin: number, vdd = 5) => vdd / (1 + Math.exp((vin - vdd / 2) * 6));
+/** Each transistor conducts past its threshold (1 V here), so mid-swing both are on at once. */
+export const inverterState = (vin: number, vdd = 5, vt = 1) => ({ nmos: vin > vt, pmos: vin < vdd - vt });
+
+/**
+ * A gate driving n others: one resistance charging the wire and the input capacitances.
+ * Illustrative values: 1 kΩ, 10 pF of wire, 5 pF per input. tau in ns, power for one
+ * full charge and discharge per clock cycle.
+ */
+export function loadModel(n: number, mhz: number, volts: number) {
+  const pf = 10 + 5 * n, tau = pf, halfPeriod = 500 / mhz;
+  const high = 1 / (1 + Math.exp(-halfPeriod / tau));         // the steady-state swing of an RC square wave
+  return { pf, tau, delay: 0.69 * tau, high, low: 1 - high, ok: high >= 0.7, milliwatts: (pf * volts * volts * mhz) / 1000, halfPeriod };
+}
+/** The output of that RC over two cycles, in steady state, as a fraction of the supply. */
+export function rcWave(halfPeriod: number, tau: number, samples = 200) {
+  const high = 1 / (1 + Math.exp(-halfPeriod / tau)), low = 1 - high;
+  return Array.from({ length: samples + 1 }, (_, i) => {
+    const t = (i / samples) * 4 * halfPeriod, phase = t % (2 * halfPeriod), rising = phase < halfPeriod;
+    const dt = rising ? phase : phase - halfPeriod;
+    return rising ? 1 - (1 - low) * Math.exp(-dt / tau) : high * Math.exp(-dt / tau);
+  });
+}
+
+// ── Comparing, from the top bit down ──────────────────────────────────────────
+export function compareSteps(a: number, b: number, w: number) {
+  const out: { bit: number; a: number; b: number; verdict: "same" | "greater" | "less" }[] = [];
+  for (let bit = w - 1; bit >= 0; bit--) {
+    const x = (a >> bit) & 1, y = (b >> bit) & 1;
+    out.push({ bit, a: x, b: y, verdict: x === y ? "same" : x > y ? "greater" : "less" });
+    if (x !== y) break;
+  }
+  return out;
+}
+
+// ── Carry timing, in gate delays (each AND or OR counts as one, however wide) ─────
+export const rippleCarryTime = (i: number) => 2 * i;
+export const claLevels = (n: number) => { let levels = 1; for (let span = 4; span < n; span *= 4) levels++; return levels; };
+/** Carry i in an n-bit lookahead adder of 4-bit groups: carries at group boundaries arrive sooner. */
+export function claCarryTime(i: number, n: number) {
+  const levels = claLevels(n);
+  let k = 0;
+  for (let v = i; k < levels - 1 && v % 4 === 0; v /= 4) k++;
+  return 3 + 4 * (levels - 1) - 2 * k;
+}
+
+// ── Multiplying ───────────────────────────────────────────────────────────────
+export function shiftAddSteps(a: number, b: number, w: number) {
+  const out: { bit: number; on: number; partial: number; total: number }[] = [];
+  let total = 0;
+  for (let bit = 0; bit < w; bit++) {
+    const on = (b >> bit) & 1, partial = on ? a << bit : 0;
+    total += partial;
+    out.push({ bit, on, partial, total });
+  }
+  return out;
+}
+
+export interface BoothRow { pair: string; op: "add" | "sub" | "none"; a: number; q: number; q1: number }
+/**
+ * Booth's algorithm on w-bit two's complement: A (shown in w bits), Q and Q₋₁ after each step's
+ * operation and arithmetic shift. A is kept as a true signed value, one bit wider than shown,
+ * because A − M overflows w bits when M is the most negative number.
+ */
+export function boothSteps(m: number, multiplier: number, w: number) {
+  const mask = 2 ** w - 1, M = asSigned(m & mask, w);
+  let a = 0, q = multiplier & mask, q1 = 0;
+  const rows: BoothRow[] = [];
+  for (let i = 0; i < w; i++) {
+    const pair = `${q & 1}${q1}`, op = pair === "10" ? "sub" : pair === "01" ? "add" : "none";
+    if (op === "sub") a -= M;
+    if (op === "add") a += M;
+    q1 = q & 1;
+    q = (q >> 1) | ((a & 1) << (w - 1));
+    a >>= 1;
+    rows.push({ pair, op, a: a & mask, q, q1 });
+  }
+  return { rows, product: a * 2 ** w + q };
 }
 
 // ── K-map ─────────────────────────────────────────────────────────────────────

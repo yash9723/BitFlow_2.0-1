@@ -15,9 +15,11 @@ import { compile, toBits, validate } from "../lib/studio/circuit";
 import { challengeById } from "../lib/studio/circuit-challenges";
 import { crossesPart, routeAll } from "../lib/studio/circuit-route";
 import { wireRoute } from "../lib/studio/circuit-edit";
-import { ANIM_IDS, LEVEL, addColumns, asSigned, cmosState, divideSteps, encoderError, fromGray, neighbours, noiseChain, qmSteps, reads, toGray, wheelMove } from "../lib/academy/anim";
+import { ANIM_IDS, LEVEL, addColumns, asSigned, boothSteps, claCarryTime, claLevels, cmosState, compareSteps, divideSteps, encoderError, fromGray, inverterOut, inverterState, loadModel, neighbours, noiseChain, qmSteps, rcWave, reads, rippleCarryTime, shiftAddSteps, toGray, wheelMove } from "../lib/academy/anim";
 import { type Cell, type Implicant, minimizationSteps, primeImplicants } from "../lib/studio/logic-min";
 import { type Parsed, counterexample, parseBool } from "../lib/studio/boolexpr";
+import { draw } from "../lib/academy/draw";
+import { DelaySim } from "../lib/studio/delay-sim";
 import { minimizePos, minimizeSop, posText, sopText } from "../lib/studio/logic-min";
 
 const ROOT = process.cwd();
@@ -119,7 +121,7 @@ for (const t of ACADEMY_TOPICS) {
     });
   }
 }
-assert.ok(circuits >= 9 && kmaps >= 9 && practice >= 25, "chapters lost their circuits or practice questions");
+assert.ok(circuits >= 20 && kmaps >= 9 && practice >= 50, "chapters lost their circuits or practice questions");
 
 // ── Worked figures in the text are computed here, not trusted ─────────────────
 function says(slug: string, ...facts: string[]) {
@@ -198,6 +200,49 @@ assert.equal(parity(0b1011), 1);
   says("gates", "F = NAND(NAND(a, b), NAND(c, d))", "**4**");
 }
 
+// ── Chapters 9 to 12: figures in the text, computed ───────────────────────────
+{
+  const round = (x: number, d = 3) => +x.toFixed(d);
+  // Noise margins in the family table.
+  for (const [row, oh, ol, ih, il] of [["TTL (5 V)", 2.4, 0.4, 2.0, 0.8], ["74LS (5 V)", 2.7, 0.5, 2.0, 0.8], ["74HC CMOS (5 V)", 4.4, 0.1, 3.5, 1.5]] as const) {
+    says("logic-families", `"${row}","${oh}","${ol}","${ih.toFixed(1)}","${il}","${round(oh - ih, 2)}","${round(il - ol, 2)}"`);
+  }
+  says("logic-families", `"-0.98"`.replace("-", "−"), String(round(-0.98 + 1.105, 3)), String(round(-1.475 + 1.63, 3)));
+  assert.equal(Math.min(16 / 1.6, 400 / 40), 10);
+  assert.equal(Math.min(8 / 0.4, 400 / 50), 8);
+  assert.equal(round(10e-12 * 1 * 100e6, 6), 0.001);
+  assert.equal(Math.round((1 - (0.9 / 1.2) ** 2) * 100), 44);
+  says("adders-comparators", "(8 − 1) × 2 + 3 = **17 ns**");
+  assert.equal(7 * 2 + 3, 17);
+  assert.equal((0b1010 + 0b0101 + 1) ^ 0b1111, 0b11111 ^ 0, "cin flips all 4 sum bits and the carry");
+  says("combinational", "4 + 2 + 1 = **7**", "16, 4 and 1 make **21**");
+  // Booth run counts and the recoding.
+  const ops = (bits: string) => boothSteps(1, parseInt(bits, 2), bits.length).rows.filter((r) => r.op !== "none").length;
+  assert.equal(ops("01111110"), 2); assert.equal(ops("01010101"), 8);
+  assert.equal(0b1000 - 0b0010, 0b0110);
+  // The carry table in the chapter.
+  for (const [n, ripple, cla] of [[4, 8, 3], [16, 32, 7], [64, 128, 11]] as const) {
+    assert.equal(rippleCarryTime(n), ripple);
+    assert.equal(Math.max(...Array.from({ length: n }, (_, i) => claCarryTime(i + 1, n))), cla, `${n}-bit lookahead`);
+    says("arithmetic-circuits", `"${n} bits","${ripple}","${cla}"`);
+  }
+  assert.equal(claLevels(4), 1); assert.equal(claLevels(16), 2); assert.equal(claLevels(64), 3);
+  // The carry times are what real gates do: an n-bit chain of g + p·c, one gate delay per AND and OR.
+  for (const n of [4, 8]) {
+    const c = draw(`chain${n}`, (d) => {
+      const cin = d.sw("cin", 0, 0), p = d.sw("p", 0, 0), g = d.sw("g", 0, 0);
+      let carry = cin;
+      for (let i = 0; i < n; i++) carry = d.gate("or", `o${i}`, 0, 0, g, d.gate("and", `a${i}`, 0, 0, p, carry));
+      d.led("cout", 0, 0, carry);
+    });
+    const { net } = compile(c), sim = new GateSim(net);
+    sim.set("p", [1]);
+    const uniform = { not: 1, and: 1, or: 1, xor: 1, mux: 1, ff: 1 };
+    const t = new DelaySim(net, uniform, (b) => sim.net(b)).run("cin", [1]);
+    assert.equal(t.settled, rippleCarryTime(n), "a carry takes two gate delays per stage");
+  }
+}
+
 // ── The animations' logic ─────────────────────────────────────────────────────
 assert.deepEqual([...anims].sort(), [...ANIM_IDS].sort(), "every animation is used by a chapter");
 {
@@ -239,6 +284,32 @@ assert.deepEqual([...anims].sort(), [...ANIM_IDS].sort(), "every animation is us
     }
   }
   assert.deepEqual(neighbours(5, 4).sort((a, b) => a - b), [1, 4, 7, 13]);
+
+  // The inverter: output falls as input rises, symmetric, near the rails at each end; both on only mid-swing.
+  for (let v = 0; v < 5; v += 0.1) assert.ok(inverterOut(v) >= inverterOut(v + 0.1));
+  assert.ok(inverterOut(0) > 4.9 && inverterOut(5) < 0.1);
+  assert.ok(Math.abs(inverterOut(2.5) - 2.5) < 1e-9);
+  assert.deepEqual(inverterState(0), { nmos: false, pmos: true });
+  assert.deepEqual(inverterState(5), { nmos: true, pmos: false });
+  assert.deepEqual(inverterState(2.5), { nmos: true, pmos: true });
+  // Loading: the closed form matches the drawn wave, more load is slower, and voltage counts twice.
+  for (const [n, mhz] of [[1, 5], [10, 20], [30, 50]] as const) {
+    const m = loadModel(n, mhz, 5), wave = rcWave(m.halfPeriod, m.tau, 400);
+    assert.ok(Math.abs(Math.max(...wave) - m.high) < 0.01, "the wave peaks at the stated swing");
+    assert.ok(Math.abs(Math.min(...wave) - m.low) < 0.01, "and troughs at the stated low");
+  }
+  assert.ok(loadModel(20, 5, 5).delay > loadModel(2, 5, 5).delay);
+  assert.ok(loadModel(2, 2, 5).ok, "an easy case works"); assert.ok(!loadModel(30, 50, 5).ok, "too fast fails");
+  assert.ok(Math.abs(loadModel(2, 5, 5).milliwatts / loadModel(2, 5, 1.8).milliwatts - (5 / 1.8) ** 2) < 1e-9);
+  // Comparing: the verdict matches the numbers and stops at the first difference.
+  for (let a = 0; a < 16; a++) for (let b = 0; b < 16; b++) {
+    const st = compareSteps(a, b, 4), last = st[st.length - 1];
+    assert.equal(last.verdict, a === b ? "same" : a > b ? "greater" : "less");
+    assert.ok(st.slice(0, -1).every((x) => x.verdict === "same"));
+  }
+  // Multiplying.
+  for (let a = 0; a < 16; a++) for (let b = 0; b < 16; b++) assert.equal(shiftAddSteps(a, b, 4).at(-1)!.total, a * b);
+  for (let m = -8; m < 8; m++) for (let q = -8; q < 8; q++) assert.equal(boothSteps(m, q, 4).product, m * q + 0, `Booth ${m} × ${q}`);   // + 0: JavaScript's -8 × 0 is -0
 
   const ones = [0, 1, 2, 5, 6, 7, 8, 9, 10, 14], { steps } = qmSteps(ones, []), last = steps[steps.length - 1];
   const keyed = (ts: Implicant[]) => ts.map((t) => `${t.value},${t.mask}`).sort();

@@ -17,6 +17,13 @@ const ANIMS: Record<AnimId, ComponentType> = {
   venn: dynamic(() => import("./logic").then((m) => m.Venn), { ssr: false, loading }),
   "kmap-neighbours": dynamic(() => import("./logic").then((m) => m.KmapNeighbours), { ssr: false, loading }),
   "qm-merge": dynamic(() => import("./logic").then((m) => m.QmMerge), { ssr: false, loading }),
+  "inverter-curve": dynamic(() => import("./circuits").then((m) => m.InverterCurve), { ssr: false, loading }),
+  "load-delay": dynamic(() => import("./circuits").then((m) => m.LoadDelay), { ssr: false, loading }),
+  "compare-bits": dynamic(() => import("./circuits").then((m) => m.CompareBits), { ssr: false, loading }),
+  "mux-router": dynamic(() => import("./circuits").then((m) => m.MuxRouter), { ssr: false, loading }),
+  "adder-race": dynamic(() => import("./circuits").then((m) => m.AdderRace), { ssr: false, loading }),
+  "shift-add": dynamic(() => import("./circuits").then((m) => m.ShiftAdd), { ssr: false, loading }),
+  booth: dynamic(() => import("./circuits").then((m) => m.Booth), { ssr: false, loading }),
 };
 
 export default function Animation({ id }: { id: AnimId }) {
