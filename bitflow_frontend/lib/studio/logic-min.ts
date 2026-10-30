@@ -26,11 +26,14 @@ const bitCount = (n: number) => { let c = 0; for (; n; n &= n - 1) c++; return c
 /** Literals in the term: one per variable that isn't left out. */
 export const literals = (imp: Implicant, n: number) => n - bitCount(imp.mask);
 
-/** Every prime implicant of the function (ones plus don't-cares), by repeated merging. */
-export function primeImplicants(ones: number[], dontCares: number[]): Implicant[] {
+/** A term in a Quine-McCluskey pass; merged: it combined with another, so it isn't prime. */
+export interface QmTerm extends Implicant { merged: boolean }
+
+/** Quine-McCluskey, pass by pass: the terms of each pass, marking those that merged into the next. */
+export function qmPasses(ones: number[], dontCares: number[]): QmTerm[][] {
   let level = new Map<string, Implicant>();
   for (const m of [...ones, ...dontCares]) level.set(`${m},0`, { value: m, mask: 0 });
-  const primes: Implicant[] = [];
+  const passes: QmTerm[][] = [];
   while (level.size) {
     const terms = [...level.values()];
     const merged = new Set<string>();
@@ -44,11 +47,15 @@ export function primeImplicants(ones: number[], dontCares: number[]): Implicant[
         merged.add(`${a.value},${a.mask}`).add(`${b.value},${b.mask}`);
       }
     }
-    for (const t of terms) if (!merged.has(`${t.value},${t.mask}`)) primes.push(t);
+    passes.push(terms.map((t) => ({ ...t, merged: merged.has(`${t.value},${t.mask}`) })));
     level = next;
   }
-  return primes;
+  return passes;
 }
+
+/** Every prime implicant of the function (ones plus don't-cares), by repeated merging. */
+export const primeImplicants = (ones: number[], dontCares: number[]): Implicant[] =>
+  qmPasses(ones, dontCares).flat().filter((t) => !t.merged).map(({ value, mask }) => ({ value, mask }));
 
 /**
  * The fewest primes covering every one (ties: fewest literals). Exact branch and
@@ -136,6 +143,65 @@ export function posText(terms: Implicant[], names: string[], style: Style = "ver
   return sums.join(style === "verilog" ? " & " : mathAnd(names));
 }
 
+/** The inverting form's text: "((ab)'(cd)')'" from minimizeSop terms (NAND), "((a + b)' + (c + d)')'" from minimizePos terms (NOR). */
+export function invertingText(terms: Implicant[], names: string[], op: "nand" | "nor"): string {
+  const n = names.length, nand = op === "nand";
+  if (!terms.length) return nand ? "0" : "1";
+  if (terms.some((t) => literals(t, n) === 0)) return nand ? "1" : "0";
+  const parts = terms.map((t) => {
+    const ls = names.flatMap((nm, i) => {
+      const bit = 1 << (n - 1 - i);
+      return t.mask & bit ? [] : [{ nm, positive: nand ? !!(t.value & bit) : !(t.value & bit) }];
+    });
+    if (ls.length === 1) return terms.length === 1 ? lit(ls[0].nm, ls[0].positive, "math") : ls[0].positive ? `${ls[0].nm}'` : ls[0].nm;
+    return `(${ls.map((l) => lit(l.nm, l.positive, "math")).join(nand ? mathAnd(names) : " + ")})'`;
+  });
+  return terms.length === 1 && literals(terms[0], n) === 1 ? parts[0] : `(${parts.join(nand ? mathAnd(names) : " + ")})'`;
+}
+
+// ── How a minimal form is found ──────────────────────────────────────────────
+
+/** A term as a row of the method's table: "10-1" (input 0 first; - means left out). */
+export const termPattern = (t: Implicant, n: number) =>
+  Array.from({ length: n }, (_, i) => { const bit = 1 << (n - 1 - i); return t.mask & bit ? "-" : t.value & bit ? "1" : "0"; }).join("");
+export const termMinterms = (t: Implicant, n: number) => Array.from({ length: 1 << n }, (_, m) => m).filter((m) => covers(t, m));
+export const onesIn = (t: Implicant) => bitCount(t.value);
+
+export interface GroupStep {
+  term: Implicant;
+  /** Every map cell in the group, and those it covers for the first time. */
+  minterms: number[]; fresh: number[];
+  /** The only prime covering some cell, so every minimal answer has it. */
+  essential: boolean;
+}
+export interface MinimizationSteps {
+  /** The cells to cover: the ones (SOP) or zeros (POS). */
+  targets: number[];
+  passes: QmTerm[][]; primes: Implicant[]; essentials: Implicant[];
+  /** The chosen groups: essential ones first, then what remains. */
+  steps: GroupStep[];
+}
+
+/** The working behind minimizeSop / minimizePos, for showing it step by step. */
+export function minimizationSteps(n: number, cells: Cell[], form: "sop" | "pos" = "sop"): MinimizationSteps {
+  const want: Cell = form === "sop" ? 1 : 0;
+  const targets = cells.flatMap((c, m) => (c === want ? [m] : []));
+  const dcs = cells.flatMap((c, m) => (c === "x" ? [m] : []));
+  const passes = qmPasses(targets, dcs);
+  const primes = passes.flat().filter((t) => !t.merged).map(({ value, mask }) => ({ value, mask }));
+  const same = (a: Implicant, b: Implicant) => a.value === b.value && a.mask === b.mask;
+  const essentials = primes.filter((p) => targets.some((m) => covers(p, m) && primes.filter((q) => covers(q, m)).length === 1));
+  const cover = minimumCover(n, targets, primes);
+  const ordered = [...cover.filter((t) => essentials.some((e) => same(e, t))), ...cover.filter((t) => !essentials.some((e) => same(e, t)))];
+  const done = new Set<number>();
+  const steps = ordered.map((term) => {
+    const minterms = termMinterms(term, n), fresh = minterms.filter((m) => targets.includes(m) && !done.has(m));
+    fresh.forEach((m) => done.add(m));
+    return { term, minterms, fresh, essential: essentials.some((e) => same(e, term)) };
+  });
+  return { targets, passes, primes, essentials, steps };
+}
+
 // ── K-map ─────────────────────────────────────────────────────────────────────
 
 const GRAY: Record<number, number[]> = { 0: [0], 1: [0, 1], 2: [0, 1, 3, 2] };
@@ -154,6 +220,21 @@ export function kmapLayout(names: string[]): KmapLayout {
     rowVars: names.slice(0, rb), colVars: names.slice(rb), rows, cols,
     minterm: (r, c) => (rows[r] << cb) | cols[c],
   };
+}
+
+/**
+ * 5-6 inputs: the map is drawn as sheets of 4-variable maps, one per value of the first
+ * inputs, two sheets a row. A group can span sheets. 2-4 inputs: one sheet.
+ */
+export function kmapSheets(names: string[]): { outer: string[]; sheets: number[]; inner: KmapLayout } {
+  const k = Math.max(0, names.length - 4);
+  return { outer: names.slice(0, k), sheets: Array.from({ length: 1 << k }, (_, i) => i), inner: kmapLayout(names.slice(k)) };
+}
+/** A term as seen on one sheet (the sheet's own inputs only), or null if it has no cell there. */
+export function sheetTerm(t: Implicant, sheet: number, innerBits: number): Implicant | null {
+  if ((sheet & ~(t.mask >> innerBits)) !== t.value >> innerBits) return null;
+  const low = (1 << innerBits) - 1;
+  return { value: t.value & low, mask: t.mask & low };
 }
 
 /** Contiguous runs (start, length) of the set positions; a group that wraps around comes out as two runs. */

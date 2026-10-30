@@ -16,17 +16,20 @@
  * own) whose pins are the wires crossing the selection. Double-click an instance to open its
  * definition; edits apply to every instance. The library lives on the top circuit (blocks).
  * Import Verilog synthesizes a module in the browser and draws it (lib/studio/circuit-import.ts).
+ * The K-map panel shows a combinational circuit's function, and can rebuild it from the
+ * minimal form; the truth-table tool sends circuits here the same way (lib/studio/logic-circuit.ts).
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import GeneratedCode from "@/components/studio/GeneratedCode";
+import { KmapStudy, QmWorking } from "@/components/studio/Kmap";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { GateSim, toNumber } from "@/lib/gate-sim";
 import {
-  type Circuit, type InputEvent, type Library, type Note, type Part, type PartKind, type PinRef, type Wire, CIRCUIT_EXAMPLES, INPUT_KINDS,
-  MAX_WIDTH, MAX_EXHAUSTIVE_INPUTS, blockPorts, compile, constValue, defaultEvents, generateTestbench, generateVerilog, hasState, inputParts,
-  outputParts, pinWidth, pins, portWidth, toBits, validate, width,
+  type Circuit, type InputEvent, type Library, type Note, type Part, type PartKind, type PinRef, type Wire, ALU_OPS, CIRCUIT_EXAMPLES, INPUT_KINDS,
+  MAX_WIDTH, MAX_EXHAUSTIVE_INPUTS, blockPorts, busConflicts, compile, constValue, defaultEvents, generateTestbench, generateVerilog, hasState, inputParts,
+  outputParts, pinWidth, pins, portWidth, romWord, selBits, toBits, validate, width,
 } from "@/lib/studio/circuit";
 import {
   type Clip, type Selection, History, NONE, SNAP, blockNameIssue, bounds, copy, forward, inRect, isEmpty, makeBlock, merge, move, nextLabel,
@@ -35,7 +38,9 @@ import {
 import { MAX_IMPORT_CELLS, netlistToCircuit } from "@/lib/studio/circuit-import";
 import { synthesizeDesign } from "@/lib/synth/client";
 import type { BoardNetlist } from "@/lib/gate-sim";
-import { tableFromNetlist } from "@/lib/studio/logic-min";
+import { type TruthTable, invertingText, minimizePos, minimizeSop, posText, sopText, tableFromNetlist } from "@/lib/studio/logic-min";
+import { type CircuitForm, CIRCUIT_INCOMING_KEY, FORM_LABELS, circuitFromTable, gateCount } from "@/lib/studio/logic-circuit";
+import { KEY_FACES } from "@/lib/lab/peripherals";
 import { type Trace, longestPath, traceToParsed, traceToVcd } from "@/lib/studio/circuit-analysis";
 import { waveformSvg } from "@/lib/waveform-svg";
 import { downloadBlob } from "@/lib/api";
@@ -47,13 +52,14 @@ const GATE_PS = 100;              // assumed gate delay for the timing estimate
 
 /** Probed signals: the user's choice, or every input and output. */
 const probeRefs = (c: Circuit): PinRef[] =>
-  (c.probes ?? [...inputParts(c).map((p) => ({ part: p.id, pin: "out" })), ...outputParts(c).map((p) => ({ part: p.id, pin: "in" }))])
+  (c.probes ?? [...inputParts(c).map((p) => ({ part: p.id, pin: pins(p).outputs[0] })), ...outputParts(c).map((p) => ({ part: p.id, pin: "in" })),
+    ...c.parts.filter((p) => p.kind === "probe").flatMap((p) => c.wires.filter((w) => w.to.part === p.id).map((w) => w.from))])
     .filter((r) => c.parts.some((p) => p.id === r.part));
 const sameRef = (a: PinRef, b: PinRef) => a.part === b.part && a.pin === b.pin;
 /** A probe's name and width: a port's label, a single-output part's label, else <label>.<pin>. */
 function probeInfo(c: Circuit, r: PinRef): { name: string; width: number } {
   const p = c.parts.find((x) => x.id === r.part)!;
-  if (INPUT_KINDS.includes(p.kind) || ["led", "seg7", "hexout"].includes(p.kind)) return { name: p.label, width: portWidth(p) };
+  if (p.kind !== "keypad" && (INPUT_KINDS.includes(p.kind) || ["led", "seg7", "hexout"].includes(p.kind))) return { name: p.label, width: portWidth(p) };
   return { name: pins(p).outputs.length > 1 ? `${p.label}.${r.pin}` : p.label, width: pinWidth(p, r.pin) };
 }
 
@@ -71,19 +77,22 @@ const PREFIX: Record<PartKind, string> = {
   switch: "sw", button: "btn", clock: "clk", hexin: "in", const0: "zero", const1: "one", const: "k", not: "n", and: "g", or: "g", xor: "g",
   nand: "g", nor: "g", xnor: "g", mux2: "m", dff: "q", tff: "t", jkff: "jk", reg: "r", counter: "cnt",
   adder: "add", cmp: "cmp", decoder: "dec", split: "sp", merge: "mg", led: "led", seg7: "seg", hexout: "hex", block: "blk",
+  mux: "mx", demux: "dm", encoder: "enc", priority: "pri", bcd7: "bcd", alu: "alu", shift: "sr", rom: "rom", ram: "ram", keypad: "keys", probe: "probe", tri: "tri", bus: "bus",
 };
 /** Widths and options a new part starts with. */
 const DEFAULTS: Partial<Record<PartKind, Partial<Part>>> = {
   hexin: { w: 4 }, hexout: { w: 4 }, const: { w: 4, value: 0 }, adder: { w: 4 }, cmp: { w: 4 }, decoder: { w: 2 },
   split: { w: 4 }, merge: { w: 4 }, reg: { w: 4, reset: false }, counter: { w: 4, reset: false },
   dff: { reset: false }, tff: { reset: false }, jkff: { reset: false },
+  mux: { n: 2 }, demux: { n: 2 }, encoder: { w: 2 }, priority: { w: 2 }, alu: { w: 4 }, shift: { w: 4, reset: false },
+  rom: { n: 4, w: 8, data: [] }, ram: { n: 4, w: 8 }, bus: { n: 2 },
 };
 const WIDTHS: Partial<Record<PartKind, number[]>> = {
-  decoder: [1, 2, 3, 4], split: [2, 3, 4, 5, 6, 7, 8, 12, 16], merge: [2, 3, 4, 5, 6, 7, 8, 12, 16],
+  decoder: [1, 2, 3, 4], encoder: [1, 2, 3, 4], priority: [1, 2, 3, 4], split: [2, 3, 4, 5, 6, 7, 8, 12, 16], merge: [2, 3, 4, 5, 6, 7, 8, 12, 16],
 };
 const widthChoices = (k: PartKind) => WIDTHS[k] ?? [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16];
 const hasWidth = (k: PartKind) => ["hexin", "hexout", "const", "adder", "cmp", "decoder", "split", "merge", "reg", "counter",
-  "not", "and", "or", "xor", "nand", "nor", "xnor", "mux2"].includes(k);
+  "not", "and", "or", "xor", "nand", "nor", "xnor", "mux2", "mux", "demux", "encoder", "priority", "alu", "shift", "rom", "ram", "probe", "tri", "bus"].includes(k);
 const hex = (v: number, w: number) => v.toString(16).toUpperCase().padStart(Math.ceil(w / 4), "0");
 function freshLabel(c: Circuit, kind: PartKind): string {
   const used = new Set(c.parts.map((p) => p.label));
@@ -94,14 +103,16 @@ function freshLabel(c: Circuit, kind: PartKind): string {
 
 const PALETTE: { group: string; items: { kind: PartKind; label: string }[] }[] = [
   { group: "Inputs", items: [{ kind: "switch", label: "Switch" }, { kind: "button", label: "Button" }, { kind: "clock", label: "Clock" },
-    { kind: "hexin", label: "Hex input" }, { kind: "const0", label: "0" }, { kind: "const1", label: "1" }, { kind: "const", label: "Constant" }] },
+    { kind: "hexin", label: "Hex input" }, { kind: "keypad", label: "Keypad" }, { kind: "const0", label: "0" }, { kind: "const1", label: "1" }, { kind: "const", label: "Constant" }] },
   { group: "Gates", items: [{ kind: "not", label: "NOT" }, { kind: "and", label: "AND" }, { kind: "or", label: "OR" }, { kind: "xor", label: "XOR" },
     { kind: "nand", label: "NAND" }, { kind: "nor", label: "NOR" }, { kind: "xnor", label: "XNOR" }, { kind: "mux2", label: "MUX 2:1" }] },
-  { group: "Arithmetic", items: [{ kind: "adder", label: "Adder" }, { kind: "cmp", label: "Comparator" }, { kind: "decoder", label: "Decoder" }] },
+  { group: "Select & code", items: [{ kind: "mux", label: "MUX 4:1, 8:1" }, { kind: "demux", label: "DEMUX" }, { kind: "decoder", label: "Decoder" },
+    { kind: "encoder", label: "Encoder" }, { kind: "priority", label: "Priority enc." }, { kind: "bcd7", label: "BCD to 7-seg" }] },
+  { group: "Arithmetic", items: [{ kind: "adder", label: "Adder" }, { kind: "cmp", label: "Comparator" }, { kind: "alu", label: "ALU" }] },
   { group: "Memory", items: [{ kind: "dff", label: "D flip-flop" }, { kind: "tff", label: "T flip-flop" }, { kind: "jkff", label: "JK flip-flop" },
-    { kind: "reg", label: "Register" }, { kind: "counter", label: "Counter" }] },
-  { group: "Wiring", items: [{ kind: "split", label: "Splitter" }, { kind: "merge", label: "Merger" }] },
-  { group: "Outputs", items: [{ kind: "led", label: "LED" }, { kind: "hexout", label: "Hex display" }, { kind: "seg7", label: "7-segment" }] },
+    { kind: "reg", label: "Register" }, { kind: "counter", label: "Counter" }, { kind: "shift", label: "Shift register" }, { kind: "rom", label: "ROM" }, { kind: "ram", label: "RAM" }] },
+  { group: "Wiring", items: [{ kind: "split", label: "Splitter" }, { kind: "merge", label: "Merger" }, { kind: "tri", label: "Tri-state" }, { kind: "bus", label: "Bus" }] },
+  { group: "Outputs", items: [{ kind: "led", label: "LED" }, { kind: "hexout", label: "Hex display" }, { kind: "seg7", label: "7-segment" }, { kind: "probe", label: "Probe" }] },
 ];
 
 const SHORTCUTS: [string, string][] = [
@@ -179,7 +190,7 @@ export default function CircuitTool() {
 
   // Positions, bends and notes don't change the logic, so editing them doesn't rebuild the simulation or the checks
   const logicOf = (x: Circuit) => ({
-    p: x.parts.map((p) => ({ id: p.id, kind: p.kind, label: p.label, n: p.n, reset: p.reset, w: p.w, value: p.value, block: p.block, ports: p.ports })),
+    p: x.parts.map((p) => ({ id: p.id, kind: p.kind, label: p.label, n: p.n, reset: p.reset, w: p.w, value: p.value, block: p.block, ports: p.ports, data: p.data })),
     w: x.wires.map((w) => [w.id, w.from, w.to]),
   });
   const logicKey = JSON.stringify({ m: c.module, ...logicOf(c), lib: Object.entries(lib).map(([n, d]) => [n, logicOf(d)]) });
@@ -428,6 +439,14 @@ export default function CircuitTool() {
     setHz(0);
     requestAnimationFrame(fit);
   };
+  // A circuit sent over by the truth-table tool: loaded once, undoable like any other load
+  useEffect(() => {
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(CIRCUIT_INCOMING_KEY); if (raw) localStorage.removeItem(CIRCUIT_INCOMING_KEY); } catch { return; }
+    if (!raw) return;
+    try { const incoming = JSON.parse(raw); if (valid(incoming)) load(incoming); } catch { /* not ours: ignore it */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const zoomBy = (f: number) => setView((v) => {
     const z = Math.max(ZOOM.min, Math.min(ZOOM.max, v.z * f));
     const cx = v.x + VIEW.w / v.z / 2, cy = v.y + VIEW.h / v.z / 2;      // keep the centre still
@@ -445,6 +464,18 @@ export default function CircuitTool() {
   const sequential = hasState(c, lib);
   const inputBits = inputParts(c).reduce((n, p) => n + portWidth(p), 0);
   const tableable = ok && !sequential && inputBits > 0 && inputBits <= 6 && outputParts(c).length > 0;
+  // The circuit's own function on a K-map, in place
+  const [kmapOpen, setKmapOpen] = useState(false);
+  const table = useMemo(
+    () => (kmapOpen && tableable ? tableFromNetlist(compile(c, lib).net) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kmapOpen, tableable, logicKey],
+  );
+  /** The truth-table row the inputs are on now. */
+  const inputRow = inputParts(c).reduce((m, p) => m * 2 ** portWidth(p) + (inputsRef.current[p.label] ?? 0), 0);
+  const read = (r: PinRef) => { const s = simRef.current; return s ? toNumber((s.bitsOf(r) ?? []).map((b) => s.sim.net(b))) : 0; };
+  const conflicts = ok && simRef.current ? busConflicts(c, read) : [];
+
   const toTable = () => {
     const t = tableFromNetlist(compile(c, lib).net);
     if (typeof t === "string") { window.alert(t); return; }
@@ -522,7 +553,8 @@ export default function CircuitTool() {
           </select>
         </label>
         <button className={btn} onClick={powerUp} title="All inputs to 0, flip-flops to 0, recording cleared">Power up again</button>
-        {tableable && <button className={btn} onClick={toTable} title="Open this circuit's truth table and K-map">Truth table →</button>}
+        {tableable && <button className={`${btn} ${kmapOpen ? "border-info/60 text-info" : ""}`} onClick={() => setKmapOpen((o) => !o)} title="Show this circuit's K-map here">K-map</button>}
+        {tableable && <button className={btn} onClick={toTable} title="Open this circuit's truth table in the K-map tool">Truth table →</button>}
         <button className={`${btn} ${showPath ? "border-warn/60 text-warn" : ""}`} disabled={!timing} onClick={() => setShowPath((s) => !s)}
                 title="Highlight the longest chain of gates between inputs/flip-flops and outputs/flip-flops">Longest path</button>
         <span className="text-rim">|</span>
@@ -535,6 +567,14 @@ export default function CircuitTool() {
                 title="Draw a circuit from a Verilog module">⇣ Import Verilog</button>
       </div>
       {importing && <ImportPanel onCancel={() => setImporting(false)} onImport={imported} />}
+      {kmapOpen && tableable && (typeof table === "string"
+        ? <p className="font-mono text-[11px] text-warn -mt-2">{table}</p>
+        : table && <CircuitKmap t={table} row={inputRow} current={gateCount(c)} module={c.module} onBuild={load} />)}
+      {conflicts.length > 0 && (
+        <p role="alert" className="font-mono text-[11px] text-danger -mt-2">
+          Bus conflict on {conflicts.join(", ")}: more than one tri-state driver is enabled. On real wires they would fight each other; here the bus reads the OR of them.
+        </p>
+      )}
       {showPath && timing && (
         <p className="font-mono text-[11px] text-warn -mt-2">
           {timing.delay === 0
@@ -769,7 +809,9 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
       if (hit) {
         const from = drag.isOutput ? drag.from : hit.ref, to = drag.isOutput ? hit.ref : drag.from;
         const w: Wire = { id: uid("w"), from, to };
-        edit({ ...c, wires: [...c.wires.filter((x) => !(x.to.part === to.part && x.to.pin === to.pin)), w] });   // one driver per input
+        const wd = pinWidth(byId.get(from.part)!, from.pin);
+        edit({ ...c, parts: c.parts.map((x) => (x.id === to.part && x.kind === "probe" ? { ...x, w: wd } : x)),   // a probe takes the width of what it watches
+          wires: [...c.wires.filter((x) => !(x.to.part === to.part && x.to.pin === to.pin)), w] });   // one driver per input
         setSel({ ...NONE, wires: [w.id] });
       }
     }
@@ -857,6 +899,8 @@ function Canvas({ c, edit, sel, setSel, live, inputs, drive, pulse, view, setVie
                     }}
                     onOpen={p.kind === "block" && p.block ? () => onOpen(p.block!) : undefined}
                     inputValue={inputs[p.label] ?? 0} outputBits={live && (p.kind === "led" || p.kind === "seg7" || p.kind === "hexout") ? live.sim.get(p.label) : null}
+                    source={driverOf.get(`${p.id}.${p.kind === "alu" ? "op" : "in"}`)} live={!!live}
+                    onKeypad={(code) => { if (live) drive(p.label, code === null ? 0 : 16 + code); }}
                     onBodyDown={(e) => startMove(e, "parts", p.id)}
                     onPinDown={(e, pin, isOutput) => {
                       e.stopPropagation(); capture(e); focus();
@@ -919,7 +963,10 @@ function gateShape(kind: PartKind, x: number, y: number, gw: number, h: number):
   };
 }
 
-function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDown, onPinDown, onKnob, wiring, snapPin, pinTitle, onOpen }: {
+/** A keypad key's code: its face, in hex (A-D are 10-13), with * = 14 and # = 15. */
+const keyCode = (face: string) => (face === "*" ? 14 : face === "#" ? 15 : parseInt(face, 16));
+
+function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDown, onPinDown, onKnob, wiring, snapPin, pinTitle, onOpen, source, live, onKeypad }: {
   p: Part; selected: boolean; hot: boolean; valueOf: (r: PinRef) => number; inputValue: number; outputBits: number[] | null;
   onBodyDown: (e: React.PointerEvent) => void; onPinDown: (e: React.PointerEvent, pin: string, isOutput: boolean) => void;
   onKnob: (down: boolean, back?: boolean) => void;
@@ -929,13 +976,16 @@ function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDow
   snapPin: string | null;
   pinTitle: (pin: string, isOutput: boolean) => string;
   onOpen?: () => void;
+  /** What drives a probe's input, or an ALU's op. */
+  source?: PinRef; live: boolean;
+  onKeypad: (code: number | null) => void;
 }) {
   const { w, h } = size(p);
   const { inputs, outputs } = pins(p);
   const stroke = selected ? "#4db8ff" : hot ? "#ffb547" : "#5a5e74";
   const outOn = outputs.length && pinWidth(p, outputs[0]) === 1 ? valueOf({ part: p.id, pin: outputs[0] }) === 1 : false;
   const inverted = ["nand", "nor", "xnor", "not"].includes(p.kind);
-  const showPinNames = !["switch", "button", "clock", "hexin", "const0", "const1", "const", "led", "hexout", "not", "and", "or", "xor", "nand", "nor", "xnor"].includes(p.kind);
+  const showPinNames = !["switch", "button", "clock", "hexin", "const0", "const1", "const", "led", "hexout", "not", "and", "or", "xor", "nand", "nor", "xnor", "probe", "bus"].includes(p.kind);
   const isGate = ["not", "and", "or", "xor", "nand", "nor", "xnor"].includes(p.kind);
   const shape = isGate ? gateShape(p.kind, p.x, p.y, w - (inverted ? 8 : 0), h) : null;
   const box = (title: string, sub?: string) => <>
@@ -951,7 +1001,23 @@ function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDow
   const clkMark = inputs.includes("clk") ? (() => { const cy = pinPos(p, "clk").y; return <path d={`M ${p.x} ${cy - 5} L ${p.x + 7} ${cy} L ${p.x} ${cy + 5}`} fill="none" stroke="#8b8fa3" />; })() : null;
 
   let body: React.ReactNode;
-  if (INPUT_KINDS.includes(p.kind) && p.kind !== "hexin") {
+  if (p.kind === "keypad") {
+    const down = inputValue & 16 ? inputValue & 15 : null;
+    body = <>
+      <rect x={p.x} y={p.y} width={w} height={h} rx={6} fill="#13141a" stroke={stroke} />
+      {KEY_FACES.map((face, i) => {
+        const kx = p.x + 6 + (i & 3) * 28, ky = p.y + 6 + (i >> 2) * 28, code = keyCode(face), on = down === code;
+        return (
+          <g key={face} data-key={face} style={{ cursor: "pointer" }}
+             onPointerDown={(e) => { e.stopPropagation(); onKeypad(code); }} onPointerUp={(e) => { e.stopPropagation(); onKeypad(null); }}
+             onPointerLeave={() => { if (on) onKeypad(null); }}>
+            <rect x={kx} y={ky} width={26} height={26} rx={4} fill={on ? "#00e87a" : "#1f2130"} stroke={on ? "#00e87a" : "#3a3d4f"} />
+            <text x={kx + 13} y={ky + 17} textAnchor="middle" fontSize={12} fontWeight={700} fill={on ? "#0b0c10" : "#c8cad6"} fontFamily="monospace" style={{ pointerEvents: "none" }}>{face}</text>
+          </g>
+        );
+      })}
+    </>;
+  } else if (INPUT_KINDS.includes(p.kind) && p.kind !== "hexin") {
     const on = p.kind === "clock" ? outOn : inputValue === 1;
     body = (
       <>
@@ -999,6 +1065,36 @@ function PartView({ p, selected, hot, valueOf, inputValue, outputBits, onBodyDow
       <text x={p.x + w - 6} y={p.y + h / 2 + 4} textAnchor="end" fontSize={10} fill="#8b8fa3" fontFamily="monospace">Q</text></>;
   } else if (p.kind === "reg" || p.kind === "counter") {
     body = <>{box(p.kind === "reg" ? "REG" : "COUNT", `${width(p)} bits`)}{clkMark}</>;
+  } else if (p.kind === "shift") {
+    body = <>{box("SHIFT", `${width(p)} bits`)}{clkMark}</>;
+  } else if (p.kind === "rom" || p.kind === "ram") {
+    body = <>{box(p.kind.toUpperCase(), `${2 ** selBits(p)} × ${width(p)}`)}{clkMark}</>;
+  } else if (p.kind === "encoder" || p.kind === "priority") {
+    body = <>{box(p.kind === "encoder" ? "ENC" : "PRI ENC", `${2 ** width(p)}→${width(p)}`)}</>;
+  } else if (p.kind === "bcd7") {
+    body = <>{box("BCD→7", "0-9")}</>;
+  } else if (p.kind === "alu") {
+    body = <>{box("ALU", live ? ALU_OPS[source ? valueOf(source) : 0] : `${width(p)} bits`)}</>;
+  } else if (p.kind === "mux" || p.kind === "demux") {
+    const inset = 14;
+    body = <>
+      <path d={p.kind === "mux" ? `M ${p.x} ${p.y} L ${p.x + w} ${p.y + inset} V ${p.y + h - inset} L ${p.x} ${p.y + h} Z`
+                                : `M ${p.x} ${p.y + inset} L ${p.x + w} ${p.y} V ${p.y + h} L ${p.x} ${p.y + h - inset} Z`} fill="#13141a" stroke={stroke} />
+      <text x={p.x + w / 2 + (p.kind === "mux" ? 6 : -6)} y={p.y + h / 2 + 3} textAnchor="middle" fontSize={9} fill="#8b8fa3" fontFamily="monospace">{p.kind === "mux" ? `${2 ** selBits(p)}:1` : `1:${2 ** selBits(p)}`}</text>
+    </>;
+  } else if (p.kind === "probe") {
+    const W = width(p), v = source ? valueOf(source) : 0;
+    body = <>
+      <rect x={p.x} y={p.y} width={w} height={h} rx={h / 2} fill="#0b1a24" stroke={selected || hot ? stroke : "#2f5d7a"} />
+      <text x={p.x + w / 2 + 3} y={p.y + h / 2 + 4} textAnchor="middle" fontSize={12} fontWeight={700} fill={W === 1 && v === 1 ? "#00e87a" : "#7cc4ff"} fontFamily="monospace">{live && source ? (W === 1 ? String(v) : hex(v, W)) : "–"}</text>
+    </>;
+  } else if (p.kind === "tri") {
+    body = <path d={`M ${p.x} ${p.y + 3} L ${p.x + w} ${p.y + h / 2} L ${p.x} ${p.y + h - 3} Z`} fill="#13141a" stroke={stroke} strokeWidth={1.3} strokeLinejoin="round" />;
+  } else if (p.kind === "bus") {
+    body = <>
+      <rect x={p.x} y={p.y} width={w} height={h} rx={3} fill="#13141a" stroke={stroke} />
+      <rect x={p.x + w / 2 - 3} y={p.y + 4} width={6} height={h - 8} rx={2} fill="#5aa9e6" />
+    </>;
   } else if (p.kind === "adder" || p.kind === "cmp" || p.kind === "decoder") {
     body = <>{box(p.kind === "adder" ? "ADD" : p.kind === "cmp" ? "CMP" : "DEC", p.kind === "decoder" ? `${width(p)}→${2 ** width(p)}` : `${width(p)} bits`)}</>;
   } else if (p.kind === "split" || p.kind === "merge") {
@@ -1185,13 +1281,29 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProb
       wires: c.wires.filter((w) => (w.to.part !== p.id || ins.includes(w.to.pin)) && (w.from.part !== p.id || outs.includes(w.from.pin))) }, group);
   };
   const gate = ["and", "or", "xor", "nand", "nor", "xnor"].includes(p.kind);
-  const resettable = ["dff", "tff", "jkff", "reg", "counter"].includes(p.kind);
+  const resettable = ["dff", "tff", "jkff", "reg", "counter", "shift"].includes(p.kind);
   return (
     <div className={box}>
       <div className="flex items-center justify-between"><span className="text-ghost uppercase tracking-wider">{p.kind}</span>{actions()}</div>
       {p.kind !== "const0" && p.kind !== "const1" && (
         <label className="block space-y-1"><span className="text-dim">Label (its Verilog name)</span>
           <input value={p.label} onChange={(e) => set({ label: e.target.value.trim() }, `label:${p.id}`)} aria-label="Label" className={field} />
+        </label>
+      )}
+      {(p.kind === "mux" || p.kind === "demux" || p.kind === "rom" || p.kind === "ram") && (
+        <label className="flex items-center gap-2 text-dim">{p.kind === "rom" || p.kind === "ram" ? "address bits" : "select bits"}
+          <select value={selBits(p)} onChange={(e) => set({ n: Number(e.target.value) })} aria-label={p.kind === "rom" || p.kind === "ram" ? "Address bits" : "Select bits"} className="bg-pit border border-rim/60 rounded px-1 text-[12px] text-pale">
+            {(p.kind === "rom" || p.kind === "ram" ? [1, 2, 3, 4, 5, 6, 7, 8] : [1, 2, 3]).map((n) => (
+              <option key={n} value={n}>{n} ({2 ** n} {p.kind === "rom" || p.kind === "ram" ? "words" : "ways"})</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {p.kind === "bus" && (
+        <label className="flex items-center gap-2 text-dim">drivers
+          <select value={p.n ?? 2} onChange={(e) => set({ n: Number(e.target.value) })} aria-label="Number of drivers" className="bg-pit border border-rim/60 rounded px-1 text-[12px] text-pale">
+            {[2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
         </label>
       )}
       {gate && (
@@ -1202,7 +1314,7 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProb
         </label>
       )}
       {hasWidth(p.kind) && (
-        <label className="flex items-center gap-2 text-dim">{p.kind === "decoder" ? "select bits" : "width"}
+        <label className="flex items-center gap-2 text-dim">{p.kind === "decoder" ? "select bits" : p.kind === "encoder" || p.kind === "priority" ? "code bits" : "width"}
           <select value={width(p)} onChange={(e) => set({ w: Number(e.target.value) })} aria-label="Width" className="bg-pit border border-rim/60 rounded px-1 text-[12px] text-pale">
             {widthChoices(p.kind).filter((n) => n <= MAX_WIDTH).map((n) => <option key={n} value={n}>{n} bit{n === 1 ? "" : "s"}</option>)}
           </select>
@@ -1216,6 +1328,17 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProb
         </label>
       )}
       {p.kind === "hexin" && <div className="text-dim">Click its display to count up, shift-click to count down.</div>}
+      {p.kind === "rom" && <RomEditor p={p} onChange={(data) => set({ data }, `rom:${p.id}`)} />}
+      {p.kind === "ram" && <div className="text-dim">Reads at <span className="text-pale">addr</span> all the time; on a rising <span className="text-pale">clk</span> with <span className="text-pale">we</span> = 1 it stores <span className="text-pale">d</span>. Starts all 0, and &quot;Power up again&quot; clears it.</div>}
+      {p.kind === "shift" && <div className="text-dim"><span className="text-pale">si</span> enters and <span className="text-pale">so</span> leaves: si to so is serial in, serial out; si to q, serial in, parallel out; <span className="text-pale">load</span> + d to so, parallel in, serial out. <span className="text-pale">dir</span> = 0 shifts towards bit 0, 1 away from it.</div>}
+      {p.kind === "alu" && <div className="text-dim">op: {ALU_OPS.map((o, i) => `${i} ${o}`).join(", ")}. slt is signed; cout is for add and sub.</div>}
+      {p.kind === "encoder" && <div className="text-dim">One input set gives its number on y; with several set, their numbers OR together. Use a priority encoder if that can happen.</div>}
+      {p.kind === "priority" && <div className="text-dim">The highest input set wins; valid = 1 if any is set.</div>}
+      {p.kind === "bcd7" && <div className="text-dim">Wire a..g to a 7-segment display. 10 to 15 stay blank.</div>}
+      {p.kind === "keypad" && <div className="text-dim">While a key is held, code is its value (A-D are 10-13, * 14, # 15) and pressed is 1. In Verilog it is one port, {"{pressed, code}"}.</div>}
+      {p.kind === "probe" && <div className="text-dim">Shows a wire&apos;s value and records it in the logic analyzer. It is not a port and adds nothing to the Verilog.</div>}
+      {p.kind === "tri" && <div className="text-dim">With <span className="text-pale">en</span> = 1 it drives the bus with d. Wire tri-states into a Bus; only one should be enabled at a time.</div>}
+      {p.kind === "bus" && <div className="text-dim">The value of whichever driver is enabled. With none enabled it reads 0 here, where a real bus would float.</div>}
       {p.kind === "block" && p.block && (
         <div className="space-y-1.5">
           <div className="text-dim">An instance of block <span className="text-info">{p.block}</span> (Verilog: <span className="text-pale">{p.block} u_{p.label}</span>).</div>
@@ -1233,6 +1356,66 @@ function Inspector({ c, edit, sel, onDelete, onDuplicate, onHelp, probes, onProb
       {["led", "seg7", "hexout"].includes(p.kind) ? probe({ part: p.id, pin: "in" })
         : pins(p).outputs.length === 1 ? probe({ part: p.id, pin: pins(p).outputs[0] })
         : pins(p).outputs.map((o) => probe({ part: p.id, pin: o }, `Probe ${o}`))}
+    </div>
+  );
+}
+
+/** A ROM's words as hex, first address first. */
+function RomEditor({ p, onChange }: { p: Part; onChange: (data: number[]) => void }) {
+  const depth = 2 ** selBits(p), digits = Math.ceil(width(p) / 4);
+  const format = () => Array.from({ length: depth }, (_, a) => romWord(p, a).toString(16).toUpperCase().padStart(digits, "0")).join(" ");
+  const [draft, setDraft] = useState<string | null>(null);        // what is being typed; undo and resizes show the real contents
+  const words = (draft ?? "").trim().split(/[\s,]+/).filter(Boolean);
+  const bad = words.find((x) => !/^[0-9a-fA-F]+$/.test(x));
+  const change = (s: string) => {
+    setDraft(s);
+    const next = s.trim().split(/[\s,]+/).filter(Boolean);
+    if (next.every((x) => /^[0-9a-fA-F]+$/.test(x))) onChange(next.slice(0, depth).map((x) => parseInt(x, 16) % 2 ** width(p)));
+  };
+  return (
+    <label className="block space-y-1"><span className="text-dim">Contents in hex, address 0 first (missing words read 0)</span>
+      <textarea value={draft ?? format()} onChange={(e) => change(e.target.value)} onBlur={() => setDraft(null)} rows={4} spellCheck={false} aria-label="ROM contents"
+                className="w-full bg-pit border border-rim/60 rounded px-2 py-1 text-[12px] text-pale" />
+      {bad && <span className="text-danger">&quot;{bad}&quot; isn&apos;t hex.</span>}
+    </label>
+  );
+}
+
+/** A combinational circuit's K-map, with the row the switches are on; can rebuild the circuit from the minimal form. */
+function CircuitKmap({ t, row, current, module, onBuild }: { t: TruthTable; row: number; current: number; module: string; onBuild: (c: Circuit) => void }) {
+  const [sel, setSel] = useState(0);
+  const [form, setForm] = useState<"sop" | "pos">("sop");
+  const o = Math.min(sel, t.outputs.length - 1), out = t.outputs[o], n = t.inputs.length;
+  const sop = useMemo(() => minimizeSop(n, out.cells), [n, out.cells]);
+  const pos = useMemo(() => minimizePos(n, out.cells), [n, out.cells]);
+  const forms = Object.keys(FORM_LABELS) as CircuitForm[];
+  const builds = useMemo(() => forms.map((f) => circuitFromTable(t, f, module)), [t, module]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const chip = (on: boolean) => `px-2 py-0.5 rounded border ${on ? "border-info/60 text-info bg-info/10" : "border-rim/60 text-ghost"}`;
+  return (
+    <div className="rounded-xl border border-info/30 bg-info/5 p-3 space-y-3 font-mono text-[11px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-pale">K-map of this circuit</span>
+        {t.outputs.length > 1 && t.outputs.map((x, i) => <button key={x.name} className={chip(i === o)} onClick={() => setSel(i)}>{x.name}</button>)}
+        <span className="ml-auto text-dim">Group</span>
+        <button className={chip(form === "sop")} onClick={() => setForm("sop")}>1s (SOP)</button>
+        <button className={chip(form === "pos")} onClick={() => setForm("pos")}>0s (POS)</button>
+      </div>
+      {n >= 2 ? <KmapStudy names={t.inputs} cells={out.cells} terms={form === "sop" ? sop : pos} form={form} mark={row} title={out.name} />
+              : <p className="text-dim">A K-map needs at least two inputs.</p>}
+      <div className="space-y-0.5">
+        <div className="text-[13px] text-bright break-words">{out.name} = {form === "sop" ? sopText(sop, t.inputs, "math") : posText(pos, t.inputs, "math")}</div>
+        <div className="text-dim break-words">NAND only: {invertingText(sop, t.inputs, "nand")} · NOR only: {invertingText(pos, t.inputs, "nor")}</div>
+      </div>
+      <QmWorking names={t.inputs} cells={out.cells} form={form} />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-ghost">Rebuild from the minimal form ({current} gate{current === 1 ? "" : "s"} now):</span>
+        {forms.map((f, i) => (
+          <button key={f} onClick={() => onBuild(builds[i])} className="px-2 py-0.5 rounded border border-phosphor/40 text-phosphor hover:bg-phosphor/10">
+            {FORM_LABELS[f]} · {gateCount(builds[i])}
+          </button>
+        ))}
+        <span className="text-dim">Ctrl+Z undoes it.</span>
+      </div>
     </div>
   );
 }

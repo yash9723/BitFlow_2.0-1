@@ -23,6 +23,18 @@ export function size(p: Part): { w: number; h: number } {
     case "hexout": return { w: 76, h: 44 };
     case "seg7": return { w: 60, h: 104 };
     case "mux2": return { w: 56, h: 76 };
+    case "mux": return { w: 60, h: Math.max(76, n * 18 + 12) };
+    case "demux": return { w: 60, h: Math.max(76, outputs.length * 18 + 12) };
+    case "encoder": case "priority": return { w: 76, h: 60 };
+    case "bcd7": return { w: 70, h: 118 };
+    case "alu": return { w: 84, h: 92 };
+    case "shift": return { w: 84, h: n * 20 + 24 };
+    case "rom": return { w: 76, h: 60 };
+    case "ram": return { w: 84, h: n * 20 + 24 };
+    case "keypad": return { w: 156, h: 124 };
+    case "probe": return { w: 64, h: 30 };
+    case "tri": return { w: 56, h: 44 };
+    case "bus": return { w: 44, h: Math.max(44, n * 18 + 12) };
     case "dff": case "tff": case "jkff": return { w: 64, h: n * 20 + 24 };
     case "reg": case "counter": return { w: 76, h: n * 20 + 24 };
     case "adder": return { w: 76, h: 84 };

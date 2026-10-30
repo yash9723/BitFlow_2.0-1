@@ -2,22 +2,25 @@
 /**
  * components/studio/LogicTool.tsx — /studio/logic: edit a truth table (or build one
  * from a combinational design), see the K-map groups and minimal SOP/POS, and get
- * Verilog with an exhaustive testbench. Logic lives in lib/studio/logic-min.ts.
+ * Verilog with an exhaustive testbench, or a drawn circuit in the circuit editor
+ * (lib/studio/logic-circuit.ts). Logic lives in lib/studio/logic-min.ts.
  * Loaded client-only (components/studio/loaders.tsx): the draft is in localStorage.
  */
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import GeneratedCode from "@/components/studio/GeneratedCode";
+import { KMAP_COLORS, KmapStudy, QmWorking } from "@/components/studio/Kmap";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import type { BoardNetlist } from "@/lib/gate-sim";
 import { synthesizeDesign } from "@/lib/synth/client";
 import {
-  type Cell, type Implicant, type TruthTable, MAX_INPUTS, generateVerilog, groupRects, kmapLayout,
+  type Cell, type Implicant, type TruthTable, MAX_INPUTS, generateVerilog, invertingText,
   literals, minimizePos, minimizeSop, nameProblem, posText, sopText, tableFromNetlist,
 } from "@/lib/studio/logic-min";
+import { type CircuitForm, CIRCUIT_INCOMING_KEY, FORM_LABELS, circuitFromTable, gateCount } from "@/lib/studio/logic-circuit";
 
 const MAX_OUTPUTS = 4;
-const COLORS = ["#00e87a", "#4db8ff", "#ffb547", "#ff6bcb", "#a78bfa", "#f87171", "#2dd4bf", "#facc15"];
 
 const rows = (n: number, f: (m: number) => Cell): Cell[] => Array.from({ length: 1 << n }, (_, m) => f(m));
 const bit = (m: number, n: number, i: number) => (m >> (n - 1 - i)) & 1;
@@ -58,6 +61,7 @@ function valid(t: TruthTable | null): t is TruthTable {
 }
 
 export default function LogicTool() {
+  const router = useRouter();
   const [stored, setT] = useLocalStorage<TruthTable>("bitflow_studio_logic", PRESETS[0].table);
   const t = valid(stored) ? stored : PRESETS[0].table;
   const [form, setForm] = useLocalStorage<"sop" | "pos">("bitflow_studio_logic_form", "sop");
@@ -94,6 +98,19 @@ export default function LogicTool() {
 
   const out = t.outputs[sel];
   const terms = form === "sop" ? minimal[sel].sop : minimal[sel].pos;
+
+  // The same function drawn four ways; the editor picks the circuit up when it opens
+  const forms = Object.keys(FORM_LABELS) as CircuitForm[];
+  const builds = useMemo(
+    () => (problems.length ? null : forms.map((f) => circuitFromTable(t, f, moduleProblem ? "logic_fn" : moduleName))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, moduleName, moduleProblem, problems.length],
+  );
+  const openCircuit = (i: number) => {
+    if (!builds) return;
+    try { localStorage.setItem(CIRCUIT_INCOMING_KEY, JSON.stringify(builds[i])); } catch { window.alert("Your browser blocked local storage."); return; }
+    router.push("/studio/circuit");
+  };
 
   return (
     <div className="space-y-6">
@@ -139,15 +156,27 @@ export default function LogicTool() {
             ))}
           </div>
 
-          {n >= 2 && n <= 4 ? (
-            <Kmap t={t} o={sel} terms={terms} form={form} onCell={(m) => setCell(sel, m, nextCell(out.cells[m]))} />
+          {n >= 2 ? (
+            <KmapStudy names={t.inputs} cells={out.cells} terms={terms} form={form} title={out.name} onCell={(m) => setCell(sel, m, nextCell(out.cells[m]))} />
           ) : (
-            <p className="text-[12px] text-dim">
-              {n === 1 ? "A K-map needs at least two inputs." : "K-maps are drawn for 2–4 inputs; with more, the groups are listed below."}
-            </p>
+            <p className="text-[12px] text-dim">A K-map needs at least two inputs.</p>
           )}
 
           <Expressions names={t.inputs} out={out.name} sop={minimal[sel].sop} pos={minimal[sel].pos} form={form} n={n} />
+          <QmWorking names={t.inputs} cells={out.cells} form={form} />
+
+          <div className="p-3 rounded-lg border border-phosphor/30 bg-phosphor/5 space-y-2 font-mono text-[11px]">
+            <div className="text-pale">Build the circuit: every output, drawn in the circuit editor where you can run it</div>
+            <div className="flex flex-wrap gap-2">
+              {forms.map((f, i) => (
+                <button key={f} onClick={() => openCircuit(i)} disabled={!builds}
+                        className="px-2 py-1 rounded border border-phosphor/40 text-phosphor hover:bg-phosphor/10 disabled:opacity-40">
+                  {FORM_LABELS[f]}{builds ? ` · ${gateCount(builds[i])} gate${gateCount(builds[i]) === 1 ? "" : "s"}` : ""}
+                </button>
+              ))}
+            </div>
+            <div className="text-dim">Your circuit in the editor is replaced; Ctrl+Z there brings it back.</div>
+          </div>
         </div>
       </div>
 
@@ -272,51 +301,6 @@ function TableView({ t, sel, setSel, setCell, fill }: {
   );
 }
 
-function Kmap({ t, o, terms, form, onCell }: {
-  t: TruthTable; o: number; terms: Implicant[]; form: "sop" | "pos"; onCell: (m: number) => void;
-}) {
-  const k = kmapLayout(t.inputs);
-  const C = 52, L = 64, T = 40;                   // cell size, left and top label space
-  const W = L + k.cols.length * C + 8, H = T + k.rows.length * C + 8;
-  const bits = (v: number, w: number) => (w ? v.toString(2).padStart(w, "0") : "");
-  const cells = t.outputs[o].cells;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[420px] h-auto select-none" role="img"
-         aria-label={`K-map of ${t.outputs[o].name}`}>
-      <text x={L - 8} y={T - 22} textAnchor="end" fontSize={11} fill="#8b8fa3" fontFamily="monospace">{k.rowVars.join("")}</text>
-      <text x={L + 4} y={T - 22} fontSize={11} fill="#8b8fa3" fontFamily="monospace">{k.colVars.join("")}</text>
-      <line x1={L - 30} y1={T - 30} x2={L} y2={T} stroke="#2e3040" />
-      {k.cols.map((cv, c) => (
-        <text key={c} x={L + c * C + C / 2} y={T - 8} textAnchor="middle" fontSize={11} fill="#c8cad6" fontFamily="monospace">{bits(cv, k.colVars.length)}</text>
-      ))}
-      {k.rows.map((rv, r) => (
-        <text key={r} x={L - 8} y={T + r * C + C / 2 + 4} textAnchor="end" fontSize={11} fill="#c8cad6" fontFamily="monospace">{bits(rv, k.rowVars.length) || "–"}</text>
-      ))}
-      {k.rows.map((_, r) => k.cols.map((_, c) => {
-        const m = k.minterm(r, c), v = cells[m];
-        return (
-          <g key={`${r}-${c}`} onClick={() => onCell(m)} style={{ cursor: "pointer" }}>
-            <rect x={L + c * C} y={T + r * C} width={C} height={C} fill="#111218" stroke="#2e3040" />
-            <text x={L + c * C + 4} y={T + r * C + 11} fontSize={8} fill="#4a4d60" fontFamily="monospace">{m}</text>
-            <text x={L + c * C + C / 2} y={T + r * C + C / 2 + 6} textAnchor="middle" fontSize={17} fontFamily="monospace"
-                  fill={v === 1 ? "#00e87a" : v === "x" ? "#ffb547" : "#4a4d60"} fontWeight={v === 1 ? 700 : 400}>{showCell(v)}</text>
-          </g>
-        );
-      }))}
-      {terms.map((term, gi) => groupRects(term, k).map((g, pi) => {
-        const inset = 4 + (gi % 4) * 3;
-        return (
-          <rect key={`${gi}-${pi}`} x={L + g.c * C + inset} y={T + g.r * C + inset} width={g.w * C - 2 * inset} height={g.h * C - 2 * inset}
-                rx={10} fill={COLORS[gi % COLORS.length]} fillOpacity={0.07} stroke={COLORS[gi % COLORS.length]} strokeWidth={2}
-                pointerEvents="none">
-            <title>{form === "sop" ? sopText([term], t.inputs, "math") : posText([term], t.inputs, "math")}</title>
-          </rect>
-        );
-      }))}
-    </svg>
-  );
-}
-
 function Expressions({ names, out, sop, pos, form, n }: {
   names: string[]; out: string; sop: Implicant[]; pos: Implicant[]; form: "sop" | "pos"; n: number;
 }) {
@@ -334,7 +318,7 @@ function Expressions({ names, out, sop, pos, form, n }: {
           <div className="mt-2 flex flex-wrap gap-1.5">
             {ts.map((x, i) => (
               <span key={i} className="inline-flex items-center gap-1 font-mono text-[11px] text-pale">
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: COLORS[i % COLORS.length] }} />
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: KMAP_COLORS[i % KMAP_COLORS.length] }} />
                 {text([x], names, "math")}
               </span>
             ))}
@@ -343,7 +327,19 @@ function Expressions({ names, out, sop, pos, form, n }: {
       </div>
     );
   };
-  return <div className="space-y-2">{row("Sum of products", sop, "sop")}{row("Product of sums", pos, "pos")}</div>;
+  const inverted = (label: string, text: string) => (
+    <div className="flex flex-wrap items-baseline gap-x-3 px-3 font-mono text-[11px]">
+      <span className="uppercase tracking-wider text-[10px] text-dim">{label}</span>
+      <span className="text-pale break-words">{out} = {text}</span>
+    </div>
+  );
+  return (
+    <div className="space-y-2">
+      {row("Sum of products", sop, "sop")}{row("Product of sums", pos, "pos")}
+      {inverted("NAND only", invertingText(sop, names, "nand"))}
+      {inverted("NOR only", invertingText(pos, names, "nor"))}
+    </div>
+  );
 }
 
 function FromDesign({ onTable }: { onTable: (t: TruthTable) => void }) {

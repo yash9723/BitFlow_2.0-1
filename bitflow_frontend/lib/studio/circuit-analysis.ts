@@ -15,15 +15,18 @@ export interface Probe { name: string; width: number }
 export interface Trace { probes: Probe[]; steps: number[][] }
 
 const bin = (v: number, w: number) => (w === 1 ? String(v & 1) : v.toString(2).padStart(w, "0"));
+/** The steps recorded for these probes: rows from before the probes changed are left out (the editor draws once before it restarts the trace). */
+const current = (t: Trace) => t.steps.filter((row) => row.length === t.probes.length);
 
 /** The trace as a parsed VCD (time unit: one step), keeping only the changes. */
 export function traceToParsed(t: Trace): ParsedVcd {
+  const steps = current(t);
   return {
     timescale: "1 step",
-    maxTime: Math.max(1, t.steps.length),
+    maxTime: Math.max(1, steps.length),
     signals: t.probes.map((p, i) => {
       const changes: { time: number; value: string }[] = [];
-      t.steps.forEach((row, s) => { if (s === 0 || row[i] !== t.steps[s - 1][i]) changes.push({ time: s, value: bin(row[i], p.width) }); });
+      steps.forEach((row, s) => { if (s === 0 || row[i] !== steps[s - 1][i]) changes.push({ time: s, value: bin(row[i], p.width) }); });
       return { id: `p${i}`, name: p.name, width: p.width, type: "wire", changes };
     }),
   };
@@ -35,13 +38,14 @@ export function traceToVcd(t: Trace, module = "circuit"): string {
   const lines = ["$timescale 1ns $end", `$scope module ${module} $end`,
     ...t.probes.map((p, i) => `$var wire ${p.width} ${id(i)} ${p.name.replace(/\s+/g, "_")} $end`),
     "$upscope $end", "$enddefinitions $end"];
-  t.steps.forEach((row, s) => {
-    const changed = row.map((v, i) => [v, i] as const).filter(([v, i]) => s === 0 || v !== t.steps[s - 1][i]);
+  const steps = current(t);
+  steps.forEach((row, s) => {
+    const changed = row.map((v, i) => [v, i] as const).filter(([v, i]) => s === 0 || v !== steps[s - 1][i]);
     if (!changed.length) return;
     lines.push(`#${s}`);
     for (const [v, i] of changed) lines.push(t.probes[i].width === 1 ? `${v & 1}${id(i)}` : `b${bin(v, t.probes[i].width)} ${id(i)}`);
   });
-  lines.push(`#${t.steps.length}`);
+  lines.push(`#${steps.length}`);
   return `${lines.join("\n")}\n`;
 }
 

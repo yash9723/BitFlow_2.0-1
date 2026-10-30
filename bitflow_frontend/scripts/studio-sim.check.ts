@@ -14,6 +14,7 @@ import {
   CIRCUIT_EXAMPLES, defaultEvents as circuitEvents, generateTestbench as circuitTestbench, generateVerilog as circuitVerilog, inputParts, outputParts,
 } from "../lib/studio/circuit";
 import { NONE, makeBlock } from "../lib/studio/circuit-edit";
+import { circuitFromTable } from "../lib/studio/logic-circuit";
 import { GENERATORS, type Values, defaults } from "../lib/studio/generators";
 import { TEMPLATES } from "../lib/templates";
 import { type TbOptions, generateTestbench as tbFor, parseModule } from "../lib/studio/tbgen";
@@ -85,6 +86,12 @@ for (const { label, circuit } of [...CIRCUIT_EXAMPLES, ...Object.entries(PART_CA
   if (typeof r === "string") throw new Error(`${label}: ${r}`);
   const top = { ...r.circuit, blocks: { core: r.def } };
   cases.push([`circuit block: ${label}`, { design: circuitVerilog(top), testbench: circuitTestbench(top, circuitEvents(circuit, 64, 5)) }]);
+}
+
+// Circuits the K-map tool draws, in all four forms
+for (const [name, t] of tables) for (const form of ["sop", "pos", "nand", "nor"] as const) {
+  const circuit = circuitFromTable(t, form);
+  cases.push([`k-map circuit: ${name} (${form})`, { design: circuitVerilog(circuit), testbench: circuitTestbench(circuit, circuitEvents(circuit, 64, 5)) }]);
 }
 
 // Generators: defaults and a few variants, each against its own model-checked testbench

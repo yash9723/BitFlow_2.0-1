@@ -26,6 +26,7 @@
     "check-radix": "tsx scripts/radix.check.ts",
     "check-plot": "tsx scripts/plot.check.ts",
     "check-logic": "tsx scripts/logic-min.check.ts",
+    "check-logic-circuit": "tsx scripts/logic-circuit.check.ts",
     "check-fsm": "tsx scripts/fsm-gen.check.ts",
     "check-wave": "tsx scripts/wave.check.ts",
     "check-circuit": "tsx scripts/circuit.check.ts",

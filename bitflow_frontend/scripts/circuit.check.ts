@@ -12,7 +12,7 @@ import {
   type Selection, History, NONE, blockNameIssue, copy, inRect, makeBlock, merge, move, nextLabel, paste, remove, renameBlock, selectAll, ungroupBlock, usesBlock, withBlock, wirePath,
 } from "../lib/studio/circuit-edit";
 import { netlistToCircuit } from "../lib/studio/circuit-import";
-import { inputParts, outputParts, toBits } from "../lib/studio/circuit";
+import { ALU_OPS, BCD7, busConflicts, inputParts, outputParts, romWord, toBits } from "../lib/studio/circuit";
 import { PART_CASES } from "./circuit-cases";
 import { longestPath, traceToParsed, traceToVcd } from "../lib/studio/circuit-analysis";
 import { parseVcd } from "../lib/vcd-parser";
@@ -191,6 +191,96 @@ const jk = (j: number, k: number) => { put(tj, "j", j); put(tj, "k", k); clk(tj)
 assert.deepEqual([jk(1, 0), jk(0, 0), jk(1, 1), jk(1, 1), jk(0, 1), jk(0, 0)], [1, 1, 0, 1, 0, 0]);
 const k5 = sim("const5");
 put(k5, "x", 18); assert.equal(num(k5, "hit"), 0); put(k5, "x", 19); assert.equal(num(k5, "hit"), 1);
+// The selecting parts: every select value, with one data input high at a time
+const m4 = sim("mux4");
+for (let s = 0; s < 4; s++) for (let d = 0; d < 4; d++) {
+  put(m4, "s", s);
+  for (let i = 0; i < 4; i++) put(m4, `d${i}`, +(i === d));
+  assert.equal(num(m4, "y"), +(s === d), `mux4 s=${s} d=${d}`);
+}
+const m8 = sim("mux8");
+put(m8, "a", 2); put(m8, "b", 3);
+assert.deepEqual([0, 1, 7].map((s) => { put(m8, "s", s); return num(m8, "y"); }), [2, 0, 3], "open inputs read 0");
+const dm = sim("demux4");
+for (let s = 0; s < 4; s++) for (const d of [0, 1]) {
+  put(dm, "s", s); put(dm, "d", d);
+  for (let i = 0; i < 4; i++) assert.equal(num(dm, `y${i}`), +(i === s) & d, `demux s=${s} d=${d} y${i}`);
+}
+const en = sim("encoder4");
+for (let i = 0; i < 4; i++) { put(en, "x", 1 << i); assert.deepEqual([num(en, "y"), num(en, "ok")], [i, 1], `encoder ${i}`); }
+put(en, "x", 0); assert.deepEqual([num(en, "y"), num(en, "ok")], [0, 0]);
+put(en, "x", 0b0110); assert.equal(num(en, "y"), 1 | 2, "several set: their numbers OR");
+const pr = sim("priority8");
+for (let x = 0; x < 256; x++) {
+  put(pr, "x", x);
+  assert.deepEqual([num(pr, "y"), num(pr, "ok")], [x ? Math.floor(Math.log2(x)) : 0, +(x > 0)], `priority ${x}`);
+}
+const bc = sim("bcd");
+for (let d = 0; d < 16; d++) { put(bc, "d", d); assert.equal(num(bc, "seg"), BCD7[d], `bcd ${d}`); }
+assert.equal(BCD7[8], 0x7f, "8 lights every segment");
+assert.equal(BCD7[1], 0b0000110, "1 lights b and c");
+// ALU: every operation on every pair of 3-bit values
+const au = sim("alu3");
+const signed = (v: number) => (v >= 4 ? v - 8 : v);
+for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) for (let op = 0; op < 8; op++) {
+  put(au, "a", a); put(au, "b", b); put(au, "op", op);
+  const want = [a + b, a - b, a & b, a | b, a ^ b, +(signed(a) < signed(b)), ~a, a][op] & 7;
+  const carry = op === 0 ? +(a + b > 7) : op === 1 ? +(a >= b) : 0;
+  assert.deepEqual([num(au, "y"), num(au, "z"), num(au, "c")], [want, +(want === 0), carry], `${ALU_OPS[op]} ${a} ${b}`);
+}
+// Shift register: right, left, parallel load, and the bit leaving on so
+const sr = sim("shift4");
+const stepS = () => clk(sr);
+put(sr, "si", 1); stepS(); assert.deepEqual([num(sr, "q"), num(sr, "so")], [0b1000, 0], "enters at the top going right");
+stepS(); stepS(); stepS(); assert.deepEqual([num(sr, "q"), num(sr, "so")], [0b1111, 1], "four shifts fill it; so is bit 0");
+put(sr, "si", 0); put(sr, "dir", 1); stepS(); assert.deepEqual([num(sr, "q"), num(sr, "so")], [0b1110, 1], "left: enters at bit 0; so is the top bit");
+put(sr, "d", 0b0101); put(sr, "load", 1); stepS(); assert.equal(num(sr, "q"), 0b0101, "parallel load");
+put(sr, "load", 0); put(sr, "rst", 1); assert.equal(num(sr, "q"), 0, "async reset"); put(sr, "rst", 0);
+// ROM reads its words; a word past the data reads 0, and too wide a word is cut to fit
+const rm = sim("rom4");
+assert.deepEqual([0, 1, 2, 3].map((a) => { put(rm, "addr", a); return num(rm, "q"); }), [3, 9, 0, 15]);
+const romPart = PART_CASES.rom4.parts.find((p) => p.kind === "rom")!;
+assert.equal(romWord(romPart, 200), 0);
+assert.equal(romWord({ ...romPart, data: [0x1f3] }, 0), 3);
+// RAM: writes only on a clock edge with we = 1; words keep their own values; reads at once
+const rw = sim("ram4");
+const write = (a: number, d: number) => { put(rw, "addr", a); put(rw, "d", d); put(rw, "we", 1); clk(rw); put(rw, "we", 0); };
+write(0, 2); write(3, 1);
+assert.deepEqual([0, 1, 2, 3].map((a) => { put(rw, "addr", a); return num(rw, "q"); }), [2, 0, 0, 1]);
+put(rw, "addr", 0); put(rw, "d", 3); clk(rw); assert.equal(num(rw, "q"), 2, "no write without we");
+// Keypad: one 5-bit port, split into code and pressed
+const kp = sim("keys");
+put(kp, "pad", 16 + 11); assert.deepEqual([num(kp, "code"), num(kp, "idle")], [11, 0]);
+put(kp, "pad", 0); assert.deepEqual([num(kp, "code"), num(kp, "idle")], [0, 1]);
+// Tri-state bus: whichever driver is enabled; two at once is flagged, none reads 0
+const tb2 = compile(PART_CASES.tribus), tsim = new GateSim(tb2.net);
+put(tsim, "a", 1); put(tsim, "b", 2);
+const readPin = (r: { part: string; pin: string }) => toNumber((tb2.bitsOf(r) ?? []).map((b) => tsim.net(b)));
+assert.equal(num(tsim, "y"), 0, "no driver enabled");
+assert.deepEqual(busConflicts(PART_CASES.tribus, readPin), []);
+put(tsim, "ea", 1); assert.equal(num(tsim, "y"), 1);
+put(tsim, "ea", 0); put(tsim, "eb", 1); assert.equal(num(tsim, "y"), 2);
+assert.deepEqual(busConflicts(PART_CASES.tribus, readPin), []);
+put(tsim, "ea", 1); assert.deepEqual(busConflicts(PART_CASES.tribus, readPin), ["line"]);
+const sharedEn = { ...PART_CASES.tribus, wires: PART_CASES.tribus.wires.map((w) => (w.to.part === "tb_id" && w.to.pin === "en" ? { ...w, from: { part: "ea_id", pin: "out" } } : w)) };
+assert.ok(validate(sharedEn).some((i) => /share an enable/.test(i.msg)));
+const notTri = { ...PART_CASES.tribus, wires: PART_CASES.tribus.wires.map((w) => (w.from.part === "tb_id" ? { ...w, from: { part: "b_id", pin: "out" } } : w)) };
+assert.ok(validate(notTri).some((i) => /other than a tri-state/.test(i.msg)));
+// A helper name the part declares is taken: a part labelled like it is an error, not bad Verilog
+const clash: Circuit = { ...PART_CASES.alu3, parts: [...PART_CASES.alu3.parts, { id: "k", kind: "const", x: 0, y: 0, label: "u_sum", w: 3 }] };
+assert.ok(validate(clash).some((i) => /"u_sum" is used twice/.test(i.msg)));
+// The largest RAM still simulates and validates without trouble
+const big: Circuit = { module: "big", parts: [{ id: "c", kind: "clock", x: 0, y: 0, label: "clk" }, { id: "w", kind: "switch", x: 0, y: 0, label: "we" }, { id: "a", kind: "hexin", x: 0, y: 0, label: "addr", w: 8 },
+  { id: "d", kind: "hexin", x: 0, y: 0, label: "d", w: 16 }, { id: "r", kind: "ram", x: 0, y: 0, label: "mem", n: 8, w: 16 }, { id: "q", kind: "hexout", x: 0, y: 0, label: "q", w: 16 }],
+wires: ([["c", "out", "r", "clk"], ["w", "out", "r", "we"], ["a", "out", "r", "addr"], ["d", "out", "r", "d"], ["r", "q", "q", "in"]] as const).map(([f, fp, t, tp], i) => ({ id: `b${i}`, from: { part: f, pin: fp }, to: { part: t, pin: tp } })) };
+const t0 = Date.now();
+assert.deepEqual(validate(big).filter((i) => i.level === "error"), []);
+const bs = new GateSim(compile(big).net);
+put(bs, "addr", 200); put(bs, "d", 0xbeef); put(bs, "we", 1); clk(bs); put(bs, "we", 0);
+put(bs, "addr", 199); assert.equal(num(bs, "q"), 0);
+put(bs, "addr", 200); assert.equal(num(bs, "q"), 0xbeef);
+assert.ok(Date.now() - t0 < 3000, `256 x 16 RAM took ${Date.now() - t0} ms`);
+
 // Widths: a 4-bit pin into a 1-bit pin is an error; Verilog declares buses and multi-output signals
 const mismatch: Circuit = { ...PART_CASES.adder4, wires: [...PART_CASES.adder4.wires.filter((w) => w.to.part !== "cout_id"),
   { id: "bad", from: { part: "add_id", pin: "sum" }, to: { part: "cout_id", pin: "in" } }] };
@@ -226,6 +316,10 @@ assert.match(vcd, /\$var wire 4 " n \$end/);
 assert.match(vcd, /#2\nb0101 "/);
 assert.ok(!/#3\n/.test(vcd), "no entry for a step where nothing changed");
 assert.equal(parseVcd(vcd).signals[1].changes.length, 3, "our own parser reads it back");
+// Replacing the circuit: one draw still has the old rows with the new, longer probe list, and must not throw
+const stale = { probes: [{ name: "a", width: 1 }, { name: "bus", width: 4 }], steps: [[1], [0]] };
+assert.deepEqual(traceToParsed(stale).signals[1].changes, []);
+assert.ok(traceToVcd(stale).includes("enddefinitions"));
 
 // Blocks: every example and part case, with all its logic moved into a block, behaves the same
 const ALL: [string, Circuit][] = [...CIRCUIT_EXAMPLES.map((e) => [e.label, e.circuit] as [string, Circuit]), ...Object.entries(PART_CASES)];

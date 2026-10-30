@@ -11,6 +11,11 @@
  * change one input at a time (a clock and its data never move at the same
  * instant, so Icarus can't race) and check every output after each change
  * against GateSim. Self-check: scripts/circuit.check.ts.
+ *
+ * Tri-state buffers and buses: GateSim has no Z level, so a bus is the OR of (en & d) of
+ * its drivers, in the simulator and in the Verilog alike. busConflicts() reports two
+ * drivers enabled at once, which on real wires would be a short.
+ * ponytail: no Z or X level; a bus with no driver enabled reads 0, not floating.
  */
 import { type Bit, type BoardNetlist, GateSim, toNumber } from "../gate-sim";
 import { nameProblem } from "./logic-min";
@@ -20,6 +25,7 @@ export type PartKind =
   | "not" | "and" | "or" | "xor" | "nand" | "nor" | "xnor" | "mux2"
   | "dff" | "tff" | "jkff" | "reg" | "counter"
   | "adder" | "cmp" | "decoder" | "split" | "merge"
+  | "mux" | "demux" | "encoder" | "priority" | "bcd7" | "alu" | "shift" | "rom" | "ram" | "keypad" | "probe" | "tri" | "bus"
   | "led" | "seg7" | "hexout"
   | "block";
 /** A block's pins: its definition's inputs and outputs (switch/hex-input and LED/display parts), by label. */
@@ -27,10 +33,11 @@ export interface BlockPorts { inputs: { name: string; width: number }[]; outputs
 /**
  * w: width in bits (buses; a decoder's select width); value: a constant's value; n: gate inputs; reset: flip-flop reset pin;
  * block/ports: a block instance's definition (a key of Circuit.blocks) and a copy of its pins.
+ * n is also a mux's or demux's select bits, a ROM's or RAM's address bits and a bus's drivers; data: a ROM's contents.
  */
 export interface Part {
   id: string; kind: PartKind; x: number; y: number; label: string; n?: number; reset?: boolean; w?: number; value?: number;
-  block?: string; ports?: BlockPorts;
+  block?: string; ports?: BlockPorts; data?: number[];
 }
 export interface PinRef { part: string; pin: string }
 /** bend: where the user dragged the wire's middle run (x of the vertical run; y when it routes backwards). */
@@ -44,9 +51,9 @@ export type Library = Record<string, Circuit>;
 /** One input change, as the editor records it and the testbench replays it (a bus input's whole value). */
 export interface InputEvent { port: string; value: number }
 
-export const INPUT_KINDS: PartKind[] = ["switch", "button", "clock", "hexin"];
+export const INPUT_KINDS: PartKind[] = ["switch", "button", "clock", "hexin", "keypad"];
 export const OUTPUT_KINDS: PartKind[] = ["led", "seg7", "hexout"];
-const SEQUENTIAL: PartKind[] = ["dff", "tff", "jkff", "reg", "counter"];
+const SEQUENTIAL: PartKind[] = ["dff", "tff", "jkff", "reg", "counter", "shift", "ram"];
 const RESERVED = new Set(["errors", "dut"]);
 export const MAX_WIDTH = 16;
 const GATE_OPS: Record<string, { cell: string; last: string; op: string; invert: boolean }> = {
@@ -58,8 +65,21 @@ const GATE_OPS: Record<string, { cell: string; last: string; op: string; invert:
   xnor: { cell: "$_XOR_", last: "$_XNOR_", op: "^", invert: true },
 };
 
-/** A part's width setting: 1..16 bits (a decoder: 1..4 select bits). */
-export const width = (p: Part) => Math.max(1, Math.min(p.kind === "decoder" ? 4 : MAX_WIDTH, p.w ?? 1));
+/** A part's width setting: 1..16 bits (a decoder or encoder: 1..4 bits of code). */
+export const width = (p: Part) => Math.max(1, Math.min(p.kind === "decoder" || p.kind === "encoder" || p.kind === "priority" ? 4 : MAX_WIDTH, p.w ?? 1));
+/** A mux's or demux's select bits (1..3), a ROM's or RAM's address bits (1..8). */
+export const selBits = (p: Part) => Math.max(1, Math.min(p.kind === "rom" || p.kind === "ram" ? 8 : 3, p.n ?? (p.kind === "rom" || p.kind === "ram" ? 4 : 2)));
+/** A ROM's word at an address, kept inside its width (missing words read 0). */
+export const romWord = (p: Part, addr: number) => Math.max(0, Math.floor(p.data?.[addr] ?? 0)) % 2 ** width(p);
+/** Segments a..g (bit 0 = a) for BCD digits 0-9; 10-15 stay blank. */
+export const BCD7 = [0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f, 0, 0, 0, 0, 0, 0];
+const SEGMENTS = ["a", "b", "c", "d", "e", "f", "g"];
+/** ALU operations, by the value of its op input. */
+export const ALU_OPS = ["add", "sub", "and", "or", "xor", "slt", "not a", "pass a"];
+/** Internal Verilog names a part declares, on top of its label: they must be free too. */
+const HELPER_NAMES: Partial<Record<PartKind, string[]>> = {
+  alu: ["a", "b", "sub", "sum", "slt"], encoder: ["in"], priority: ["in"], rom: ["data"], ram: ["mem", "i"],
+};
 export const isSequential = (p: Part) => SEQUENTIAL.includes(p.kind);
 
 export function pins(p: Part): { inputs: string[]; outputs: string[] } {
@@ -67,6 +87,18 @@ export function pins(p: Part): { inputs: string[]; outputs: string[] } {
   const bits = (prefix: string) => Array.from({ length: width(p) }, (_, i) => `${prefix}${i}`);
   switch (p.kind) {
     case "switch": case "button": case "clock": case "hexin": case "const0": case "const1": case "const": return { inputs: [], outputs: ["out"] };
+    case "keypad": return { inputs: [], outputs: ["code", "pressed"] };
+    case "mux": return { inputs: [...Array.from({ length: 2 ** selBits(p) }, (_, i) => `d${i}`), "s"], outputs: ["y"] };
+    case "demux": return { inputs: ["d", "s"], outputs: Array.from({ length: 2 ** selBits(p) }, (_, i) => `y${i}`) };
+    case "encoder": case "priority": return { inputs: ["in"], outputs: ["y", "valid"] };
+    case "bcd7": return { inputs: ["in"], outputs: SEGMENTS };
+    case "alu": return { inputs: ["a", "b", "op"], outputs: ["y", "zero", "cout"] };
+    case "shift": return { inputs: ["si", "d", "load", "dir", "clk", ...rst], outputs: ["q", "so"] };
+    case "rom": return { inputs: ["addr"], outputs: ["q"] };
+    case "ram": return { inputs: ["addr", "d", "we", "clk"], outputs: ["q"] };
+    case "probe": return { inputs: ["in"], outputs: [] };
+    case "tri": return { inputs: ["d", "en"], outputs: ["y"] };
+    case "bus": return { inputs: Array.from({ length: Math.max(2, Math.min(4, p.n ?? 2)) }, (_, i) => `in${i}`), outputs: ["out"] };
     case "not": return { inputs: ["a"], outputs: ["y"] };
     case "mux2": return { inputs: ["d0", "d1", "s"], outputs: ["y"] };
     case "dff": return { inputs: ["d", "clk", ...rst], outputs: ["q"] };
@@ -94,6 +126,15 @@ export function pinWidth(p: Part, pin: string): number {
     case "hexin": case "hexout": case "const": case "not": case "and": case "or": case "xor": case "nand": case "nor": case "xnor":
       return w;
     case "mux2": return pin === "s" ? 1 : w;
+    case "mux": case "demux": return pin === "s" ? selBits(p) : w;
+    case "keypad": return pin === "code" ? 4 : 1;
+    case "encoder": case "priority": return pin === "in" ? 2 ** w : pin === "y" ? w : 1;
+    case "bcd7": return pin === "in" ? 4 : 1;
+    case "alu": return pin === "op" ? 3 : pin === "a" || pin === "b" || pin === "y" ? w : 1;
+    case "shift": return pin === "d" || pin === "q" ? w : 1;
+    case "rom": return pin === "addr" ? selBits(p) : w;
+    case "ram": return pin === "addr" ? selBits(p) : pin === "d" || pin === "q" ? w : 1;
+    case "probe": case "tri": case "bus": return pin === "en" ? 1 : w;
     case "reg": return pin === "d" || pin === "q" ? w : 1;
     case "counter": return pin === "q" ? w : 1;
     case "adder": return pin === "a" || pin === "b" || pin === "sum" ? w : 1;
@@ -115,7 +156,7 @@ const isOutput = (p: Part) => OUTPUT_KINDS.includes(p.kind);
 export const inputParts = (c: Circuit) => c.parts.filter(isInput);
 export const outputParts = (c: Circuit) => c.parts.filter(isOutput);
 /** A port's width (bus inputs and outputs, 7 for a seven-segment display). */
-export const portWidth = (p: Part) => (p.kind === "seg7" ? 7 : p.kind === "hexin" || p.kind === "hexout" ? width(p) : 1);
+export const portWidth = (p: Part) => (p.kind === "seg7" ? 7 : p.kind === "keypad" ? 5 : p.kind === "hexin" || p.kind === "hexout" ? width(p) : 1);
 /** A number as `w` bits, LSB first. */
 export const toBits = (v: number, w: number) => Array.from({ length: w }, (_, i) => Math.floor(v / 2 ** i) % 2);
 /** A constant's value, kept inside its width. */
@@ -163,6 +204,12 @@ function build(c: Circuit, ctx: Ctx, bind: Binding, ports: BoardNetlist["ports"]
   const fit = (bits: Bit[] | undefined, w: number) => (bits && bits.length === w ? bits : Array<Bit>(w).fill("0"));
   const outBits = new Map<string, Bit[]>();
   for (const p of c.parts) {
+    if (p.kind === "keypad") {                                        // one 5-bit port: {pressed, code}
+      const all = bind ? fit(bind.inputs.get(p.label), 5) : Array.from({ length: 5 }, fresh);
+      outBits.set(`${p.id}.code`, all.slice(0, 4));
+      outBits.set(`${p.id}.pressed`, [all[4]]);
+      continue;
+    }
     for (const o of pins(p).outputs) {
       const w = pinWidth(p, o);
       outBits.set(`${p.id}.${o}`,
@@ -193,6 +240,7 @@ function build(c: Circuit, ctx: Ctx, bind: Binding, ports: BoardNetlist["ports"]
     const one = (pin: string) => inBits(p, pin)[0];
     const rst = p.reset ? one("rst") : undefined;
     const w = width(p);
+    if (p.kind === "keypad") { if (!bind) ports[p.label] = { direction: "input", bits: [...out("code"), ...out("pressed")] }; continue; }
     if (isInput(p)) { if (!bind) ports[p.label] = { direction: "input", bits: out() }; continue; }
     if (isOutput(p)) {
       const bits = p.kind === "seg7" ? pins(p).inputs.map(one) : inBits(p, "in");
@@ -265,6 +313,99 @@ function build(c: Circuit, ctx: Ctx, bind: Binding, ports: BoardNetlist["ports"]
         });
         break;
       }
+      case "mux": {
+        const s = inBits(p, "s");
+        out().forEach((y, bit) => {                                      // a tree of 2:1 muxes, LSB of the select first
+          let level = pins(p).inputs.slice(0, -1).map((d) => inBits(p, d)[bit]);
+          for (const sb of s) level = level.flatMap((a, i, all) => (i % 2 ? [] : [cell("$_MUX_", { A: a, B: all[i + 1], S: sb })]));
+          cell("$_BUF_", { A: level[0] }, y);
+        });
+        break;
+      }
+      case "demux": {
+        const s = inBits(p, "s"), inv = s.map((b) => cell("$_NOT_", { A: b })), d = inBits(p, "d");
+        pins(p).outputs.forEach((o, k) => out(o).forEach((y, bit) => {
+          cell("$_BUF_", { A: s.reduce<Bit>((acc, b, i) => cell("$_AND_", { A: acc, B: (k >> i) & 1 ? b : inv[i] }), d[bit]) }, y);
+        }));
+        break;
+      }
+      case "encoder": case "priority": {
+        const ins = inBits(p, "in"), y = out("y");
+        const any = (bits: Bit[]) => bits.reduce<Bit>((acc, b) => (acc === "0" ? b : cell("$_OR_", { A: acc, B: b })), "0");
+        // Priority: input k counts only if no higher input is set
+        let higher: Bit = "0";
+        const win: Bit[] = [];
+        for (let k = ins.length - 1; k >= 0; k--) {
+          win[k] = p.kind === "priority" && higher !== "0" ? cell("$_ANDNOT_", { A: ins[k], B: higher }) : ins[k];
+          higher = higher === "0" ? ins[k] : cell("$_OR_", { A: higher, B: ins[k] });
+        }
+        y.forEach((b, i) => cell("$_BUF_", { A: any(win.filter((_, k) => (k >> i) & 1)) }, b));
+        cell("$_BUF_", { A: higher }, out("valid")[0]);
+        break;
+      }
+      case "bcd7": {
+        const a = inBits(p, "in");
+        SEGMENTS.forEach((seg, i) => cell("$_BUF_", { A: lookup(BCD7.map((v) => (v >> i) & 1), a, cell) }, out(seg)[0]));
+        break;
+      }
+      case "rom": {
+        const a = inBits(p, "addr"), words = Array.from({ length: 2 ** selBits(p) }, (_, k) => romWord(p, k));
+        out().forEach((y, bit) => cell("$_BUF_", { A: lookup(words.map((v) => Math.floor(v / 2 ** bit) % 2), a, cell) }, y));
+        break;
+      }
+      case "ram": {
+        const a = inBits(p, "addr"), d = inBits(p, "d"), clk = one("clk"), inv = a.map((b) => cell("$_NOT_", { A: b }));
+        const words = Array.from({ length: 2 ** selBits(p) }, (_, k) => {
+          const write = a.reduce<Bit>((acc, b, i) => cell("$_AND_", { A: acc, B: (k >> i) & 1 ? b : inv[i] }), one("we"));
+          return d.map((di) => { const q = fresh(); ff(cell("$_MUX_", { A: q, B: di, S: write }), clk, q); return q; });
+        });
+        out().forEach((y, bit) => {                                      // read: a mux tree over the words
+          let level = words.map((word) => word[bit]);
+          for (const sb of a) level = level.flatMap((x, i, all) => (i % 2 ? [] : [cell("$_MUX_", { A: x, B: all[i + 1], S: sb })]));
+          cell("$_BUF_", { A: level[0] }, y);
+        });
+        break;
+      }
+      case "shift": {
+        const q = out("q"), d = inBits(p, "d"), load = one("load"), dir = one("dir"), si = one("si"), clk = one("clk");
+        q.forEach((b, i) => {
+          const right = i === w - 1 ? si : q[i + 1], left = i === 0 ? si : q[i - 1];   // dir = 0 moves towards bit 0, dir = 1 away from it
+          ff(cell("$_MUX_", { A: cell("$_MUX_", { A: right, B: left, S: dir }), B: d[i], S: load }), clk, b, rst);
+        });
+        cell("$_MUX_", { A: q[0], B: q[w - 1], S: dir }, out("so")[0]);
+        break;
+      }
+      case "alu": {
+        const a = inBits(p, "a"), b = inBits(p, "b"), [o0, o1, o2] = inBits(p, "op"), y = out("y");
+        const n0 = cell("$_NOT_", { A: o0 }), n1 = cell("$_NOT_", { A: o1 }), n2 = cell("$_NOT_", { A: o2 });
+        const is = (k: number) => [k & 1 ? o0 : n0, k & 2 ? o1 : n1, k & 4 ? o2 : n2].reduce((acc, s) => cell("$_AND_", { A: acc, B: s }));
+        const ops = ALU_OPS.map((_, k) => is(k));
+        const sub = cell("$_OR_", { A: ops[1], B: ops[5] });              // subtract for sub and slt: a + ~b + 1
+        const addsub = cell("$_OR_", { A: ops[0], B: ops[1] });
+        let carry: Bit = sub;
+        const sum: Bit[] = [];
+        for (let i = 0; i < w; i++) {
+          const bx = cell("$_XOR_", { A: b[i], B: sub }), x = cell("$_XOR_", { A: a[i], B: bx });
+          sum.push(cell("$_XOR_", { A: x, B: carry }));
+          carry = cell("$_OR_", { A: cell("$_AND_", { A: a[i], B: bx }), B: cell("$_AND_", { A: x, B: carry }) });
+        }
+        // Signed a < b: the sign of a if the signs differ, else the sign of a - b
+        const slt = cell("$_MUX_", { A: sum[w - 1], B: a[w - 1], S: cell("$_XOR_", { A: a[w - 1], B: b[w - 1] }) });
+        const pick = (terms: [Bit, Bit][]) => terms.map(([en, v]) => cell("$_AND_", { A: en, B: v })).reduce((acc, t) => cell("$_OR_", { A: acc, B: t }));
+        let nonzero: Bit = "0";
+        y.forEach((yi, i) => {
+          const r = pick([[addsub, sum[i]], [ops[2], cell("$_AND_", { A: a[i], B: b[i] })], [ops[3], cell("$_OR_", { A: a[i], B: b[i] })],
+            [ops[4], cell("$_XOR_", { A: a[i], B: b[i] })], [ops[5], i === 0 ? slt : "0"], [ops[6], cell("$_NOT_", { A: a[i] })], [ops[7], a[i]]]);
+          cell("$_BUF_", { A: r }, yi);
+          nonzero = cell("$_OR_", { A: nonzero, B: r });
+        });
+        cell("$_NOT_", { A: nonzero }, out("zero")[0]);
+        cell("$_AND_", { A: addsub, B: carry }, out("cout")[0]);
+        break;
+      }
+      case "tri": out().forEach((y, i) => cell("$_AND_", { A: inBits(p, "d")[i], B: one("en") }, y)); break;
+      case "bus": out().forEach((y, bit) => cell("$_BUF_", { A: pins(p).inputs.map((pin) => inBits(p, pin)[bit]).reduce((acc, b) => cell("$_OR_", { A: acc, B: b })) }, y)); break;
+      case "probe": break;
       case "split": inBits(p, "in").forEach((b, i) => cell("$_BUF_", { A: b }, out(`b${i}`)[0])); break;
       case "merge": out().forEach((y, i) => cell("$_BUF_", { A: one(`b${i}`) }, y)); break;
       default: {
@@ -282,6 +423,27 @@ function build(c: Circuit, ctx: Ctx, bind: Binding, ports: BoardNetlist["ports"]
     }
   }
   return (r) => outBits.get(key(r));
+}
+
+/**
+ * One output bit of a lookup table as a net: a mux tree over the address bits (LSB first),
+ * collapsing wherever both branches are the same constant.
+ */
+function lookup(table: number[], addr: Bit[], cell: (type: string, conn: Record<string, Bit>) => Bit): Bit {
+  let level: Bit[] = table.map((v) => (v ? "1" : "0"));
+  for (const s of addr) level = level.flatMap((a, i, all) => (i % 2 ? [] : [a === all[i + 1] ? a : cell("$_MUX_", { A: a, B: all[i + 1], S: s })]));
+  return level[0];
+}
+
+/** Buses with more than one driver enabled right now; `read` gives a pin's current value. */
+export function busConflicts(c: Circuit, read: (r: PinRef) => number): string[] {
+  const driver = new Map(c.wires.map((w) => [key(w.to), w.from]));
+  return c.parts.filter((p) => p.kind === "bus").filter((p) => pins(p).inputs.filter((pin) => {
+    const from = driver.get(`${p.id}.${pin}`), tri = from && c.parts.find((x) => x.id === from.part);
+    if (!tri || tri.kind !== "tri") return false;
+    const en = driver.get(`${tri.id}.en`);
+    return en ? read(en) === 1 : true;                                // an unconnected enable reads 1
+  }).length > 1).map((p) => p.label);
 }
 
 export interface CircuitIssue { level: "error" | "warning"; msg: string; at?: string }
@@ -304,6 +466,7 @@ export function validate(c: Circuit, lib: Library = c.blocks ?? {}): CircuitIssu
     // A multi-output part's pins become <label>_<pin> in the Verilog: those names must be free too
     if (pins(p).outputs.length > 1) for (const o of pins(p).outputs) seen.add(`${p.label}_${o}`);
     if (p.kind === "block") seen.add(`u_${p.label}`);
+    for (const h of HELPER_NAMES[p.kind] ?? []) seen.add(`${p.label}_${h}`);
   }
   const byId = new Map(c.parts.map((p) => [p.id, p]));
   for (const w of c.wires) {
@@ -317,7 +480,16 @@ export function validate(c: Circuit, lib: Library = c.blocks ?? {}): CircuitIssu
   const driven = new Set(c.wires.map((w) => key(w.to)));
   for (const p of c.parts) {
     for (const pin of pins(p).inputs) {
+      if (p.kind === "shift" && ["si", "d", "load", "dir"].includes(pin)) continue;   // each use of a shift register leaves some of these open
+      if (p.kind === "bus") continue;                                                  // a free bus input is just a missing driver
       if (!driven.has(`${p.id}.${pin}`)) out.push({ level: "warning", msg: `${p.label}.${pin} isn't connected, so it reads ${pinDefault(p, pin)}.`, at: p.id });
+    }
+    if (p.kind === "bus") {
+      const froms = c.wires.filter((w) => w.to.part === p.id).map((w) => byId.get(w.from.part));
+      if (froms.some((f) => f && f.kind !== "tri")) out.push({ level: "warning", msg: `${p.label} is driven by something other than a tri-state buffer: it can't be switched off the bus.`, at: p.id });
+      const ens = froms.filter((f) => f?.kind === "tri").map((f) => c.wires.find((w) => w.to.part === f!.id && w.to.pin === "en")?.from);
+      const same = (x?: PinRef, y?: PinRef) => (!x && !y) || (!!x && !!y && x.part === y.part && x.pin === y.pin);
+      if (ens.some((e, i) => ens.some((o, j) => j > i && same(e, o)))) out.push({ level: "warning", msg: `Two drivers of ${p.label} share an enable, so they are always on together: a bus conflict.`, at: p.id });
     }
   }
   if (!inputParts(c).length) out.push({ level: "warning", msg: "No inputs: add a switch, button, clock or hex input." });
@@ -432,7 +604,13 @@ function moduleText(c: Circuit): string {
   };
   for (const p of c.parts) {
     const g = GATE_OPS[p.kind];
-    if (isSequential(p)) decls.push(`    reg  ${vec(pinWidth(p, "q"))}${p.label} = ${zero(pinWidth(p, "q"))};`);
+    if (p.kind === "keypad") {
+      decls.push(`    wire [3:0] ${sig(p, "code")} = ${p.label}[3:0];`, `    wire ${sig(p, "pressed")} = ${p.label}[4];`);
+    } else if (p.kind === "shift") {
+      decls.push(`    reg  ${vec(width(p))}${sig(p, "q")} = ${zero(width(p))};`, `    wire ${sig(p, "so")};`);
+    } else if (p.kind === "ram") {
+      decls.push(`    reg  ${vec(width(p))}${p.label}_mem [0:${2 ** selBits(p) - 1}];`, `    wire ${vec(width(p))}${p.label};`);
+    } else if (isSequential(p)) decls.push(`    reg  ${vec(pinWidth(p, "q"))}${p.label} = ${zero(pinWidth(p, "q"))};`);
     else if (p.kind === "const") decls.push(`    wire ${vec(width(p))}${p.label} = ${lit(width(p), constValue(p))};`);
     else if (!isInput(p) && !isOutput(p) && p.kind !== "const0" && p.kind !== "const1") {
       for (const o of pins(p).outputs) decls.push(`    wire ${vec(pinWidth(p, o))}${sig(p, o)};`);
@@ -456,6 +634,44 @@ function moduleText(c: Circuit): string {
     else if (p.kind === "split") {
       body.push(`    assign {${[...pins(p).outputs].reverse().map((o) => sig(p, o)).join(", ")}} = ${src(p, "in")};`);
     } else if (p.kind === "merge") body.push(`    assign ${p.label} = {${[...pins(p).inputs].reverse().map((i) => src(p, i)).join(", ")}};`);
+    else if (p.kind === "mux") body.push(`    assign ${p.label} = ${pins(p).inputs.slice(0, -1).map((d, k, all) => (k === all.length - 1 ? src(p, d) : `${src(p, "s")} == ${lit(selBits(p), k)} ? ${src(p, d)} : `)).join("")};`);
+    else if (p.kind === "demux") pins(p).outputs.forEach((o, k) => body.push(`    assign ${sig(p, o)} = ${src(p, "s")} == ${lit(selBits(p), k)} ? ${src(p, "d")} : ${zero(width(p))};`));
+    else if (p.kind === "encoder" || p.kind === "priority") {
+      const inp = `${p.label}_in`, n = 2 ** width(p);
+      decls.push(`    wire [${n - 1}:0] ${inp};`);
+      body.push(`    assign ${inp} = ${src(p, "in")};`, `    assign ${sig(p, "valid")} = |${inp};`);
+      body.push(p.kind === "priority"
+        ? `    assign ${sig(p, "y")} = ${Array.from({ length: n - 1 }, (_, i) => `${inp}[${n - 1 - i}] ? ${lit(width(p), n - 1 - i)} : `).join("")}${zero(width(p))};`
+        : `    assign ${sig(p, "y")} = ${Array.from({ length: n }, (_, k) => `(${inp}[${k}] ? ${lit(width(p), k)} : ${zero(width(p))})`).join(" | ")};`);
+    } else if (p.kind === "bcd7") {
+      SEGMENTS.forEach((seg, i) => body.push(`    assign ${sig(p, seg)} = 16'b${[...BCD7].reverse().map((v) => (v >> i) & 1).join("")} >> ${src(p, "in")};`));
+    } else if (p.kind === "rom") {
+      const W = width(p), D = 2 ** selBits(p);
+      const words = Array.from({ length: D }, (_, k) => `${W}'d${romWord(p, D - 1 - k)}`).join(", ");
+      decls.push(`    wire [${W * D - 1}:0] ${p.label}_data = {${words}};`);
+      body.push(`    assign ${p.label} = ${p.label}_data[${src(p, "addr")} * ${W} +: ${W}];`);
+    } else if (p.kind === "ram") {
+      decls.push(`    integer ${p.label}_i;`);
+      body.push(`    initial for (${p.label}_i = 0; ${p.label}_i < ${2 ** selBits(p)}; ${p.label}_i = ${p.label}_i + 1) ${p.label}_mem[${p.label}_i] = ${zero(width(p))};`);
+      body.push(`    always @(posedge ${src(p, "clk")}) if (${src(p, "we")}) ${p.label}_mem[${src(p, "addr")}] <= ${src(p, "d")};`);
+      body.push(`    assign ${p.label} = ${p.label}_mem[${src(p, "addr")}];`);
+    } else if (p.kind === "shift") {
+      const q = sig(p, "q"), W = width(p), si = src(p, "si"), r = p.reset ? src(p, "rst") : null;
+      const right = W === 1 ? si : `{${si}, ${q}[${W - 1}:1]}`, left = W === 1 ? si : `{${q}[${W - 2}:0], ${si}}`;
+      const next = `if (${src(p, "load")}) ${q} <= ${src(p, "d")}; else ${q} <= ${src(p, "dir")} ? ${left} : ${right};`;
+      body.push(r ? `    always @(posedge ${src(p, "clk")} or posedge ${r}) if (${r}) ${q} <= ${zero(W)}; else ${next}` : `    always @(posedge ${src(p, "clk")}) ${next}`);
+      body.push(`    assign ${sig(p, "so")} = ${src(p, "dir")} ? ${W === 1 ? q : `${q}[${W - 1}]`} : ${W === 1 ? q : `${q}[0]`};`);
+    } else if (p.kind === "alu") {
+      // Named copies of the inputs: bit selects can't apply to a literal, and a declaration can't read a wire declared later
+      const W = width(p), l = p.label, a = `${l}_a`, b = `${l}_b`, op = src(p, "op"), y = sig(p, "y");
+      decls.push(`    wire [${W - 1}:0] ${a}, ${b};`, `    wire ${l}_sub, ${l}_slt;`, `    wire [${W}:0] ${l}_sum;`);
+      body.push(`    assign ${a} = ${src(p, "a")};`, `    assign ${b} = ${src(p, "b")};`, `    assign ${l}_sub = ${op} == 3'd1 || ${op} == 3'd5;`);
+      body.push(`    assign ${l}_sum = {1'b0, ${a}} + {1'b0, ${l}_sub ? ~${b} : ${b}} + ${l}_sub;`);
+      body.push(`    assign ${l}_slt = (${a}[${W - 1}] != ${b}[${W - 1}]) ? ${a}[${W - 1}] : ${l}_sum[${W - 1}];`);
+      body.push(`    assign ${y} = ${op} <= 3'd1 ? ${l}_sum[${W - 1}:0] : ${op} == 3'd2 ? ${a} & ${b} : ${op} == 3'd3 ? ${a} | ${b} : ${op} == 3'd4 ? ${a} ^ ${b} : ${op} == 3'd5 ? ${l}_slt : ${op} == 3'd6 ? ~${a} : ${a};`);
+      body.push(`    assign ${sig(p, "zero")} = ${y} == ${zero(W)};`, `    assign ${sig(p, "cout")} = ${op} <= 3'd1 && ${l}_sum[${W}];`);
+    } else if (p.kind === "tri") body.push(`    assign ${p.label} = ${src(p, "en")} ? ${src(p, "d")} : ${zero(width(p))};   // no Z level: a disabled driver gives 0 (see the bus)`);
+    else if (p.kind === "bus") body.push(`    assign ${p.label} = ${pins(p).inputs.map((i) => src(p, i)).join(" | ")};`);
     else if (p.kind === "led" || p.kind === "hexout") body.push(`    assign ${p.label} = ${src(p, "in")};`);
     else if (p.kind === "seg7") body.push(`    assign ${p.label} = {${[...pins(p).inputs].reverse().map((pin) => src(p, pin)).join(", ")}};   // {g..a}`);
     else if (p.kind === "block") {
