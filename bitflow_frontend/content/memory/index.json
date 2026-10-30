@@ -4,7 +4,7 @@
   "summary": "SRAM, DRAM, ROM, and register files — storing bits at scale.",
   "icon": "▦",
   "difficulty": "advanced",
-  "order": 8,
+  "order": 18,
   "estimatedMinutes": 40,
   "prerequisites": ["sequential", "timing"],
   "sections": [

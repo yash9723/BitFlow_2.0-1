@@ -90,7 +90,7 @@ export default function CommandPalette() {
       }));
       setLoaded((l) => [...l.filter((x) => !x.id.startsWith("problem:")), ...items]);
     }).catch(() => { fetched.current = false; });                  // try again next time
-    import("@/lib/academy-content").then(({ ACADEMY_TOPIC_META }) => {
+    import("@/lib/academy-meta").then(({ ACADEMY_TOPIC_META }) => {
       const items = ACADEMY_TOPIC_META.map((t) => ({ id: `academy:${t.slug}`, title: t.title, group: "Academy", href: `/academy/${t.slug}`, hint: t.icon, keywords: t.summary }));
       setLoaded((l) => [...l.filter((x) => !x.id.startsWith("academy:")), ...items]);
     }).catch(() => {});

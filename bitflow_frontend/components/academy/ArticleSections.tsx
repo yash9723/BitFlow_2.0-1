@@ -1,16 +1,5 @@
 import type { AcademySection } from "@/lib/academy-types";
-
-const CALLOUT_STYLES = {
-  tip:     "border-phosphor/30 bg-phosphor/5 text-phosphor",
-  warning: "border-warn/30 bg-warn/5 text-warn",
-  note:    "border-info/30 bg-info/5 text-info",
-};
-
-const CALLOUT_LABELS = {
-  tip:     "Tip",
-  warning: "Warning",
-  note:    "Note",
-};
+import ChapterBlock, { Callout, Rich } from "@/components/academy/ChapterBlocks";
 
 interface Props {
   sections: AcademySection[];
@@ -18,40 +7,21 @@ interface Props {
 
 export default function ArticleSections({ sections }: Props) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       {sections.map((section) => (
-        <article key={section.id} id={section.id} className="scroll-mt-20">
-          <h3 className="font-display text-[15px] font-bold text-bright mb-2">
+        <article key={section.id} id={section.id} className="scroll-mt-28 space-y-4">
+          <h2 className="font-display text-[19px] font-bold text-bright flex flex-wrap items-center gap-2">
             {section.heading}
-          </h3>
-          <p className="font-mono text-[11px] text-ghost/90 leading-relaxed">
-            {section.body}
-          </p>
+            {section.level === "gate" && <span className="font-mono text-[9px] font-normal px-2 py-0.5 rounded border border-warn/30 bg-warn/10 text-warn uppercase tracking-wider">GATE: fine to skip at first</span>}
+          </h2>
+          {section.body && <p className="text-[15px] leading-7 text-pale"><Rich text={section.body} /></p>}
           {section.bullets && section.bullets.length > 0 && (
-            <ul className="mt-3 space-y-1.5">
-              {section.bullets.map((bullet, i) => (
-                <li
-                  key={i}
-                  className="font-mono text-[10px] text-pale flex gap-2 leading-relaxed"
-                >
-                  <span className="text-phosphor shrink-0">▸</span>
-                  <span>{bullet}</span>
-                </li>
-              ))}
+            <ul className="text-[15px] leading-7 text-pale pl-5 list-disc space-y-1">
+              {section.bullets.map((bullet, i) => <li key={i}><Rich text={bullet} /></li>)}
             </ul>
           )}
-          {section.callout && (
-            <div
-              className={`mt-3 px-3 py-2.5 rounded border font-mono text-[10px] leading-relaxed ${
-                CALLOUT_STYLES[section.callout.type]
-              }`}
-            >
-              <span className="font-bold uppercase text-[8px] tracking-wider mr-2">
-                {CALLOUT_LABELS[section.callout.type]}
-              </span>
-              {section.callout.text}
-            </div>
-          )}
+          {section.callout && <Callout tone={section.callout.type} text={section.callout.text} />}
+          {section.blocks?.map((block, i) => <ChapterBlock key={i} block={block} />)}
         </article>
       ))}
     </div>

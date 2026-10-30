@@ -4,7 +4,7 @@ import AuthGate from "@/components/AuthGate";
 export const metadata = {
   ...GATED,
   title: "Academy",
-  description: "Short, practical Verilog lessons: from wires and gates to FSMs, pipelines and verification, each with runnable examples.",
+  description: "Digital electronics from your first bit to the university and GATE syllabus, with circuits you can click, worked examples and quizzes.",
 };
 
 export default function AcademyLayout({ children }: { children: React.ReactNode }) {

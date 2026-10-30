@@ -13,7 +13,7 @@ import {
   ACADEMY_TOPIC_META,
   DIFFICULTY_LABELS,
   DIFFICULTY_STYLES,
-} from "@/lib/academy-content";
+} from "@/lib/academy-meta";
 import SiteHeader from "@/components/SiteHeader";
 
 export default function AcademyHubPage() {
@@ -47,7 +47,7 @@ export default function AcademyHubPage() {
                 <span className="text-info">explore VLSI career tracks.</span>
               </h1>
               <p className="font-mono text-[12px] text-ghost leading-relaxed">
-                Curated academic topics from Boolean algebra through memory systems, plus an interactive career roadmap for RTL, DV, DFT, and Physical Design.
+                From your first bit to the university and GATE syllabus, with circuits you can click, plus an interactive career roadmap for RTL, DV, DFT, and Physical Design.
               </p>
             </div>
 
@@ -166,7 +166,7 @@ export default function AcademyHubPage() {
           <p className="font-mono text-[10px] text-dim">
             BitFlow · Digital Electronics Academy
             <span className="mx-2">·</span>
-            8 modules · articles · quizzes · flashcards · interactives · VLSI career roadmap
+            {ACADEMY_TOPIC_META.length} chapters · live circuits · worked examples · quizzes · VLSI career roadmap
           </p>
         </footer>
       </div>

@@ -12,7 +12,7 @@ import type { AcademyTopic } from "@/lib/academy-types";
 import {
   DIFFICULTY_LABELS,
   DIFFICULTY_STYLES,
-} from "@/lib/academy-content";
+} from "@/lib/academy-meta";
 import {
   markTopicVisited,
   markTopicCompleted,
@@ -48,7 +48,7 @@ export default function TopicView({ topic, prev, next }: Props) {
     { id: "learn",       label: "Article" },
     { id: "quiz",        label: "Quiz",        count: topic.quiz.length },
     { id: "flashcards",  label: "Flashcards",  count: topic.flashcards.length },
-    { id: "videos",      label: "Videos",      count: topic.videos.length },
+    ...(topic.videos.length ? [{ id: "videos" as Tab, label: "Videos", count: topic.videos.length }] : []),
   ];
 
   return (
@@ -89,7 +89,7 @@ export default function TopicView({ topic, prev, next }: Props) {
           <h1 className="font-display text-[24px] font-bold text-bright mb-2">
             {topic.title}
           </h1>
-          <p className="font-mono text-[11px] text-ghost/80 leading-relaxed">
+          <p className="font-display font-normal text-[15px] text-ghost leading-relaxed">
             {topic.summary}
           </p>
         </div>
@@ -102,7 +102,7 @@ export default function TopicView({ topic, prev, next }: Props) {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`font-mono text-[10px] px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
+              className={`font-display font-medium text-[13px] px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
                 tab === t.id
                   ? "border-info text-info"
                   : "border-transparent text-dim hover:text-ghost"
@@ -110,14 +110,14 @@ export default function TopicView({ topic, prev, next }: Props) {
             >
               {t.label}
               {t.count !== undefined && (
-                <span className="ml-1.5 text-[8px] opacity-60">({t.count})</span>
+                <span className="ml-1.5 text-[11px] opacity-60">({t.count})</span>
               )}
             </button>
           ))}
         </div>
       </div>
 
-      <main className="max-w-3xl mx-auto px-6 py-8">
+      <main className="max-w-3xl mx-auto px-6 py-8 font-display font-normal">
         {tab === "learn" && (
           <div className="space-y-8">
             {topic.interactive && (

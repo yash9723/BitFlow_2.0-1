@@ -4,7 +4,7 @@
   "summary": "Moore and Mealy machines — the control brains of digital systems.",
   "icon": "◎",
   "difficulty": "advanced",
-  "order": 7,
+  "order": 16,
   "estimatedMinutes": 45,
   "prerequisites": ["sequential", "combinational"],
   "sections": [

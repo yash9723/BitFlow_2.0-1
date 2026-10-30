@@ -36,10 +36,10 @@ export default function FlashcardDeck({ cards }: Props) {
         }}
       >
         <div>
-          <p className="font-mono text-[9px] text-dim uppercase tracking-wider mb-3">
+          <p className="text-[11px] text-dim uppercase tracking-wider mb-3">
             {flipped ? "Answer" : "Question"} — tap to flip
           </p>
-          <p className="font-mono text-[13px] text-bright leading-relaxed">
+          <p className="text-[16px] text-bright leading-relaxed">
             {flipped ? card.back : card.front}
           </p>
         </div>
@@ -49,17 +49,17 @@ export default function FlashcardDeck({ cards }: Props) {
         <button
           type="button"
           onClick={prev}
-          className="font-mono text-[10px] px-4 py-1.5 rounded border border-rim/50 text-ghost hover:border-rim"
+          className="text-[13px] px-4 py-1.5 rounded border border-rim/50 text-ghost hover:border-rim"
         >
           ← Prev
         </button>
-        <span className="font-mono text-[9px] text-dim tabular-nums">
+        <span className="text-[12px] text-dim tabular-nums">
           {index + 1} / {cards.length}
         </span>
         <button
           type="button"
           onClick={next}
-          className="font-mono text-[10px] px-4 py-1.5 rounded border border-rim/50 text-ghost hover:border-rim"
+          className="text-[13px] px-4 py-1.5 rounded border border-rim/50 text-ghost hover:border-rim"
         >
           Next →
         </button>

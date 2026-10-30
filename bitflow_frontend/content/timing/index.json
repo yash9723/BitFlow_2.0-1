@@ -4,7 +4,7 @@
   "summary": "Setup, hold, clock skew, and metastability — making circuits work at speed.",
   "icon": "⏱",
   "difficulty": "advanced",
-  "order": 6,
+  "order": 17,
   "estimatedMinutes": 35,
   "prerequisites": ["sequential"],
   "sections": [

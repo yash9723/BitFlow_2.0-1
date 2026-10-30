@@ -4,7 +4,7 @@
   "summary": "AND, OR, NOT, NAND, NOR, XOR — the atomic building blocks of digital logic.",
   "icon": "⊕",
   "difficulty": "foundations",
-  "order": 3,
+  "order": 5,
   "estimatedMinutes": 30,
   "prerequisites": ["boolean-algebra", "number-systems"],
   "sections": [

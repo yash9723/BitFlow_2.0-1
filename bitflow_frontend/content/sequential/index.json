@@ -4,7 +4,7 @@
   "summary": "Flip-flops, latches, and registers — circuits that remember state across clock cycles.",
   "icon": "↻",
   "difficulty": "core",
-  "order": 5,
+  "order": 13,
   "estimatedMinutes": 40,
   "prerequisites": ["combinational"],
   "sections": [

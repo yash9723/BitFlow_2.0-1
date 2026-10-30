@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
 import { useAuth } from "../../hooks/useAuth";
-import { ACADEMY_TOPIC_META } from "@/lib/academy-content";
+import { ACADEMY_TOPIC_META } from "@/lib/academy-meta";
 import { loadAcademyProgress } from "@/lib/academy-progress-storage";
 import { DESIGN_STORAGE_KEY } from "@/hooks/useSimulation";
 import { STUDIO_TOOLS } from "@/lib/studio/tools";

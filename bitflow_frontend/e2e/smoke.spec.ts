@@ -70,6 +70,17 @@ test("run and submit a problem", async ({ page }) => {
   await expect(page.getByText(/Accepted|Wrong answer|not accepted|failed|passed/i).first()).toBeVisible({ timeout: 90_000 });
 });
 
+test("Academy: a chapter's circuit runs on the page", async ({ page }) => {
+  await quiet(page);
+  await signIn(page, false);
+  await page.goto("/academy/what-is-digital");
+  await expect(page.getByRole("heading", { name: "What Is Digital?" })).toBeVisible();
+  const circuit = page.getByRole("group", { name: "Circuit series_parallel" });
+  await expect(circuit.locator('path[stroke="#00e87a"]')).toHaveCount(0);
+  await circuit.locator('[data-knob="a"]').click();
+  await expect(circuit.locator('path[stroke="#00e87a"]')).not.toHaveCount(0);
+});
+
 test("build an iCE40 bitstream in the browser", async ({ page }) => {
   test.slow();   // the first build downloads Yosys and nextpnr (~11 MB)
   await quiet(page);

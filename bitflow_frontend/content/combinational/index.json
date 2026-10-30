@@ -4,7 +4,7 @@
   "summary": "Multiplexers, decoders, adders, and comparators — outputs that depend only on present inputs.",
   "icon": "Σ",
   "difficulty": "core",
-  "order": 4,
+  "order": 11,
   "estimatedMinutes": 35,
   "prerequisites": ["gates"],
   "sections": [
