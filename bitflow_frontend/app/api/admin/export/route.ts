@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adminDenied } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
+import { auditAdmin } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ export async function GET(request: Request) {
     const dataset = searchParams.get("dataset") ?? "submissions";
     const format = searchParams.get("format") ?? (dataset === "all" ? "json" : "jsonl");
     const includeWaveforms = searchParams.get("includeWaveforms") === "true";
+    await auditAdmin("admin.data.export", null, `${dataset} (${format})`);
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
     if (dataset === "submissions") {

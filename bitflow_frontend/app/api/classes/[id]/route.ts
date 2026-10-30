@@ -61,6 +61,7 @@ export async function GET(request: Request, { params }: Params) {
       : null,
     teacher
       ? prisma.question.findMany({
+          where:   { archived: false },
           orderBy: { orderIndex: "asc" },
           select:  { slug: true, title: true, learningLevel: true, difficulty: true },
         }).then((qs) => [...qs.sort((a, b) => levelRank(a.learningLevel) - levelRank(b.learningLevel)), ...lessonCatalog()])

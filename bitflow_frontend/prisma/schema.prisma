@@ -19,6 +19,7 @@ model User {
   role        String         @default("STUDENT") // "STUDENT" | "ADMIN"
   recoveryCodeHash String?   // one-time password-reset code (scrypt, like passwords); null = none
   publicProfile    Boolean   @default(false) // opt-in: /u/<username> shows stats, badges, certificates
+  bannedAt         DateTime? // set by an admin: signed out and can't sign in (lib/auth-utils.ts)
   createdAt   DateTime       @default(now())
 
   // DPDP (lib/privacy.ts). Month and year of birth only: enough to tell whether a parent must consent.
@@ -95,6 +96,10 @@ model Question {
   // Rewards
   xpReward            Int      @default(300)
   xpBonusNoHints      Int?
+
+  // Admin (app/api/admin/problems/[slug])
+  archived            Boolean  @default(false)  // hidden from learners; submissions are kept
+  adminEditedAt       DateTime?                 // set when an admin edits it: the seed then leaves this row alone
 
   // Timestamps
   createdAt           DateTime @default(now())

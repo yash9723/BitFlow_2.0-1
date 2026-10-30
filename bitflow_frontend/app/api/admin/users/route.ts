@@ -34,7 +34,7 @@ export async function GET(request: Request) {
         skip: page * PAGE,
         take: PAGE,
         select: {
-          id: true, username: true, role: true, createdAt: true, publicProfile: true,
+          id: true, username: true, role: true, createdAt: true, publicProfile: true, bannedAt: true,
           xp: { select: { totalXp: true } },
           _count: { select: { submissions: true, certificates: true } },
         },

@@ -22,6 +22,7 @@ const tagsOf = (json: string) => { try { const t = JSON.parse(json); return Arra
 export default async function ProblemsPage() {
   const [rows, user] = await Promise.all([
     prisma.question.findMany({
+      where: { archived: false },
       orderBy: { orderIndex: "asc" },
       select: { slug: true, title: true, difficulty: true, category: true, tags: true, learningLevel: true, xpReward: true, unlockAfter: true },
     }),

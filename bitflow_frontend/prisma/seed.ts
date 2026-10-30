@@ -33,6 +33,10 @@ async function upsertProblem(problem: any, learningLevel: string) {
     problemType: problem.problemType ?? "design",
   };
 
+  // An admin edited or archived this one (app/api/admin/problems/[slug]): the database wins.
+  const existing = await prisma.question.findUnique({ where: { slug: problem.slug }, select: { adminEditedAt: true } });
+  if (existing?.adminEditedAt) return;
+
   await prisma.question.upsert({
     where: { slug: problem.slug },
     create: data,

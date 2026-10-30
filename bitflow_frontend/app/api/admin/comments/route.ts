@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adminDenied } from "@/lib/auth-utils";
 import { problemHref } from "@/lib/problem-href";
+import { auditAdmin } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -38,5 +39,6 @@ export async function PATCH(request: Request) {
     prisma.commentReport.deleteMany({ where: { commentId: id } }),
     prisma.comment.update({ where: { id }, data: { hidden: false, reports: 0 } }),
   ]);
+  await auditAdmin("admin.comment.moderate", id, hidden ? "hidden" : "restored");
   return NextResponse.json({ ok: true });
 }

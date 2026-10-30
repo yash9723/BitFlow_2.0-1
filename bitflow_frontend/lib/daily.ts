@@ -20,6 +20,7 @@ export function todayKey(d: Date = new Date()): string {
  */
 export async function getDailyQuestion(day: string = todayKey()) {
   const questions = await prisma.question.findMany({
+    where:   { archived: false },
     orderBy: { slug: "asc" },
     select: {
       id: true, slug: true, title: true, difficulty: true,

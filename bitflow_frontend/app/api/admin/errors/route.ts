@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adminDenied } from "@/lib/auth-utils";
+import { auditAdmin } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -45,5 +46,6 @@ export async function DELETE() {
   const denied = await adminDenied();
   if (denied) return denied;
   const { count } = await prisma.errorLog.deleteMany({});
+  await auditAdmin("admin.errors.clear", null, `${count} entries`);
   return NextResponse.json({ deleted: count });
 }

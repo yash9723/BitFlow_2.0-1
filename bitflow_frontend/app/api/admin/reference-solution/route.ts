@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { adminDenied } from "@/lib/auth-utils";
 import { verifyReferenceSolution } from "@/lib/grading";
 import { reportError } from "@/lib/error-log";
+import { auditAdmin } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
     where: { slug },
     data:  { referenceSolution: code, ...("mutants" in result && result.mutants ? { mutants: JSON.stringify(result.mutants) } : {}) },
   });
+  await auditAdmin("admin.problem.reference", slug, "saved");
   return NextResponse.json({ ok: true });
 }
 
@@ -79,5 +81,6 @@ export async function DELETE(request: Request) {
   if (denied) return denied;
   const slug = new URL(request.url).searchParams.get("slug") ?? "";
   const { count } = await prisma.question.updateMany({ where: { slug }, data: { referenceSolution: null } });
+  if (count) await auditAdmin("admin.problem.reference", slug, "removed");
   return count ? NextResponse.json({ ok: true }) : NextResponse.json({ error: "Problem not found." }, { status: 404 });
 }

@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { clientId } from "@/lib/rate-limit";
 import { GUARDIAN_LINK_DAYS } from "@/lib/privacy";
+import { getSessionUser } from "@/lib/auth-utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const hashToken = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
@@ -16,6 +17,11 @@ export async function audit(actorId: string | null, action: string, targetId?: s
   try {
     await prisma.auditLog.create({ data: { actorId, action, targetId: targetId ?? null, detail: detail?.slice(0, 500) ?? null } });
   } catch { /* database down: the request goes on */ }
+}
+
+/** Record an admin's action against the signed-in admin. */
+export async function auditAdmin(action: string, targetId?: string | null, detail?: string): Promise<void> {
+  await audit((await getSessionUser())?.id ?? null, action, targetId, detail);
 }
 
 /** A fresh parent link for a minor's account; the previous link stops working. */

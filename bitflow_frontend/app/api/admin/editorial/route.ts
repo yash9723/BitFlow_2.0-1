@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { adminDenied } from "@/lib/auth-utils";
+import { auditAdmin } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -28,5 +29,6 @@ export async function PUT(request: Request) {
   const q = await prisma.question.findUnique({ where: { slug }, select: { id: true } });
   if (!q) return NextResponse.json({ error: "Problem not found." }, { status: 404 });
   await prisma.question.update({ where: { slug }, data: { editorial: editorial.trim() || null } });
+  await auditAdmin("admin.problem.editorial", slug);
   return NextResponse.json({ ok: true });
 }

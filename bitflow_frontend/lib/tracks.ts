@@ -46,9 +46,10 @@ export async function trackCounts(t: Track, userId: string): Promise<{ total: nu
     const solved = await prisma.lessonProgress.count({ where: { userId, kind: t.lessons, done: true, slug: { in: slugs } } });
     return { total: slugs.length, solved };
   }
+  const live = { ...t.where, archived: false };   // an archived problem doesn't hold a certificate back
   const [total, solved] = await Promise.all([
-    prisma.question.count({ where: t.where }),
-    prisma.userProgress.count({ where: { userId, solved: true, question: t.where } }),
+    prisma.question.count({ where: live }),
+    prisma.userProgress.count({ where: { userId, solved: true, question: live } }),
   ]);
   return { total, solved };
 }
@@ -82,7 +83,7 @@ export async function certificateById(id: string) {
   });
   const track = cert && trackById(cert.track);
   if (!cert || !track) return null;
-  const problems = track.lessons ? lessonSlugs(track.lessons).length : await prisma.question.count({ where: track.where });
+  const problems = track.lessons ? lessonSlugs(track.lessons).length : await prisma.question.count({ where: { ...track.where, archived: false } });
   // The page is public: an under-18 learner's certificate doesn't show their username.
   return { id: cert.id, issuedAt: cert.issuedAt, username: publicName(cert.user), track, problems };
 }

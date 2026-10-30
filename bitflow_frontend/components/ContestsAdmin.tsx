@@ -1,6 +1,6 @@
 "use client";
 /**
- * components/ContestsAdmin.tsx — admin page section: create and delete contests.
+ * components/ContestsAdmin.tsx — admin page section: create, edit and delete contests.
  * Times are entered in the admin's local time and sent as ISO strings.
  */
 
@@ -19,6 +19,7 @@ export default function ContestsAdmin() {
   const [slugs, setSlugs] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/contests").then((r) => r.json()).then((d) => setContests(d.contests ?? [])).catch(() => {});
@@ -30,8 +31,9 @@ export default function ContestsAdmin() {
     setBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/admin/contests", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: editingId ?? undefined,
           title,
           startsAt: startsAt && new Date(startsAt).toISOString(),
           endsAt:   endsAt && new Date(endsAt).toISOString(),
@@ -40,14 +42,26 @@ export default function ContestsAdmin() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      setMsg({ ok: true, text: `Created "${data.contest.title}".` });
-      setTitle(""); setSlugs("");
+      setMsg({ ok: true, text: `${editingId ? "Saved" : "Created"} "${data.contest.title}".` });
+      setTitle(""); setSlugs(""); setEditingId(null);
       load();
     } catch (err) {
       setMsg({ ok: false, text: (err as Error).message });
     } finally {
       setBusy(false);
     }
+  };
+
+  const edit = async (c: Contest) => {
+    setMsg(null);
+    const res = await fetch(`/api/admin/contests?id=${encodeURIComponent(c.id)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setMsg({ ok: false, text: data.error ?? "Couldn't load the contest." }); return; }
+    // <input type="datetime-local"> wants local time without a zone.
+    const local = (iso: string) => { const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); };
+    setEditingId(c.id); setTitle(data.contest.title);
+    setStartsAt(local(data.contest.startsAt)); setEndsAt(local(data.contest.endsAt));
+    setSlugs((JSON.parse(data.contest.problemSlugs) as string[]).join(", "));
   };
 
   const remove = async (c: Contest) => {
@@ -84,8 +98,9 @@ export default function ContestsAdmin() {
         <div className="sm:col-span-2 flex items-center gap-3">
           <button type="submit" disabled={busy}
                   className="px-4 py-1.5 rounded border border-phosphor/40 text-phosphor font-mono text-[11px] hover:bg-phosphor/10 disabled:opacity-40">
-            {busy ? "Creating…" : "Create contest"}
+            {busy ? "Saving…" : editingId ? "Save changes" : "Create contest"}
           </button>
+          {editingId && <button type="button" onClick={() => { setEditingId(null); setTitle(""); setSlugs(""); }} className="text-[11px] text-ghost hover:text-bright">Cancel</button>}
           {msg && <span role="status" className={`text-[11px] ${msg.ok ? "text-phosphor" : "text-danger"}`}>{msg.text}</span>}
         </div>
       </form>
@@ -96,7 +111,8 @@ export default function ContestsAdmin() {
             <li key={c.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-[12px]">
               <Link href={`/contests/${c.id}`} className="text-pale hover:text-phosphor truncate">{c.title}</Link>
               <span className="text-[10px] text-dim">{new Date(c.startsAt).toLocaleString()} · {c.problems} problems · {c.status}</span>
-              <button onClick={() => remove(c)} className="ml-auto text-[11px] text-danger hover:underline">Delete</button>
+              <button onClick={() => edit(c)} className="ml-auto text-[11px] text-info hover:underline">Edit</button>
+              <button onClick={() => remove(c)} className="text-[11px] text-danger hover:underline">Delete</button>
             </li>
           ))}
         </ul>

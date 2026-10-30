@@ -76,11 +76,47 @@ function SiteNoticeAdmin() {
   );
 }
 
+/** Who did what: consents, exports, deletions and admin changes (kept a year). */
+function AuditTrail() {
+  const [rows, setRows] = useState<{ id: string; createdAt: string; action: string; actor: string; targetId: string | null; detail: string | null }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    getJson<{ entries: NonNullable<typeof rows> }>("/api/admin/audit").then((d) => setRows(d.entries), (e) => setError(e.message));
+  }, []);
+  return (
+    <Card title="Audit trail" subtitle="The latest 200 entries; kept for a year, then deleted">
+      {error && <Failed message={error} />}
+      {!rows && !error && <Loading what="the audit trail" />}
+      {rows && (
+        <div className="overflow-x-auto max-h-72 overflow-y-auto">
+          <table className="w-full text-[10px]">
+            <thead className="sticky top-0 bg-surface text-dim uppercase text-[9px] text-left">
+              <tr><th className="py-1 pr-2">When</th><th className="pr-2">Action</th><th className="pr-2">By</th><th className="pr-2">Details</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-rim/20">
+                  <td className="py-1 pr-2 text-dim whitespace-nowrap">{ago(r.createdAt)}</td>
+                  <td className="pr-2 text-pale whitespace-nowrap">{r.action}</td>
+                  <td className="pr-2 text-ghost whitespace-nowrap">{r.actor}</td>
+                  <td className="pr-2 text-dim">{r.detail}</td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={4} className="py-3 text-center text-dim">Nothing yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function AdminSystem() {
   return (
     <div className="space-y-6">
       <Database />
       <SiteNoticeAdmin />
+      <AuditTrail />
       <Panel><ErrorLogAdmin /></Panel>
     </div>
   );

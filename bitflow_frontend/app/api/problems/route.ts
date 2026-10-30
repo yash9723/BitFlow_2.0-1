@@ -16,6 +16,7 @@ import { NextResponse }   from "next/server";
 import { prisma }         from "@/lib/prisma";
 import { adminDenied }    from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
+import { auditAdmin } from "@/lib/privacy-server";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
     const difficulty = searchParams.get("difficulty");
     const moduleId   = searchParams.get("moduleId");
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { archived: false };
     if (level)      where.learningLevel = level;
     if (category)   where.category      = category;
     if (difficulty) where.difficulty    = difficulty;
@@ -128,6 +129,7 @@ export async function POST(request: Request) {
       },
     });
 
+    await auditAdmin("admin.problem.create", question.slug);
     return NextResponse.json({ problem: question }, { status: 201 });
 
   } catch (err) {

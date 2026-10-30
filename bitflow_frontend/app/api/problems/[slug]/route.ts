@@ -24,7 +24,7 @@ export async function GET(
       where: { slug },
     });
 
-    if (!question) {
+    if (!question || (question.archived && (await getSessionUser())?.role !== "ADMIN")) {
       return NextResponse.json(
         { error: `Problem not found: ${slug}` },
         { status: 404 }

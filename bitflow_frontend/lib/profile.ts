@@ -54,7 +54,7 @@ export async function profileStats(userId: string): Promise<ProfileData | null> 
         where: { userId, solved: true },
         select: { question: { select: { difficulty: true, learningLevel: true } } },
       }),
-      prisma.question.groupBy({ by: ["difficulty"], _count: { _all: true } }),
+      prisma.question.groupBy({ by: ["difficulty"], where: { archived: false }, _count: { _all: true } }),
       prisma.submission.findMany({
         where: { userId, createdAt: { gte: oneYearAgo } },
         select: { createdAt: true },
@@ -70,7 +70,7 @@ export async function profileStats(userId: string): Promise<ProfileData | null> 
         },
       }),
       prisma.submission.count({ where: { userId } }),
-      prisma.question.count({ where: { learningLevel: BEGINNER } }),
+      prisma.question.count({ where: { learningLevel: BEGINNER, archived: false } }),
       prisma.contest.findMany({ where: { startsAt: { lte: new Date() } }, select: { startsAt: true, endsAt: true, problemSlugs: true }, take: 200 }),
       trackProgress(userId),
     ]);

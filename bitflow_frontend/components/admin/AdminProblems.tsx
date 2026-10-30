@@ -8,11 +8,13 @@ import NewProblemForm from "./NewProblemForm";
 import DebugProblemsAdmin from "./DebugProblemsAdmin";
 import ModerationAdmin from "./ModerationAdmin";
 import { Card, Failed, Loading, Stat, getJson, pct } from "./ui";
+import ProblemEditor from "./ProblemEditor";
 
 interface Row {
   id: string; slug: string; title: string; difficulty: string; category: string; learningLevel: string;
   problemType: string; moduleId: string; orderIndex: number; xpReward: number;
   submits: number; accepted: number; solvers: number; hasReference: boolean; hasMutants: boolean;
+  archived: boolean; adminEditedAt: string | null;
 }
 
 /** Can a learner finish it, and does a wrong answer get a waveform diff / counterexample? */
@@ -34,6 +36,7 @@ export default function AdminProblems() {
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [sort, setSort] = useState<Sort>("order");
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -73,6 +76,7 @@ export default function AdminProblems() {
             action={<button onClick={() => setShowForm((v) => !v)} className="text-[10px] px-3 py-1 rounded border border-info/50 text-info hover:bg-info/10">
               {showForm ? "Close form" : "+ New problem"}</button>}>
         {showForm && <div className="mb-6 pb-6 border-b border-rim/40"><NewProblemForm onCreated={load} /></div>}
+        {editing && <div className="mb-6 pb-6 border-b border-rim/40"><ProblemEditor slug={editing} onSaved={load} onClose={() => setEditing(null)} /></div>}
 
         <div className="flex flex-wrap items-center gap-2 mb-3 text-[10px]">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, slug or category"
@@ -94,7 +98,7 @@ export default function AdminProblems() {
               <tr className="text-left">
                 <th className="py-2 pr-2">Problem</th><th className="pr-2">Level</th><th className="pr-2">Type</th>
                 <th className="pr-2 text-right">Submits</th><th className="pr-2 text-right">Accept</th>
-                <th className="pr-2 text-right">Solvers</th><th className="pr-2">Setup</th>
+                <th className="pr-2 text-right">Solvers</th><th className="pr-2">Setup</th><th className="pr-2"><span className="sr-only">Edit</span></th>
               </tr>
             </thead>
             <tbody>
@@ -105,6 +109,8 @@ export default function AdminProblems() {
                   <tr key={r.id} className="border-t border-rim/20 hover:bg-pit/40">
                     <td className="py-1.5 pr-2">
                       <Link href={problemHref(r)} className="text-pale hover:text-info">{r.title}</Link>
+                      {r.archived && <span className="ml-2 text-[8px] text-warn border border-warn/40 px-1 rounded uppercase">Archived</span>}
+                      {r.adminEditedAt && <span className="ml-2 text-[8px] text-info border border-info/30 px-1 rounded uppercase">Edited</span>}
                       <div className="text-[9px] text-dim">{r.slug} · {r.category} · {r.xpReward} XP</div>
                     </td>
                     <td className="pr-2 text-ghost whitespace-nowrap">{r.learningLevel.replace("Verilog ", "")}</td>
@@ -113,6 +119,7 @@ export default function AdminProblems() {
                     <td className={`pr-2 text-right font-bold ${rate == null ? "text-dim" : rate < 0.3 ? "text-danger" : rate < 0.6 ? "text-warn" : "text-phosphor"}`}>{pct(rate)}</td>
                     <td className="pr-2 text-right text-ghost">{r.solvers}</td>
                     <td className={`pr-2 whitespace-nowrap ${s.tone}`}>{s.label}</td>
+                    <td className="pr-2"><button onClick={() => setEditing(r.slug)} className="text-info hover:underline">Edit</button></td>
                   </tr>
                 );
               })}

@@ -65,6 +65,10 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    // Only after the password is right, so this doesn't reveal which usernames exist.
+    if (user.bannedAt) {
+      return NextResponse.json({ error: "This account has been suspended. Use the contact form if you think that's a mistake." }, { status: 403 });
+    }
     if (needsRehash) {
       await prisma.user.update({
         where: { id: user.id },

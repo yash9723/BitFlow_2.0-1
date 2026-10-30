@@ -17,7 +17,7 @@ export async function GET() {
   const [questions, withRef, withMutants, submits, accepted, solvers] = await Promise.all([
     prisma.question.findMany({
       select: { id: true, slug: true, title: true, difficulty: true, category: true, learningLevel: true,
-                problemType: true, moduleId: true, orderIndex: true, xpReward: true },
+                problemType: true, moduleId: true, orderIndex: true, xpReward: true, archived: true, adminEditedAt: true },
       orderBy: [{ learningLevel: "asc" }, { orderIndex: "asc" }],
     }),
     // ids only: the reference and mutant texts are large and only their presence matters here

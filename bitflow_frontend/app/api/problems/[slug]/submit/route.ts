@@ -58,7 +58,7 @@ export async function POST(
   }
 
   const question = await prisma.question.findUnique({ where: { slug: params.slug } });
-  if (!question) {
+  if (!question || (question.archived && user?.role !== "ADMIN")) {
     return NextResponse.json({ error: `Problem not found: ${params.slug}` }, { status: 404 });
   }
   const lock = await lockedBehind(question, user?.id);

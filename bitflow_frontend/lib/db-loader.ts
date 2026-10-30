@@ -74,7 +74,7 @@ function parseQuestion(q: Record<string, unknown>): DbProblem {
  */
 export async function getProblemBySlugFromDb(slug: string): Promise<DbProblem | null> {
   const q = await prisma.question.findUnique({ where: { slug } });
-  if (!q) return null;
+  if (!q || q.archived) return null;
   return parseQuestion(q as unknown as Record<string, unknown>);
 }
 
@@ -84,7 +84,7 @@ export async function getProblemBySlugFromDb(slug: string): Promise<DbProblem | 
  */
 export async function getProblemsByLevel(level: string): Promise<DbProblem[]> {
   const questions = await prisma.question.findMany({
-    where:   { learningLevel: level },
+    where:   { learningLevel: level, archived: false },
     orderBy: { orderIndex: "asc" },
   });
   return questions.map(q => parseQuestion(q as unknown as Record<string, unknown>));
@@ -95,7 +95,7 @@ export async function getProblemsByLevel(level: string): Promise<DbProblem[]> {
  */
 export async function getProblemsByModule(moduleId: string): Promise<DbProblem[]> {
   const questions = await prisma.question.findMany({
-    where:   { moduleId },
+    where:   { moduleId, archived: false },
     orderBy: { orderIndex: "asc" },
   });
   return questions.map(q => parseQuestion(q as unknown as Record<string, unknown>));
@@ -129,7 +129,7 @@ export async function getProblemsByModuleGrouped(
  */
 export function getArenaHubRows() {
   return prisma.question.findMany({
-    where:   { learningLevel: "Arena" },
+    where:   { learningLevel: "Arena", archived: false },
     orderBy: { orderIndex: "asc" },
     select:  { slug: true, title: true, difficulty: true, category: true, xpReward: true, statement: true, unlockAfter: true },
   });
@@ -143,7 +143,7 @@ export const getArenaProblemBySlugFromDb = cache(async (slug: string): Promise<D
   const q = await prisma.question.findUnique({
     where: { slug },
   });
-  if (!q || q.learningLevel !== "Arena") return null;
+  if (!q || q.archived || q.learningLevel !== "Arena") return null;
   return parseQuestion(q as unknown as Record<string, unknown>);
 });
 
