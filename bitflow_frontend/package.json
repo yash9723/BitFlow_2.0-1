@@ -21,6 +21,7 @@
     "check-bitstream": "tsx scripts/bitstream.check.ts",
     "check-similarity": "tsx scripts/similarity.check.ts",
     "check-dpdp": "tsx scripts/dpdp.check.ts",
+    "check-lessons": "tsx scripts/lessons.check.ts",
     "check-radix": "tsx scripts/radix.check.ts",
     "check-plot": "tsx scripts/plot.check.ts",
     "check-logic": "tsx scripts/logic-min.check.ts",

@@ -36,7 +36,8 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   if (role !== "TEACHER") return NextResponse.json({ error: "Only teachers can see class analytics." }, { status: 403 });
 
   const progress = await classProgress(params.id);
-  const slugs = [...new Set(progress.assignments.flatMap((a) => a.problems.map((p) => p.slug)))];
+  // Submissions exist only for problems: assigned lessons ("lab:blink" keys) have none.
+  const slugs = [...new Set(progress.assignments.flatMap((a) => a.problems.map((p) => p.slug)))].filter((s) => !s.includes(":"));
   const questions = await prisma.question.findMany({ where: { slug: { in: slugs } }, select: { id: true, slug: true, starterCode: true } });
   const studentIds = progress.students.map((s) => s.id);
   const name = new Map(progress.students.map((s) => [s.id, s.username]));

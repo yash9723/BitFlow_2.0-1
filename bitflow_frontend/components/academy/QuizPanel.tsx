@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { AcademyQuizQuestion } from "@/lib/academy-types";
+import { quizPassed } from "@/lib/academy-progress-storage";
 
 interface Props {
   questions: AcademyQuizQuestion[];
@@ -95,7 +96,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
             Score: {score} / {questions.length}
             {score === questions.length
               ? " — Perfect!"
-              : score >= questions.length * 0.7
+              : quizPassed(score, questions.length)
               ? " — Well done!"
               : " — Review the article and try again."}
           </p>

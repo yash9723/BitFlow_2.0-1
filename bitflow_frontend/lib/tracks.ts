@@ -1,19 +1,23 @@
 /**
  * lib/tracks.ts — certificate tracks. A learner who has solved every problem in
- * a track can claim its certificate (POST /api/certificates), which gets a
- * public, verifiable page at /c/<id>.
+ * a track (or finished every lesson of a lesson track) can claim its certificate
+ * (POST /api/certificates), which gets a public page at /c/<id>.
  */
 
 import crypto from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { PRIVACY_SELECT, publicName } from "@/lib/privacy";
+import { lessonSlugs, type LessonKind } from "@/lib/lessons";
 
 export interface Track {
   id:          string;
   name:        string;          // printed on the certificate
   description: string;
-  where:       Prisma.QuestionWhereInput;
+  /** The track's problems, graded on the server. */
+  where?:      Prisma.QuestionWhereInput;
+  /** Or a lesson track: every Board Lab lesson or Academy chapter, checked in the learner's browser. */
+  lessons?:    LessonKind;
 }
 
 export const TRACKS: Track[] = [
@@ -27,9 +31,27 @@ export const TRACKS: Track[] = [
     where: { problemType: "testbench" } },
   { id: "riscv",        name: "RISC-V CPU Design",     description: "A working single-cycle RV32I processor, built module by module.",
     where: { category: "riscv" } },
+  { id: "board-lab",           name: "Board Lab",           description: "From a first LED to serial links, sound, displays and real-world interfaces on an FPGA board.",
+    lessons: "lab" },
+  { id: "digital-electronics", name: "Digital Electronics", description: "The Digital Electronics Academy, every chapter's quiz passed.",
+    lessons: "academy" },
 ];
 
 export const trackById = (id: string) => TRACKS.find((t) => t.id === id);
+
+/** How far a learner is on a track: problems solved, or lessons finished. */
+export async function trackCounts(t: Track, userId: string): Promise<{ total: number; solved: number }> {
+  if (t.lessons) {
+    const slugs = lessonSlugs(t.lessons);
+    const solved = await prisma.lessonProgress.count({ where: { userId, kind: t.lessons, done: true, slug: { in: slugs } } });
+    return { total: slugs.length, solved };
+  }
+  const [total, solved] = await Promise.all([
+    prisma.question.count({ where: t.where }),
+    prisma.userProgress.count({ where: { userId, solved: true, question: t.where } }),
+  ]);
+  return { total, solved };
+}
 
 export interface TrackProgress {
   id: string; name: string; description: string;
@@ -40,13 +62,7 @@ export interface TrackProgress {
 /** Progress on every non-empty track, with the certificate id if already claimed. */
 export async function trackProgress(userId: string): Promise<TrackProgress[]> {
   const [rows, certs] = await Promise.all([
-    Promise.all(TRACKS.map(async (t) => {
-      const [total, solved] = await Promise.all([
-        prisma.question.count({ where: t.where }),
-        prisma.userProgress.count({ where: { userId, solved: true, question: t.where } }),
-      ]);
-      return { t, total, solved };
-    })),
+    Promise.all(TRACKS.map(async (t) => ({ t, ...(await trackCounts(t, userId)) }))),
     prisma.certificate.findMany({ where: { userId }, select: { id: true, track: true } }),
   ]);
   return rows
@@ -66,7 +82,7 @@ export async function certificateById(id: string) {
   });
   const track = cert && trackById(cert.track);
   if (!cert || !track) return null;
-  const problems = await prisma.question.count({ where: track.where });
+  const problems = track.lessons ? lessonSlugs(track.lessons).length : await prisma.question.count({ where: track.where });
   // The page is public: an under-18 learner's certificate doesn't show their username.
   return { id: cert.id, issuedAt: cert.issuedAt, username: publicName(cert.user), track, problems };
 }

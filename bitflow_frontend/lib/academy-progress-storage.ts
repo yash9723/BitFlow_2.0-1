@@ -8,6 +8,9 @@ import type { AcademyProgress } from "./academy-types";
 
 const STORAGE_KEY = "bitflow_academy_progress_v1";
 
+/** A quiz is passed at 80% or better (the server checks the same: lib/lessons.ts). */
+export const quizPassed = (score: number, total: number) => total > 0 && score * 5 >= total * 4;
+
 const DEFAULT_PROGRESS: AcademyProgress = {
   completedTopics: [],
   quizScores:      {},

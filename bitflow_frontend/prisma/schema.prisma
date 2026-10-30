@@ -47,6 +47,7 @@ model User {
   projects         Project[]
   certificates     Certificate[]
   comments         Comment[]
+  lessonProgress   LessonProgress[]
 
   @@index([guardianTokenHash])
 }
@@ -401,6 +402,29 @@ model ContactMessage {
 // DPDP — parent/guardian consent for under-18 accounts, an audit trail kept a
 // year (DPDP Rules: logs of processing), and a site-wide notice (breach response).
 // ============================================================================
+
+// ============================================================================
+// LESSONS — Board Lab lessons and Academy chapters finished on the account
+// (lib/lesson-progress.ts). A row per lesson touched; XP is awarded once.
+// ============================================================================
+
+model LessonProgress {
+  id          String    @id @default(uuid())
+  userId      String
+  kind        String    // "lab" | "academy"
+  slug        String
+  done        Boolean   @default(false)
+  quizScore   Int?      // best quiz score (correct answers), Academy only
+  draft       String?   // the lesson's code as last edited, Lab only
+  hwBoard     String?   // the real board it was verified on (Board Lab "Check on my board")
+  xpAwarded   Int       @default(0)
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, slug])
+}
 
 model GuardianConsent {
   id            String    @id @default(uuid())

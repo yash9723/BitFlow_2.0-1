@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!c) return { title: "Certificate not found", robots: { index: false } };
   return {
     title: `${c.track.name} certificate: ${c.username}`,
-    description: `${c.username} completed the ${c.track.name} track on ${SITE_NAME} (${c.problems} problems), ${fmt(c.issuedAt)}.`,
+    description: `${c.username} completed the ${c.track.name} track on ${SITE_NAME} (${c.problems} ${c.track.lessons ? "lessons" : "problems"}), ${fmt(c.issuedAt)}.`,
     robots: { index: false },
   };
 }
@@ -49,8 +49,11 @@ export default async function CertificatePage({ params }: Props) {
             <div className="text-[11px] sm:text-[13px] text-[#5b5f6b]">This certifies that</div>
             <h1 className="text-2xl sm:text-4xl font-bold break-all">{c.username}</h1>
             <p className="text-[11px] sm:text-[14px] text-[#3a3d46] max-w-lg mx-auto leading-relaxed">
-              completed the <strong>{c.track.name}</strong> track on {SITE_NAME}, solving all {c.problems} problems,
-              each graded against hidden tests. {c.track.description}
+              completed the <strong>{c.track.name}</strong> track on {SITE_NAME},{" "}
+              {c.track.lessons
+                ? <>finishing all {c.problems} lessons, each self-checked in the browser.</>
+                : <>solving all {c.problems} problems, each graded against hidden tests.</>}{" "}
+              {c.track.description}
             </p>
           </div>
 

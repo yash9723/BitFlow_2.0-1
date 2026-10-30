@@ -92,9 +92,9 @@ function NewAssignment({ catalog, onCreate }: { catalog: NonNullable<Detail["cat
       </div>
       <div className="space-y-1">
         <div className="flex items-center justify-between text-[11px] text-dim">
-          <span>Problems ({picked.length} selected)</span>
+          <span>Problems and lessons ({picked.length} selected)</span>
         </div>
-        <input className={`${input} w-full`} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by title or level (Beginner, Arena…)" aria-label="Filter problems" />
+        <input className={`${input} w-full`} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by title or level (Beginner, Arena, Board Lab, Academy…)" aria-label="Filter problems and lessons" />
         <ul className="max-h-56 overflow-y-auto border border-rim/40 rounded divide-y divide-rim/20">
           {shown.map((p) => (
             <li key={p.slug}>

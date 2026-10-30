@@ -2,13 +2,15 @@
  * lib/classes.ts — classroom helpers shared by the /api/classes routes.
  *
  * Roles are per class (ClassMember.role); site admins can open any class as
- * a teacher. Assignment status comes from UserProgress.firstSolvedAt, i.e.
- * server-graded solves only.
+ * a teacher. Assignment status comes from UserProgress.firstSolvedAt (server-graded
+ * solves) and, for assigned lessons ("lab:blink" keys, lib/lessons.ts), from
+ * LessonProgress.completedAt (self-checked in the browser).
  */
 
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { problemHref } from "@/lib/problem-href";
+import { LESSON_LEVEL, lessonHref, lessonKey, lessonSlugs, lessonTitle, parseLessonKey } from "@/lib/lessons";
 
 export type ClassRole     = "TEACHER" | "STUDENT";
 export type ProblemStatus = "on_time" | "late" | "missing" | "pending";
@@ -79,26 +81,42 @@ export async function classProgress(classId: string, onlyUserId?: string): Promi
   });
   // A solve recorded without a date (pre-dates firstSolvedAt) counts as on time.
   const solvedAt = new Map(solved.map((p) => [`${p.userId}:${p.problemId}`, p.firstSolvedAt ?? new Date(0)]));
+  const finished = slugs.some((s) => parseLessonKey(s))
+    ? await prisma.lessonProgress.findMany({
+        where:  { userId: { in: students.map((s) => s.id) }, done: true },
+        select: { userId: true, kind: true, slug: true, completedAt: true },
+      })
+    : [];
+  const finishedAt = new Map(finished.map((l) => [`${l.userId}:${l.kind}:${l.slug}`, l.completedAt ?? new Date(0)]));
+  const doneAt = (studentId: string, slug: string) =>
+    (bySlug.has(slug) ? solvedAt.get(`${studentId}:${bySlug.get(slug)!.id}`) : finishedAt.get(`${studentId}:${slug}`));
 
   const now = new Date();
-  const problemsOf = (json: string) => parseSlugs(json).filter((s) => bySlug.has(s));
+  const problemsOf = (json: string) => parseSlugs(json).filter((s) => bySlug.has(s) || parseLessonKey(s));
   return {
     assignments: assignments.map((a) => ({
       id: a.id, title: a.title, dueAt: a.dueAt.toISOString(),
       problems: problemsOf(a.problemSlugs).map((slug) => {
-        const q = bySlug.get(slug)!;
-        return { slug, title: q.title, difficulty: q.difficulty, href: problemHref(q) };
+        const q = bySlug.get(slug);
+        if (q) return { slug, title: q.title, difficulty: q.difficulty, href: problemHref(q) };
+        const lesson = parseLessonKey(slug)!;
+        return { slug, title: lesson.title, difficulty: LESSON_LEVEL[lesson.kind], href: lessonHref(lesson.kind, lesson.slug) };
       }),
     })),
     students,
     status: Object.fromEntries(students.map((s) => [s.id, Object.fromEntries(assignments.map((a) => [
       a.id,
       Object.fromEntries(problemsOf(a.problemSlugs).map((slug) => [
-        slug, statusOf(solvedAt.get(`${s.id}:${bySlug.get(slug)!.id}`), a.dueAt, now),
+        slug, statusOf(doneAt(s.id, slug), a.dueAt, now),
       ])),
     ]))])),
   };
 }
+
+/** Lab lessons and Academy chapters, for the assignment picker. */
+export const lessonCatalog = () => (["lab", "academy"] as const).flatMap((kind) => lessonSlugs(kind).map((slug) => ({
+  slug: lessonKey(kind, slug), title: lessonTitle(kind, slug)!, learningLevel: LESSON_LEVEL[kind], difficulty: "Lesson",
+})));
 
 /** One spreadsheet cell; neutralises formula injection from usernames/titles. */
 function csvCell(value: string | number): string {

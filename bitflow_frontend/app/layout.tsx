@@ -22,6 +22,7 @@ import SiteNotice from "@/components/SiteNotice";
 import { NavDrawer } from "@/components/SiteHeader";
 import { inter, mono } from "@/lib/fonts";
 import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL, jsonLd } from "@/lib/site";
+import LessonSync from "@/components/LessonSync";
 import "./globals.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ export default function RootLayout({
           <Analytics />
           <SiteNotice />
           <NavDrawer />
+          <LessonSync />
           <ConsentGate />
         </AuthProvider>
       </body>

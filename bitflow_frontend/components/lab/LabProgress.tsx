@@ -2,10 +2,16 @@
 /** components/lab/LabProgress.tsx — finished-lesson marks on the /lab page (lib/lab/progress.ts). */
 import { useEffect, useState } from "react";
 import { doneLessons } from "@/lib/lab/progress";
+import { LESSONS_SYNCED } from "@/lib/lesson-sync";
 
 function useDone() {
   const [done, setDone] = useState<string[]>([]);
-  useEffect(() => setDone(doneLessons()), []);
+  useEffect(() => {
+    const refresh = () => setDone(doneLessons());
+    refresh();
+    window.addEventListener(LESSONS_SYNCED, refresh);   // the account's progress arrives a moment later
+    return () => window.removeEventListener(LESSONS_SYNCED, refresh);
+  }, []);
   return done;
 }
 

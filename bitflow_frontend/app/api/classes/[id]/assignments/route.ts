@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { classRole } from "@/lib/classes";
+import { parseLessonKey } from "@/lib/lessons";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +44,10 @@ export async function POST(request: Request, { params }: Params) {
   if (slugs.length === 0 || slugs.length > MAX_PROBLEMS) {
     return NextResponse.json({ error: `Pick 1 to ${MAX_PROBLEMS} problems.` }, { status: 400 });
   }
-  const found = await prisma.question.count({ where: { slug: { in: slugs } } });
-  if (found !== slugs.length) {
+  // Problems by slug; lessons by "lab:blink" key (lib/lessons.ts).
+  const problemSlugs = slugs.filter((s) => !parseLessonKey(s));
+  const found = await prisma.question.count({ where: { slug: { in: problemSlugs } } });
+  if (found !== problemSlugs.length) {
     return NextResponse.json({ error: "Some of those problems don't exist." }, { status: 400 });
   }
 

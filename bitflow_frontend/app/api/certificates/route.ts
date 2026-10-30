@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
-import { newCertificateId, trackById } from "@/lib/tracks";
+import { newCertificateId, trackById, trackCounts } from "@/lib/tracks";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +21,10 @@ export async function POST(request: Request) {
   const existing = await prisma.certificate.findUnique({ where: { userId_track: { userId: user.id, track: track.id } } });
   if (existing) return NextResponse.json({ id: existing.id, url: `/c/${existing.id}` });
 
-  const [total, solved] = await Promise.all([
-    prisma.question.count({ where: track.where }),
-    prisma.userProgress.count({ where: { userId: user.id, solved: true, question: track.where } }),
-  ]);
+  const { total, solved } = await trackCounts(track, user.id);
   if (total === 0 || solved < total) {
-    return NextResponse.json({ error: `Solve every problem in ${track.name} first (${solved}/${total}).` }, { status: 403 });
+    const what = track.lessons ? "Finish every lesson" : "Solve every problem";
+    return NextResponse.json({ error: `${what} in ${track.name} first (${solved}/${total}).` }, { status: 403 });
   }
 
   const cert = await prisma.certificate.create({ data: { id: newCertificateId(), userId: user.id, track: track.id } });

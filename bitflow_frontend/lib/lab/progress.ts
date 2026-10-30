@@ -1,6 +1,7 @@
 /**
- * lib/lab/progress.ts — Board Lab progress and drafts, in this browser only (localStorage),
- * like the Academy's (lib/academy-progress-storage.ts).
+ * lib/lab/progress.ts — Board Lab progress and drafts in this browser (localStorage), like the
+ * Academy's (lib/academy-progress-storage.ts). Signed-in learners' copy is kept on the account
+ * by lib/lesson-sync.ts.
  *   bitflow_lab_progress_v1  → ["blink", ...]  slugs of finished lessons
  *   bitflow_lab_code:<slug>  → the lesson's Verilog as last edited
  */
@@ -18,6 +19,14 @@ export function doneLessons(): string[] {
 export function markDone(slug: string) {
   const done = doneLessons();
   if (!done.includes(slug)) write(DONE, JSON.stringify([...done, slug]));
+}
+export const setDoneLessons = (slugs: string[]) => write(DONE, JSON.stringify(slugs));
+/** Forget this browser's Lab work (a different account signed in here). */
+export function clearLabProgress() {
+  write(DONE, null);
+  try {
+    Object.keys(localStorage).filter((k) => k.startsWith("bitflow_lab_code:")).forEach((k) => localStorage.removeItem(k));
+  } catch { /* private mode */ }
 }
 export const loadDraft = (slug: string) => read(code(slug));
 export const saveDraft = (slug: string, text: string | null) => write(code(slug), text);

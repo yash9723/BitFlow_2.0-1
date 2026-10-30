@@ -11,6 +11,7 @@ import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import type { ProfileData } from "@/lib/profile";
 import { GuardianPanel } from "@/components/ConsentGate";
 import SiteHeader from "@/components/SiteHeader";
+import { LESSONS_SYNCED } from "@/lib/lesson-sync";
 
 /* ── Lattice background: electrons flowing along a chip-grid, converging
    on a central chip outline. Low-opacity, meant to blend not distract. ── */
@@ -634,19 +635,23 @@ function DashboardContent() {
   });
 
   useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.json())
-      .then((json) => setStats(json?.user ? json : null))
-      .catch(() => setStats(null));
+    const load = () => {
+      fetch("/api/profile")
+        .then((r) => r.json())
+        .then((json) => setStats(json?.user ? json : null))
+        .catch(() => setStats(null));
 
-    const p = loadAcademyProgress();
-    const lastTopic = p.lastVisited ? ACADEMY_TOPIC_META.find((t) => t.slug === p.lastVisited) : undefined;
-    setAcademy({
-      done: p.completedTopics.length,
-      total: ACADEMY_TOPIC_META.length,
-      lastTitle: lastTopic?.title ?? null,
-      lastSlug: lastTopic?.slug ?? null,
-    });
+      const p = loadAcademyProgress();
+      const lastTopic = p.lastVisited ? ACADEMY_TOPIC_META.find((t) => t.slug === p.lastVisited) : undefined;
+      setAcademy({
+        done: p.completedTopics.length,
+        total: ACADEMY_TOPIC_META.length,
+        lastTitle: lastTopic?.title ?? null,
+        lastSlug: lastTopic?.slug ?? null,
+      });
+    };
+    load();
+    window.addEventListener(LESSONS_SYNCED, load);   // the account's progress arrives a moment later
     try {
       const draft = JSON.parse(localStorage.getItem(DESIGN_STORAGE_KEY) ?? "null");
       setSandboxModule(typeof draft === "string" ? /\bmodule\s+(\w+)/.exec(draft)?.[1] ?? null : null);
@@ -670,6 +675,7 @@ function DashboardContent() {
         } : null);
       })
       .catch(() => setDaily(null));
+    return () => window.removeEventListener(LESSONS_SYNCED, load);
   }, []);
 
   const name = user?.username || "there";
@@ -681,6 +687,7 @@ function DashboardContent() {
     .sort((a, b) => Number(a.complete) - Number(b.complete) || b.solved / Math.max(b.total, 1) - a.solved / Math.max(a.total, 1))
     .slice(0, 3);
   const lastSolved = stats?.recentAC[0];
+  const lab = stats?.tracks.find((t) => t.id === "board-lab");
 
   return (
     <div className="relative min-h-screen bg-void text-bright overflow-hidden flex flex-col">
@@ -757,14 +764,24 @@ function DashboardContent() {
                   <Bar pct={pct} tone="bg-purple-400" />
                   <div className="text-[11px] text-dim mt-1">Digital Electronics · {academy.done}/{academy.total} topics · {pct}%</div>
                 </Link>
+                <Link href="/lab" className="block group">
+                  <div className="flex gap-2 mb-1.5">
+                    <span className="text-info text-xs font-bold">02</span>
+                    <span className="text-xs text-ghost group-hover:text-bright transition-colors">
+                      {lab?.solved ? "Back to the Board Lab" : "Start the Board Lab"}
+                    </span>
+                  </div>
+                  <Bar pct={lab?.total ? (100 * lab.solved) / lab.total : 0} tone="bg-info" />
+                  <div className="text-[11px] text-dim mt-1">Board Lab · {lab?.solved ?? 0}/{lab?.total ?? "…"} lessons</div>
+                </Link>
                 <Link href="/sandbox" className="flex gap-2 group">
-                  <span className="text-phosphor text-xs font-bold">02</span>
+                  <span className="text-phosphor text-xs font-bold">03</span>
                   <span className="text-xs text-ghost group-hover:text-bright transition-colors">
                     {sandboxModule ? <>Back to <span className="font-mono text-pale">{sandboxModule}</span> in the Sandbox</> : "Open the Sandbox IDE"}
                   </span>
                 </Link>
                 <Link href="/arena" className="flex gap-2 group">
-                  <span className="text-warn text-xs font-bold">03</span>
+                  <span className="text-warn text-xs font-bold">04</span>
                   <span className="text-xs text-ghost group-hover:text-bright transition-colors">
                     {lastSolved ? `Last solved "${lastSolved.title}". Find the next one in the Arena` : "Solve your first problem in the Arena"}
                   </span>

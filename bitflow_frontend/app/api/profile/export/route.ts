@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   if (!success) return NextResponse.json({ error: "You can download your data 3 times an hour. Please try again later." }, { status: 429 });
 
   const id = me.id;
-  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events] = await Promise.all([
+  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: {
       username: true, role: true, publicProfile: true, createdAt: true,
       birthYear: true, birthMonth: true, consentVersion: true, consentAt: true, guardianStatus: true, guardianAllowAi: true, nomineeName: true, nomineeContact: true } }),
@@ -44,6 +44,7 @@ export async function GET(request: Request) {
     prisma.classroom.findMany({ where: { ownerId: id }, select: { name: true, joinCode: true, createdAt: true } }),
     prisma.guardianConsent.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" }, select: { guardianName: true, relationship: true, allowAi: true, createdAt: true } }),
     prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "asc" }, take: 1000, select: { action: true, detail: true, createdAt: true } }),
+    prisma.lessonProgress.findMany({ where: { userId: id }, select: { kind: true, slug: true, done: true, quizScore: true, hwBoard: true, draft: true, xpAwarded: true, completedAt: true, updatedAt: true } }),
   ]);
   if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
   await audit(id, "data.exported", id);
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
     privacy: { birthYear, birthMonth, consentVersion, consentAt, guardianStatus, guardianAllowAi, nominee: nomineeName ? { name: nomineeName, contact: nomineeContact } : null,
                parentConsents: guardians, events },
     xp,
+    lessons,
     progress: progress.map(({ question, ...p }) => ({ problem: question.slug, title: question.title, ...p })),
     submissions: submissions.slice(0, MAX_SUBMISSIONS).map(({ question, testbenchCode, ...s }) => ({
       problem: question.slug, title: question.title, ...s,

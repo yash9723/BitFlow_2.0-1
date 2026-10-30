@@ -22,6 +22,8 @@ import { EMPTY_VIEW, type Addon, type BoardHandle, type BoardView } from "./Boar
 import { KEY_FACES, Keypad, ServoMeter, ShiftRegister595 } from "@/lib/lab/peripherals";
 import { VIEWS, viewFor, type ViewId } from "@/lib/lab/boards3d";
 import { rich } from "./rich";
+import { useAuth } from "@/hooks/useAuth";
+import { LESSONS_SYNCED, fetchDraft, reportLesson } from "@/lib/lesson-sync";
 
 const Editor = dynamic(() => import("@/components/Editor"), { ssr: false, loading: () => <div className="h-full bg-pit" /> });
 const ModelShelf = dynamic(() => import("./ModelShelf"), { ssr: false });
@@ -48,6 +50,8 @@ export default function LabLesson({ slug }: { slug: string }) {
   const [running, setRunning] = useState(true);
   const [results, setResults] = useState<GoalResult[] | null>(null);
   const [done, setDone] = useState(false);
+  const [xpEarned, setXpEarned] = useState(0);
+  const userId = useAuth().user?.id;
   const [log, setLog] = useState<string[]>([]);
   const [serial, setSerial] = useState("");
   const [inputs, setInputs] = useState({ btn: [0, 0], sw: [0, 0, 0, 0] });
@@ -75,12 +79,40 @@ export default function LabLesson({ slug }: { slug: string }) {
     const draft = loadDraft(slug);
     if (draft) setCode(draft);
     setDone(doneLessons().includes(slug));
+    // Finished on another device: the account's progress arrives a moment later.
+    const refresh = () => setDone(doneLessons().includes(slug));
+    window.addEventListener(LESSONS_SYNCED, refresh);
+    return () => window.removeEventListener(LESSONS_SYNCED, refresh);
   }, [slug]);
+
+  // Signed in with no draft in this browser: pick up the one saved on the account.
+  useEffect(() => {
+    if (!userId || loadDraft(slug)) return;
+    let live = true;
+    void fetchDraft("lab", slug).then((d) => { if (live && d && !loadDraft(slug)) { setCode(d); saveDraft(slug, d); } });
+    return () => { live = false; };
+  }, [slug, userId]);
+
+  // Drafts reach the account a few seconds after typing stops, and when leaving the lesson.
+  const pendingDraft = useRef<{ text: string | null } | null>(null);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flushDraft = useCallback(() => {
+    clearTimeout(draftTimer.current);
+    if (pendingDraft.current) void reportLesson({ kind: "lab", slug, draft: pendingDraft.current.text });
+    pendingDraft.current = null;
+  }, [slug]);
+  useEffect(() => flushDraft, [flushDraft]);
 
   const edit = (text: string) => {
     setCode(text);
     setResults(null);
-    saveDraft(slug, text === lesson.starter ? null : text);
+    const draft = text === lesson.starter ? null : text;
+    saveDraft(slug, draft);
+    if (userId) {
+      pendingDraft.current = { text: draft };
+      clearTimeout(draftTimer.current);
+      draftTimer.current = setTimeout(flushDraft, 3000);
+    }
   };
 
   /** The netlist for the current code, synthesized once per version (Yosys in the browser). */
@@ -239,7 +271,11 @@ export default function LabLesson({ slug }: { slug: string }) {
     if (!n) return;
     const r = grade(lesson, n);
     setResults(r);
-    if (r.every((g) => g.ok)) { markDone(slug); setDone(true); }
+    if (r.every((g) => g.ok)) {
+      markDone(slug);
+      setDone(true);
+      void reportLesson({ kind: "lab", slug, done: true }).then(setXpEarned);
+    }
   };
 
   const buildForBoard = async () => {
@@ -369,7 +405,7 @@ export default function LabLesson({ slug }: { slug: string }) {
         <section className="rounded-lg border border-rim bg-pit/40 p-4 space-y-3" aria-labelledby="goals">
           <div className="flex items-center justify-between gap-2">
             <h2 id="goals" className={heading}>Goals</h2>
-            {done && <span className="font-mono text-[10px] text-phosphor">✓ lesson complete</span>}
+            {done && <span className="font-mono text-[10px] text-phosphor">✓ lesson complete{xpEarned > 0 ? ` · +${xpEarned} XP` : ""}</span>}
           </div>
           <ul className="space-y-2" aria-live="polite">
             {lesson.goals.map((g, k) => {

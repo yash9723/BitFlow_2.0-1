@@ -17,8 +17,10 @@ import {
   markTopicVisited,
   markTopicCompleted,
   loadAcademyProgress,
+  quizPassed,
 } from "@/lib/academy-progress-storage";
 import SiteHeader from "@/components/SiteHeader";
+import { LESSONS_SYNCED, reportLesson } from "@/lib/lesson-sync";
 
 type Tab = "learn" | "quiz" | "flashcards" | "videos";
 
@@ -36,6 +38,10 @@ export default function TopicView({ topic, prev, next }: Props) {
     markTopicVisited(topic.slug);
     const p = loadAcademyProgress();
     setCompleted(p.completedTopics.includes(topic.slug));
+    // Finished on another device: the account's progress arrives a moment later.
+    const refresh = () => setCompleted(loadAcademyProgress().completedTopics.includes(topic.slug));
+    window.addEventListener(LESSONS_SYNCED, refresh);
+    return () => window.removeEventListener(LESSONS_SYNCED, refresh);
   }, [topic.slug]);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
@@ -127,9 +133,10 @@ export default function TopicView({ topic, prev, next }: Props) {
           <QuizPanel
             questions={topic.quiz}
             onComplete={(score, total) => {
-              if (score >= Math.ceil(total * 0.7)) {
+              if (quizPassed(score, total)) {
                 markTopicCompleted(topic.slug, score);
                 setCompleted(true);
+                void reportLesson({ kind: "academy", slug: topic.slug, done: true, quizScore: score });
               }
             }}
           />

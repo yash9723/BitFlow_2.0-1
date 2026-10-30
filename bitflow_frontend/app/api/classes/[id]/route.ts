@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
-import { classProgress, classRole, progressCsv } from "@/lib/classes";
+import { classProgress, classRole, lessonCatalog, progressCsv } from "@/lib/classes";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +63,7 @@ export async function GET(request: Request, { params }: Params) {
       ? prisma.question.findMany({
           orderBy: { orderIndex: "asc" },
           select:  { slug: true, title: true, learningLevel: true, difficulty: true },
-        }).then((qs) => qs.sort((a, b) => levelRank(a.learningLevel) - levelRank(b.learningLevel)))
+        }).then((qs) => [...qs.sort((a, b) => levelRank(a.learningLevel) - levelRank(b.learningLevel)), ...lessonCatalog()])
       : null,
   ]);
 
