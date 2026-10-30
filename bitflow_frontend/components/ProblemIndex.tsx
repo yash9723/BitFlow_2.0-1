@@ -14,7 +14,6 @@ export interface IndexProblem {
   lockedBy: { title: string; href: string } | null;
 }
 
-const LEVELS = ["Beginner", "Intermediate", "Advanced", "Arena"];
 const DIFFICULTY_ORDER = ["beginner", "easy", "intermediate", "medium", "advanced", "hard", "expert"];
 const field = "bg-void border border-rim rounded-lg px-2 py-1.5 text-[12px] text-pale focus:outline-none focus:border-phosphor/60";
 const uniq = (xs: string[]) => [...new Set(xs)];
@@ -34,6 +33,8 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   };
 
+  // In the order the page lists them (app/problems/page.tsx).
+  const levels = useMemo(() => uniq(problems.map((p) => p.level)), [problems]);
   const categories = useMemo(() => uniq(problems.map((p) => p.category)).sort(), [problems]);
   const difficulties = useMemo(() => uniq(problems.map((p) => p.difficulty))
     .sort((a, b) => DIFFICULTY_ORDER.indexOf(a.toLowerCase()) - DIFFICULTY_ORDER.indexOf(b.toLowerCase())), [problems]);
@@ -62,7 +63,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
                aria-label="Search problems" className={`${field} flex-1 min-w-[12rem]`} />
         <select aria-label="Level" value={level} onChange={(e) => setParam("level", e.target.value)} className={field}>
           <option value="">All levels</option>
-          {LEVELS.map((l) => <option key={l} value={l}>{l === "Arena" ? "Arena" : `${l} path`}</option>)}
+          {levels.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
         <select aria-label="Topic" value={category} onChange={(e) => setParam("category", e.target.value)} className={field}>
           <option value="">All topics</option>
@@ -106,7 +107,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
                 </div>
                 {p.lockedBy && <div className="text-[10px] text-dim mt-1">Opens after <Link href={p.lockedBy.href} className="text-info hover:underline">{p.lockedBy.title}</Link></div>}
               </div>
-              <span className="text-[11px] text-ghost w-28">{p.level === "Arena" ? "Arena" : `${p.level} path`}</span>
+              <span className="text-[11px] text-ghost w-36">{p.level}</span>
               <span className="text-[11px] text-ghost w-28">{label(p.category)}</span>
               <span className="text-[11px] text-pale w-24">{label(p.difficulty)}</span>
               <span className="text-[11px] text-dim w-14 text-right">{p.xp} XP</span>

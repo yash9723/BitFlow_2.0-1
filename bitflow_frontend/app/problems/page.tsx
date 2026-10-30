@@ -16,16 +16,20 @@ export const dynamic = "force-dynamic";
 export const metadata = pageMeta("/problems", "All problems",
   "Every Verilog and SystemVerilog problem on BitFlow, from logic gates to RISC-V, FSMs, formal and timing: search by topic, tag and difficulty.");
 
+const LEVEL_ORDER = ["Verilog Beginner", "Verilog Intermediate", "Verilog Advanced", "Arena"];
 const tagsOf = (json: string) => { try { const t = JSON.parse(json); return Array.isArray(t) ? t.map(String) : []; } catch { return []; } };
 
 export default async function ProblemsPage() {
   const [rows, user] = await Promise.all([
     prisma.question.findMany({
-      orderBy: [{ learningLevel: "asc" }, { orderIndex: "asc" }],
+      orderBy: { orderIndex: "asc" },
       select: { slug: true, title: true, difficulty: true, category: true, tags: true, learningLevel: true, xpReward: true, unlockAfter: true },
     }),
     getSessionUser(),
   ]);
+  // Easiest first; any other level goes last. Array.sort is stable, so orderIndex holds within a level.
+  const rank = (level: string) => { const i = LEVEL_ORDER.indexOf(level); return i < 0 ? LEVEL_ORDER.length : i; };
+  rows.sort((a, b) => rank(a.learningLevel) - rank(b.learningLevel));
   const solved = await solvedSlugs(user?.id);
   const bySlug = new Map(rows.map((r) => [r.slug, r]));
   const problems: IndexProblem[] = rows.map((r) => {
