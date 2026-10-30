@@ -25,7 +25,7 @@ export type PartKind =
   | "not" | "and" | "or" | "xor" | "nand" | "nor" | "xnor" | "mux2"
   | "dff" | "tff" | "jkff" | "reg" | "counter"
   | "adder" | "cmp" | "decoder" | "split" | "merge"
-  | "mux" | "demux" | "encoder" | "priority" | "bcd7" | "alu" | "shift" | "rom" | "ram" | "keypad" | "probe" | "tri" | "bus"
+  | "mux" | "demux" | "encoder" | "priority" | "bcd7" | "alu" | "shift" | "rom" | "ram" | "keypad" | "probe" | "tri" | "bus" | "tunin" | "tunout"
   | "led" | "seg7" | "hexout"
   | "block";
 /** A block's pins: its definition's inputs and outputs (switch/hex-input and LED/display parts), by label. */
@@ -34,14 +34,19 @@ export interface BlockPorts { inputs: { name: string; width: number }[]; outputs
  * w: width in bits (buses; a decoder's select width); value: a constant's value; n: gate inputs; reset: flip-flop reset pin;
  * block/ports: a block instance's definition (a key of Circuit.blocks) and a copy of its pins.
  * n is also a mux's or demux's select bits, a ROM's or RAM's address bits and a bus's drivers; data: a ROM's contents.
+ * rot, flip: how the part is drawn, clockwise from pointing right, and mirrored first; no effect on the logic.
+ * net: a tunnel's name: a tunnel-in and the tunnel-outs with the same name are one wire.
  */
 export interface Part {
   id: string; kind: PartKind; x: number; y: number; label: string; n?: number; reset?: boolean; w?: number; value?: number;
-  block?: string; ports?: BlockPorts; data?: number[];
+  block?: string; ports?: BlockPorts; data?: number[]; rot?: number; flip?: boolean; net?: string;
 }
 export interface PinRef { part: string; pin: string }
-/** bend: where the user dragged the wire's middle run (x of the vertical run; y when it routes backwards). */
-export interface Wire { id: string; from: PinRef; to: PinRef; bend?: number }
+/**
+ * bend: where the user dragged the wire's middle run (x of the vertical run; y when it routes backwards).
+ * route: the path Auto-route found, used while it still starts and ends on the pins.
+ */
+export interface Wire { id: string; from: PinRef; to: PinRef; bend?: number; route?: [number, number][] }
 /** A text note on the canvas: no logic, exported as a comment. */
 export interface Note { id: string; x: number; y: number; text: string }
 /** probes: the signals the logic analyzer records (default: every input and output). */
@@ -96,7 +101,8 @@ export function pins(p: Part): { inputs: string[]; outputs: string[] } {
     case "shift": return { inputs: ["si", "d", "load", "dir", "clk", ...rst], outputs: ["q", "so"] };
     case "rom": return { inputs: ["addr"], outputs: ["q"] };
     case "ram": return { inputs: ["addr", "d", "we", "clk"], outputs: ["q"] };
-    case "probe": return { inputs: ["in"], outputs: [] };
+    case "probe": case "tunin": return { inputs: ["in"], outputs: [] };
+    case "tunout": return { inputs: [], outputs: ["out"] };
     case "tri": return { inputs: ["d", "en"], outputs: ["y"] };
     case "bus": return { inputs: Array.from({ length: Math.max(2, Math.min(4, p.n ?? 2)) }, (_, i) => `in${i}`), outputs: ["out"] };
     case "not": return { inputs: ["a"], outputs: ["y"] };
@@ -134,7 +140,7 @@ export function pinWidth(p: Part, pin: string): number {
     case "shift": return pin === "d" || pin === "q" ? w : 1;
     case "rom": return pin === "addr" ? selBits(p) : w;
     case "ram": return pin === "addr" ? selBits(p) : pin === "d" || pin === "q" ? w : 1;
-    case "probe": case "tri": case "bus": return pin === "en" ? 1 : w;
+    case "probe": case "tri": case "bus": case "tunin": case "tunout": return pin === "en" ? 1 : w;
     case "reg": return pin === "d" || pin === "q" ? w : 1;
     case "counter": return pin === "q" ? w : 1;
     case "adder": return pin === "a" || pin === "b" || pin === "sum" ? w : 1;
@@ -405,7 +411,13 @@ function build(c: Circuit, ctx: Ctx, bind: Binding, ports: BoardNetlist["ports"]
       }
       case "tri": out().forEach((y, i) => cell("$_AND_", { A: inBits(p, "d")[i], B: one("en") }, y)); break;
       case "bus": out().forEach((y, bit) => cell("$_BUF_", { A: pins(p).inputs.map((pin) => inBits(p, pin)[bit]).reduce((acc, b) => cell("$_OR_", { A: acc, B: b })) }, y)); break;
-      case "probe": break;
+      case "probe": case "tunin": break;
+      case "tunout": {                                                   // joined to the tunnel-in of the same name, wherever it is
+        const from = c.parts.find((x) => x.kind === "tunin" && x.net === p.net);
+        const bits = from ? inBits(from, "in") : [];
+        out().forEach((y, i) => cell("$_BUF_", { A: bits[i] ?? "0" }, y));
+        break;
+      }
       case "split": inBits(p, "in").forEach((b, i) => cell("$_BUF_", { A: b }, out(`b${i}`)[0])); break;
       case "merge": out().forEach((y, i) => cell("$_BUF_", { A: one(`b${i}`) }, y)); break;
       default: {
@@ -483,6 +495,14 @@ export function validate(c: Circuit, lib: Library = c.blocks ?? {}): CircuitIssu
       if (p.kind === "shift" && ["si", "d", "load", "dir"].includes(pin)) continue;   // each use of a shift register leaves some of these open
       if (p.kind === "bus") continue;                                                  // a free bus input is just a missing driver
       if (!driven.has(`${p.id}.${pin}`)) out.push({ level: "warning", msg: `${p.label}.${pin} isn't connected, so it reads ${pinDefault(p, pin)}.`, at: p.id });
+    }
+    if (p.kind === "tunin" && c.parts.some((x) => x !== p && x.kind === "tunin" && x.net === p.net)) {
+      out.push({ level: "error", msg: `Two tunnel-ins drive the net "${p.net}": only one may.`, at: p.id });
+    }
+    if (p.kind === "tunout") {
+      const from = c.parts.find((x) => x.kind === "tunin" && x.net === p.net);
+      if (!from) out.push({ level: "warning", msg: `Nothing drives the net "${p.net}", so ${p.label} reads 0: add a tunnel-in with that name.`, at: p.id });
+      else if (width(from) !== width(p)) out.push({ level: "error", msg: `The net "${p.net}" is ${width(from)} bits at ${from.label} but ${width(p)} at ${p.label}.`, at: p.id });
     }
     if (p.kind === "bus") {
       const froms = c.wires.filter((w) => w.to.part === p.id).map((w) => byId.get(w.from.part));
@@ -672,6 +692,10 @@ function moduleText(c: Circuit): string {
       body.push(`    assign ${sig(p, "zero")} = ${y} == ${zero(W)};`, `    assign ${sig(p, "cout")} = ${op} <= 3'd1 && ${l}_sum[${W}];`);
     } else if (p.kind === "tri") body.push(`    assign ${p.label} = ${src(p, "en")} ? ${src(p, "d")} : ${zero(width(p))};   // no Z level: a disabled driver gives 0 (see the bus)`);
     else if (p.kind === "bus") body.push(`    assign ${p.label} = ${pins(p).inputs.map((i) => src(p, i)).join(" | ")};`);
+    else if (p.kind === "tunout") {
+      const from = c.parts.find((x) => x.kind === "tunin" && x.net === p.net);
+      body.push(`    assign ${p.label} = ${from ? src(from, "in") : zero(width(p))};   // net ${p.net}`);
+    }
     else if (p.kind === "led" || p.kind === "hexout") body.push(`    assign ${p.label} = ${src(p, "in")};`);
     else if (p.kind === "seg7") body.push(`    assign ${p.label} = {${[...pins(p).inputs].reverse().map((pin) => src(p, pin)).join(", ")}};   // {g..a}`);
     else if (p.kind === "block") {
@@ -776,6 +800,16 @@ export const CIRCUIT_EXAMPLES: { label: string; circuit: Circuit }[] = [
     wire("w1", "p1", "out", "p4", "a"), wire("w2", "p2", "out", "p4", "b"), wire("w3", "p3", "out", "p4", "cin"),
     wire("w4", "p4", "sum", "p5", "in"), wire("w5", "p4", "cout", "p6", "in"),
   ] } },
+  // y = ab + a'c, with no bc term: toggling a with b = c = 1 makes y dip for a moment
+  { label: "Static hazard", circuit: { module: "hazard", notes: [{ id: "n1", x: 80, y: -20, text: "Set b and c to 1, open Timing and toggle a.\ny should stay 1, but it dips: the two ANDs\nhand over late. Adding the term bc fixes it." }],
+    parts: [
+    part("p1", "switch", 80, 100, "a"), part("p2", "switch", 80, 200, "b"), part("p3", "switch", 80, 320, "c"),
+    part("p4", "not", 220, 280, "na"), part("p5", "and", 360, 120, "t1"), part("p6", "and", 360, 280, "t2"),
+    part("p7", "or", 520, 190, "y_or"), part("p8", "led", 680, 200, "y"),
+  ], wires: [
+    wire("w1", "p1", "out", "p5", "a"), wire("w2", "p2", "out", "p5", "b"), wire("w3", "p1", "out", "p4", "a"),
+    wire("w4", "p4", "y", "p6", "a"), wire("w5", "p3", "out", "p6", "b"), wire("w6", "p5", "y", "p7", "a"), wire("w7", "p6", "y", "p7", "b"), wire("w8", "p7", "y", "p8", "in"),
+  ], probes: [{ part: "p1", pin: "out" }, { part: "p4", pin: "y" }, { part: "p5", pin: "y" }, { part: "p6", pin: "y" }, { part: "p8", pin: "in" }] } },
   { label: "Counter to display", circuit: { module: "count_hex", parts: [
     part("p1", "clock", 80, 160, "clk"), part("p2", "button", 80, 280, "rst"), part("p3", "switch", 80, 60, "en"),
     part("p4", "counter", 300, 140, "cnt", { w: 4, reset: true }),

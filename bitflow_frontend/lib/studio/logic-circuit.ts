@@ -6,7 +6,7 @@
  * Gates on the canvas take up to 4 inputs, so longer terms cascade. Terms and inverters
  * shared between outputs are built once. Self-check: scripts/logic-circuit.check.ts.
  * ponytail: a literal feeding the second level directly (y = a + bc) can cross a first-level
- * gate on the canvas; the wires are right, only the drawing is tight.
+ * gate on the canvas; the wires are right, and Auto-route in the editor redraws them around it.
  */
 import type { Circuit, Part, PartKind, PinRef, Wire } from "./circuit";
 import { SNAP, size } from "./circuit-edit";

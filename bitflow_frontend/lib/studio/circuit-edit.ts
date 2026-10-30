@@ -13,7 +13,8 @@ export const SNAP = 10;
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
-export function size(p: Part): { w: number; h: number } {
+/** A part's box as if it weren't turned. */
+export function baseSize(p: Part): { w: number; h: number } {
   const { inputs, outputs } = pins(p);
   const n = inputs.length;
   switch (p.kind) {
@@ -35,6 +36,7 @@ export function size(p: Part): { w: number; h: number } {
     case "probe": return { w: 64, h: 30 };
     case "tri": return { w: 56, h: 44 };
     case "bus": return { w: 44, h: Math.max(44, n * 18 + 12) };
+    case "tunin": case "tunout": return { w: 76, h: 28 };
     case "dff": case "tff": case "jkff": return { w: 64, h: n * 20 + 24 };
     case "reg": case "counter": return { w: 76, h: n * 20 + 24 };
     case "adder": return { w: 76, h: 84 };
@@ -47,14 +49,71 @@ export function size(p: Part): { w: number; h: number } {
   }
 }
 
-/** Inputs spread down the left edge, outputs down the right. */
-export function pinPos(p: Part, pin: string): { x: number; y: number } {
-  const { w, h } = size(p);
+export const rotOf = (p: Part) => (((p.rot ?? 0) % 360) + 360) % 360;
+/** The box a part takes on the canvas, turned; (p.x, p.y) is its top left. */
+export function size(p: Part): { w: number; h: number } {
+  const b = baseSize(p);
+  return rotOf(p) % 180 ? { w: b.h, h: b.w } : b;
+}
+
+/** A pin in the part's own unturned frame: inputs spread down the left edge, outputs down the right. */
+export function localPin(p: Part, pin: string): { x: number; y: number } {
+  const { w, h } = baseSize(p);
   const { inputs, outputs } = pins(p);
   const i = inputs.indexOf(pin);
   if (i >= 0) return { x: p.x, y: p.y + ((i + 1) * h) / (inputs.length + 1) };
   const o = Math.max(0, outputs.indexOf(pin));
   return { x: p.x + w, y: p.y + ((o + 1) * h) / (outputs.length + 1) };
+}
+
+/** Mirror (if flipped), then turn clockwise: a vector from the part's frame to the canvas. */
+function turnVector(p: Part, x: number, y: number): { x: number; y: number } {
+  const fx = p.flip ? -x : x;
+  switch (rotOf(p)) {
+    case 90: return { x: -y, y: fx };
+    case 180: return { x: -fx, y: -y };
+    case 270: return { x: y, y: -fx };
+    default: return { x: fx, y };
+  }
+}
+
+export function pinPos(p: Part, pin: string): { x: number; y: number } {
+  const q = localPin(p, pin);
+  if (!rotOf(p) && !p.flip) return q;
+  const b = baseSize(p), s = size(p);
+  const v = turnVector(p, q.x - (p.x + b.w / 2), q.y - (p.y + b.h / 2));
+  return { x: p.x + s.w / 2 + v.x, y: p.y + s.h / 2 + v.y };
+}
+
+/** The way a pin faces, out of the part. */
+export function pinDir(p: Part, pin: string): { x: number; y: number } {
+  const v = turnVector(p, pins(p).inputs.includes(pin) ? -1 : 1, 0);
+  return { x: v.x + 0, y: v.y + 0 };                  // + 0 turns -0 into 0
+}
+
+/** The SVG transform that draws a part's unturned shape where it now sits (undefined if it isn't turned). */
+export function frameTransform(p: Part): string | undefined {
+  const r = rotOf(p);
+  if (!r && !p.flip) return undefined;
+  const b = baseSize(p), s = size(p), cx = p.x + b.w / 2, cy = p.y + b.h / 2;
+  return `translate(${p.x + s.w / 2 - cx} ${p.y + s.h / 2 - cy}) rotate(${r} ${cx} ${cy})${p.flip ? ` translate(${cx} ${cy}) scale(-1 1) translate(${-cx} ${-cy})` : ""}`;
+}
+/** The transform that keeps text at (x, y) upright and readable inside a turned part. */
+export function uprightTransform(p: Pick<Part, "rot" | "flip">, x: number, y: number): string | undefined {
+  const r = (((p.rot ?? 0) % 360) + 360) % 360;
+  if (!r && !p.flip) return undefined;
+  return `translate(${x} ${y})${p.flip ? " scale(-1 1)" : ""} rotate(${-r}) translate(${-x} ${-y})`;
+}
+
+/** Turn the selected parts in place, each about its own centre: 90 degrees clockwise, or mirrored. */
+export function turnParts(c: Circuit, s: Selection, how: "rotate" | "flip"): Circuit {
+  const ps = new Set(s.parts);
+  return { ...c, parts: c.parts.map((p) => {
+    if (!ps.has(p.id)) return p;
+    const old = size(p), next: Part = how === "flip" ? { ...p, flip: !p.flip } : { ...p, rot: (rotOf(p) + 90) % 360 };
+    const now = size(next);
+    return { ...next, x: p.x + Math.round((old.w - now.w) / 2 / SNAP) * SNAP, y: p.y + Math.round((old.h - now.h) / 2 / SNAP) * SNAP };
+  }) };
 }
 
 /** A note's text wrapped at 28 characters a line. */
@@ -83,8 +142,61 @@ export function wirePoints(a: { x: number; y: number }, b: { x: number; y: numbe
   const midY = bend ?? Math.round((a.y + b.y) / 2);
   return [[a.x, a.y], [a.x + 12, a.y], [a.x + 12, midY], [b.x - 12, midY], [b.x - 12, b.y], [b.x, b.y]];
 }
+export type Point = [number, number];
+/** An orthogonal path as SVG. */
+export const pathOf = (pts: Point[]) =>
+  pts.map(([x, y], i) => (i === 0 ? `M ${x} ${y}` : y === pts[i - 1][1] ? `H ${x}` : `V ${y}`)).join(" ");
 export const wirePath = (a: { x: number; y: number }, b: { x: number; y: number }, lane = 0, bend?: number) =>
-  wirePoints(a, b, lane, bend).map(([x, y], i) => (i === 0 ? `M ${x} ${y}` : i % 2 ? `H ${x}` : `V ${y}`)).join(" ");
+  pathOf(wirePoints(a, b, lane, bend));
+
+/** Without repeated points and the middle of straight runs. */
+export function simplify(pts: Point[]): Point[] {
+  const out: Point[] = [];
+  for (const q of pts) {
+    const a = out[out.length - 2], b = out[out.length - 1];
+    if (b && b[0] === q[0] && b[1] === q[1]) continue;
+    if (a && b && ((a[0] === b[0] && b[0] === q[0]) || (a[1] === b[1] && b[1] === q[1]))) out.pop();
+    out.push(q);
+  }
+  return out;
+}
+
+const STUB = 12;
+const near = (p: Point, q: { x: number; y: number }) => Math.abs(p[0] - q.x) < 0.01 && Math.abs(p[1] - q.y) < 0.01;
+/** The path a wire is drawn on: its auto-route while that still fits its pins; else straight out of each pin and across. */
+export function wireRoute(w: Wire, a: Part, b: Part, lane = 0): Point[] {
+  const pa = pinPos(a, w.from.pin), pb = pinPos(b, w.to.pin);
+  if (w.route && w.route.length >= 2 && near(w.route[0], pa) && near(w.route[w.route.length - 1], pb)) return w.route;
+  const da = pinDir(a, w.from.pin), db = pinDir(b, w.to.pin);
+  if (da.x === 1 && db.x === -1) return wirePoints(pa, pb, lane, w.bend);
+  const s: Point = [pa.x + da.x * STUB, pa.y + da.y * STUB], e: Point = [pb.x + db.x * STUB, pb.y + db.y * STUB];
+  return simplify([[pa.x, pa.y], s, da.x ? [e[0], s[1]] : [s[0], e[1]], e, [pb.x, pb.y]]);
+}
+
+/** Where wires of one net part ways: after their shared start, each pair's first point of difference. */
+export function junctions(paths: Point[][]): Point[] {
+  const found = new Map<string, Point>();
+  for (let i = 0; i < paths.length; i++) {
+    for (let j = i + 1; j < paths.length; j++) {
+      const p = divergence(paths[i], paths[j]);
+      if (p) found.set(p.join(","), p);
+    }
+  }
+  return [...found.values()];
+}
+function divergence(a: Point[], b: Point[]): Point | null {
+  let cur = a[0], i = 1, j = 1, moved = false;
+  while (i < a.length && j < b.length) {
+    const ax = a[i][0] - cur[0], ay = a[i][1] - cur[1], bx = b[j][0] - cur[0], by = b[j][1] - cur[1];
+    if (Math.sign(ax) !== Math.sign(bx) || Math.sign(ay) !== Math.sign(by)) break;
+    const la = Math.abs(ax) + Math.abs(ay), lb = Math.abs(bx) + Math.abs(by), step = Math.min(la, lb);
+    cur = [cur[0] + Math.sign(ax) * step, cur[1] + Math.sign(ay) * step];
+    moved = true;
+    if (la === step) i++;
+    if (lb === step) j++;
+  }
+  return moved ? cur : null;
+}
 
 /** The smallest box around every part and note (null for an empty circuit). */
 export function bounds(c: Circuit): { x: number; y: number; w: number; h: number } | null {
@@ -141,8 +253,11 @@ export function move(c: Circuit, s: Selection, dx: number, dy: number): Circuit 
     ...c,
     parts: c.parts.map((p) => (ps.has(p.id) ? { ...p, x: p.x + dx, y: p.y + dy } : p)),
     notes: c.notes?.map((n) => (ns.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n)),
-    wires: c.wires.map((w) => (w.bend !== undefined && ps.has(w.from.part) && ps.has(w.to.part)
-      ? { ...w, bend: w.bend + (isForward(w) ? dx : dy) } : w)),
+    wires: c.wires.map((w) => {
+      if (!ps.has(w.from.part) || !ps.has(w.to.part)) return w;       // a route with an end left behind stops fitting, and is ignored
+      const route = w.route?.map(([x, y]): Point => [x + dx, y + dy]);
+      return { ...w, ...(route ? { route } : {}), ...(w.bend !== undefined ? { bend: w.bend + (isForward(w) ? dx : dy) } : {}) };
+    }),
   };
 }
 

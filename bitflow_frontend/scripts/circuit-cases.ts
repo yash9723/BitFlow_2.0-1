@@ -88,6 +88,11 @@ export const PART_CASES: Record<string, Circuit> = {
   ram4: { module: "ram4", parts: [P("clock", "clk"), P("switch", "we"), P("hexin", "addr", { w: 2 }), P("hexin", "d", { w: 2 }), P("ram", "mem", { n: 2, w: 2 }), P("hexout", "q", { w: 2 })],
   wires: [W("clk", "out", "mem", "clk"), W("we", "out", "mem", "we"), W("addr", "out", "mem", "addr"), W("d", "out", "mem", "d"), W("mem", "q", "q", "in")] },
 
+  // Tunnels: x reaches both outputs with no wire between them; a part with no tunnel-in reads 0
+  tunnels: { module: "tunnels", parts: [P("hexin", "x", { w: 3 }), P("tunin", "send", { w: 3, net: "bus3" }), P("tunout", "r1", { w: 3, net: "bus3" }), P("tunout", "r2", { w: 3, net: "bus3" }),
+    P("not", "inv", { w: 3 }), P("tunout", "open", { net: "nothing" }), P("hexout", "a", { w: 3 }), P("hexout", "b", { w: 3 }), P("led", "z")],
+  wires: [W("x", "out", "send", "in"), W("r1", "out", "a", "in"), W("r2", "out", "inv", "a"), W("inv", "y", "b", "in"), W("open", "out", "z", "in")] },
+
   keys: { module: "keys", parts: [P("keypad", "pad"), P("not", "up"), P("hexout", "code", { w: 4 }), P("led", "idle")],
   wires: [W("pad", "code", "code", "in"), W("pad", "pressed", "up", "a"), W("up", "y", "idle", "in")] },
 

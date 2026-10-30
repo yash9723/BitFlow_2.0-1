@@ -21,7 +21,7 @@ export interface BoardNetlist {
 
 type Op = (a: number, b: number, s: number) => number;
 
-const OPS: Record<string, Op> = {
+export const OPS: Record<string, Op> = {
   $_BUF_:    (a) => a,
   $_NOT_:    (a) => a ^ 1,
   $_AND_:    (a, b) => a & b,

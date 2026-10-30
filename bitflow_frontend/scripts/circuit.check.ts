@@ -9,10 +9,13 @@ import {
 } from "../lib/studio/circuit";
 import { tableFromNetlist } from "../lib/studio/logic-min";
 import {
-  type Selection, History, NONE, blockNameIssue, copy, inRect, makeBlock, merge, move, nextLabel, paste, remove, renameBlock, selectAll, ungroupBlock, usesBlock, withBlock, wirePath,
+  type Selection, History, NONE, blockNameIssue, copy, frameTransform, inRect, junctions, makeBlock, merge, move, nextLabel, paste, pinDir, pinPos, remove, renameBlock, selectAll, simplify, size, turnParts, ungroupBlock, uprightTransform, usesBlock, wireRoute, withBlock, wirePath,
 } from "../lib/studio/circuit-edit";
 import { netlistToCircuit } from "../lib/studio/circuit-import";
-import { ALU_OPS, BCD7, busConflicts, inputParts, outputParts, romWord, toBits } from "../lib/studio/circuit";
+import { type Part, ALU_OPS, BCD7, busConflicts, inputParts, outputParts, portWidth, romWord, toBits } from "../lib/studio/circuit";
+import { crossesPart, routeAll } from "../lib/studio/circuit-route";
+import { DEFAULT_DELAYS, DelaySim, findHazards, transientToParsed } from "../lib/studio/delay-sim";
+import { circuitFromTable } from "../lib/studio/logic-circuit";
 import { PART_CASES } from "./circuit-cases";
 import { longestPath, traceToParsed, traceToVcd } from "../lib/studio/circuit-analysis";
 import { parseVcd } from "../lib/vcd-parser";
@@ -280,6 +283,130 @@ put(bs, "addr", 200); put(bs, "d", 0xbeef); put(bs, "we", 1); clk(bs); put(bs, "
 put(bs, "addr", 199); assert.equal(num(bs, "q"), 0);
 put(bs, "addr", 200); assert.equal(num(bs, "q"), 0xbeef);
 assert.ok(Date.now() - t0 < 3000, `256 x 16 RAM took ${Date.now() - t0} ms`);
+
+// Tunnels join by name, with no wire; two tunnel-ins or two widths on one net are errors
+const tn = sim("tunnels");
+for (let x = 0; x < 8; x++) { put(tn, "x", x); assert.deepEqual([num(tn, "a"), num(tn, "b"), num(tn, "z")], [x, ~x & 7, 0], `tunnel ${x}`); }
+const tc = PART_CASES.tunnels;
+assert.ok(validate({ ...tc, parts: [...tc.parts, { id: "s2", kind: "tunin", x: 0, y: 0, label: "send2", w: 3, net: "bus3" }] }).some((i) => i.level === "error" && /Two tunnel-ins/.test(i.msg)));
+assert.ok(validate({ ...tc, parts: tc.parts.map((p) => (p.label === "r2" ? { ...p, w: 2 } : p)) }).some((i) => i.level === "error" && /is 3 bits at send but 2 at r2/.test(i.msg)));
+assert.ok(validate(tc).some((i) => i.level === "warning" && /Nothing drives the net "nothing"/.test(i.msg)));
+assert.match(generateVerilog(tc), /assign r1 = x;\s+\/\/ net bus3/);
+
+// Rotation and flipping: pins go round the box, the box stays centred, the logic and Verilog don't change
+const g2: Part = { id: "g", kind: "and", x: 100, y: 100, label: "g" };
+const at = (p: Part, pin: string) => { const q = pinPos(p, pin); return [q.x, q.y]; };
+assert.deepEqual([size(g2), at(g2, "y"), pinDir(g2, "y"), pinDir(g2, "a")], [{ w: 64, h: 44 }, [164, 122], { x: 1, y: 0 }, { x: -1, y: 0 }]);
+const r90 = { ...g2, rot: 90 };
+assert.deepEqual(size(r90), { w: 44, h: 64 });
+assert.deepEqual(at(r90, "y"), [122, 164], "the output now faces down");
+assert.deepEqual([pinDir(r90, "y"), pinDir(r90, "a")], [{ x: 0, y: 1 }, { x: 0, y: -1 }]);
+assert.deepEqual(at({ ...g2, rot: 180 }, "y"), [100, 122]);
+assert.deepEqual(pinDir({ ...g2, rot: 270 }, "y"), { x: 0, y: -1 });
+assert.deepEqual(at({ ...g2, flip: true }, "y"), [100, 122], "flip mirrors left and right");
+assert.ok(at({ ...g2, flip: true }, "a")[0] === 164 && Math.abs(at({ ...g2, flip: true }, "a")[1] - at(g2, "a")[1]) < 1e-9, "the inputs keep their heights");
+for (const rot of [0, 90, 180, 270]) for (const flip of [false, true]) {
+  const p = { ...g2, rot, flip }, s = size(p);
+  for (const pin of ["a", "b", "y"]) {
+    const q = pinPos(p, pin), d = pinDir(p, pin);
+    assert.ok(q.x >= p.x && q.x <= p.x + s.w && q.y >= p.y && q.y <= p.y + s.h, `${rot} ${flip} ${pin} on the box`);
+    assert.ok((d.x === -1 && q.x === p.x) || (d.x === 1 && q.x === p.x + s.w) || (d.y === -1 && q.y === p.y) || (d.y === 1 && q.y === p.y + s.h), `${rot} ${flip} ${pin} faces outward`);
+  }
+}
+const ha0 = ex("Half adder"), all0 = selectAll(ha0);
+let turned = ha0;
+turned = turnParts(turned, all0, "rotate");
+assert.deepEqual(turned.parts.map((p) => p.rot), ha0.parts.map(() => 90));
+assert.equal(generateVerilog(turned), generateVerilog(ha0), "turning changes nothing but the drawing");
+assert.deepEqual(compile(turned).net, compile(ha0).net);
+const fourTimes = [1, 2, 3].reduce((x) => turnParts(x, all0, "rotate"), turned);
+assert.deepEqual(fourTimes.parts.map((p) => [p.x, p.y, p.rot]), ha0.parts.map((p) => [p.x, p.y, 0]), "four turns: back where it started");
+assert.deepEqual(turnParts(turnParts(ha0, all0, "flip"), all0, "flip").parts.map((p) => !!p.flip), ha0.parts.map(() => false));
+assert.equal(uprightTransform({}, 1, 2), undefined);
+assert.ok(frameTransform(g2) === undefined && frameTransform(r90)!.includes("rotate(90"));
+
+// Junction dots: at the point where wires of a net part ways, not at their shared start
+assert.deepEqual(junctions([[[0, 0], [50, 0], [50, 40]], [[0, 0], [100, 0]]]), [[50, 0]]);
+assert.deepEqual(junctions([[[0, 0], [50, 0], [50, 40]], [[0, 0], [50, 0], [50, 20], [90, 20]]]), [[50, 20]]);
+assert.deepEqual(junctions([[[0, 0], [50, 0]], [[0, 0], [0, 50]]]), [], "parting at the pin itself needs no dot");
+assert.deepEqual(simplify([[0, 0], [0, 0], [5, 0], [9, 0], [9, 4]]), [[0, 0], [9, 0], [9, 4]]);
+
+// Auto-route: orthogonal, starts and ends on the pins, never through a part, and doesn't touch the logic
+const routeCheck = (c: Circuit, label: string) => {
+  const r = routeAll(c);
+  assert.equal(generateVerilog(r), generateVerilog(c), `${label}: routing is only drawing`);
+  let routed = 0;
+  for (const w of r.wires) {
+    if (!w.route) continue;
+    routed++;
+    const a = r.parts.find((p) => p.id === w.from.part)!, b = r.parts.find((p) => p.id === w.to.part)!;
+    assert.deepEqual(wireRoute(w, a, b), w.route, `${label}: the route fits its pins`);
+    w.route.slice(1).forEach(([x, y], i) => assert.ok(x === w.route![i][0] || y === w.route![i][1], `${label}: orthogonal`));
+    for (const p of r.parts) assert.ok(!crossesPart(w.route, p), `${label}: ${a.label}.${w.from.pin} -> ${b.label}.${w.to.pin} runs through ${p.label}`);
+  }
+  return { routed, total: r.wires.length };
+};
+for (const { label, circuit } of CIRCUIT_EXAMPLES) {
+  const { routed, total } = routeCheck(circuit, label);
+  assert.equal(routed, total, `${label}: every wire found a path`);
+  routeCheck(turnParts(circuit, { ...NONE, parts: circuit.parts.filter((_, i) => i % 2).map((p) => p.id) }, "rotate"), `${label} turned`);
+}
+const dense = circuitFromTable({ inputs: ["a", "b", "c", "d"], outputs: [{ name: "x", cells: Array.from({ length: 16 }, (_, m) => ((m * 7 + 3) % 5 < 2 ? 1 : 0)) }, { name: "y", cells: Array.from({ length: 16 }, (_, m) => ((m * 11) % 3 ? 1 : 0)) }] }, "nand");
+const t1 = Date.now();
+const denseResult = routeCheck(dense, "generated circuit");
+assert.ok(denseResult.routed === denseResult.total, `generated circuit: ${denseResult.routed} of ${denseResult.total}`);
+assert.ok(Date.now() - t1 < 8000, `routing ${denseResult.total} wires took ${Date.now() - t1} ms`);
+// Moving both ends carries a route along; moving one end drops it back to the default
+const rt = routeAll(ha0), wr = rt.wires[0];
+const movedBoth = move(rt, { ...NONE, parts: [wr.from.part, wr.to.part] }, 20, 30).wires[0];
+assert.deepEqual(movedBoth.route![0], [wr.route![0][0] + 20, wr.route![0][1] + 30]);
+const movedOne = move(rt, { ...NONE, parts: [wr.from.part] }, 20, 30);
+const ma = movedOne.parts.find((p) => p.id === wr.from.part)!, mb = movedOne.parts.find((p) => p.id === wr.to.part)!;
+assert.notDeepEqual(wireRoute(movedOne.wires[0], ma, mb), movedOne.wires[0].route, "a route that no longer fits is ignored");
+
+// Delays: the textbook static hazard shows up, in the time the delays predict
+const hz = ex("Static hazard"), hzNet = compile(hz).net;
+const settle = (c: Circuit, set: Record<string, number>) => { const s = new GateSim(compile(c).net); Object.entries(set).forEach(([k, v]) => s.set(k, [v])); return s; };
+const hzRun = (a: number) => {
+  const s = settle(hz, { a, b: 1, c: 1 });
+  return new DelaySim(hzNet, DEFAULT_DELAYS, (b) => s.net(b)).run("a", [a ^ 1]);
+};
+const yBit = Number(hzNet.ports.y.bits[0]);
+const fall = hzRun(1);
+assert.deepEqual(fall.changes.get(yBit), [{ t: 4, v: 0 }, { t: 5, v: 1 }], "a falls: t1 falls at 2, y at 4; na rises at 1, t2 at 3, y back at 5");
+assert.deepEqual(findHazards(fall, hzNet), [{ port: "y", bit: 0, kind: "static-1", edges: 2 }]);
+assert.equal(fall.settled, 5);
+assert.equal(findHazards(hzRun(0), hzNet).length, 0, "a rising hands over the other way: t1 rises first, so no dip");
+// A slower inverter makes the dip longer
+const slow = settle(hz, { a: 1, b: 1, c: 1 });
+assert.deepEqual(new DelaySim(hzNet, { ...DEFAULT_DELAYS, not: 4 }, (b) => slow.net(b)).run("a", [0]).changes.get(yBit), [{ t: 4, v: 0 }, { t: 8, v: 1 }]);
+// The consensus term bc removes the hazard, which is what the K-map's extra group is for
+const fixed: Circuit = { ...hz, parts: hz.parts.map((p) => (p.id === "p7" ? { ...p, n: 3 } : p)).concat({ id: "p9", kind: "and", x: 360, y: 400, label: "t3" }),
+  wires: [...hz.wires, { id: "w9", from: { part: "p2", pin: "out" }, to: { part: "p9", pin: "a" } }, { id: "w10", from: { part: "p3", pin: "out" }, to: { part: "p9", pin: "b" } }, { id: "w11", from: { part: "p9", pin: "y" }, to: { part: "p7", pin: "c" } }] };
+const fixedSim = settle(fixed, { a: 1, b: 1, c: 1 }), fixedNet = compile(fixed).net;
+assert.deepEqual(findHazards(new DelaySim(fixedNet, DEFAULT_DELAYS, (b) => fixedSim.net(b)).run("a", [0]), fixedNet), []);
+// Flip-flops: clock to output takes its delay, and reset clears; no change at all is no event
+const cnt2 = ex("2-bit counter"), cntNet = compile(cnt2).net, cs = new GateSim(cntNet);
+const ckRun = new DelaySim(cntNet, DEFAULT_DELAYS, (b) => cs.net(b)).run("clk", [1]);
+assert.deepEqual(ckRun.changes.get(Number(cntNet.ports.led0.bits[0])), [{ t: 2, v: 1 }]);
+assert.equal(new DelaySim(cntNet, DEFAULT_DELAYS, (b) => cs.net(b)).run("clk", [0]).settled, 0);
+// Whatever happens on the way, it must end exactly where the zero-delay simulator ends
+const everyCircuit: [string, Circuit][] = [...CIRCUIT_EXAMPLES.map((e) => [e.label, e.circuit] as [string, Circuit]), ...Object.entries(PART_CASES)];
+for (const [label, c] of everyCircuit) {
+  const net = compile(c).net, gs = new GateSim(net);
+  const widths = new Map(inputParts(c).map((p) => [p.label, portWidth(p)]));
+  for (const e of defaultEvents(c, 40)) {
+    const bits = toBits(e.value, widths.get(e.port) ?? 1);
+    const ds = new DelaySim(net, DEFAULT_DELAYS, (b) => gs.net(b));
+    const tr = ds.run(e.port, bits);
+    gs.set(e.port, bits);
+    assert.ok(!tr.truncated, `${label}: settles`);
+    for (const [name, p] of Object.entries(net.ports)) p.bits.forEach((b, i) => assert.equal(ds.value(b), gs.net(b), `${label}: ${name}[${i}] after ${e.port}=${e.value}`));
+  }
+}
+// As a waveform: bus bits combine; a signal starts from its value before the change
+const tp = transientToParsed({ changes: new Map([[5, [{ t: 1, v: 1 }]], [6, [{ t: 1, v: 1 }, { t: 3, v: 0 }]]]), before: new Map([[5, 0], [6, 0]]), settled: 3, truncated: false }, [{ name: "bus", bits: [5, 6, 7] }], () => 1);
+assert.deepEqual(tp.signals[0].changes, [{ time: 0, value: "100" }, { time: 1, value: "111" }, { time: 3, value: "101" }]);
 
 // Widths: a 4-bit pin into a 1-bit pin is an error; Verilog declares buses and multi-output signals
 const mismatch: Circuit = { ...PART_CASES.adder4, wires: [...PART_CASES.adder4.wires.filter((w) => w.to.part !== "cout_id"),
