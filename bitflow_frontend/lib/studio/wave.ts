@@ -8,9 +8,12 @@
  * already applied before the first edge); outputs are checked in the middle of
  * the cycle. An X in an output means "don't check". Without a clock row each
  * cycle is one `period`: inputs applied at its start, outputs checked halfway.
+ * Notes (labels and arrows, such as setup and hold times) are drawn on the diagram and exported in
+ * the SVG and PNG; they aren't part of WaveJSON or the testbench.
  * Self-check: scripts/wave.check.ts.
  */
 import { ansiPorts } from "../vhdl-starter";
+import { parseVcd } from "../vcd-parser";
 import { nameProblem } from "./logic-min";
 
 export interface WaveSignal {
@@ -31,11 +34,18 @@ export function setDir(s: WaveSignal, dir: WaveSignal["dir"]): WaveSignal {
   const flips = s.alt && dir !== "clock" && s.dir !== "clock" && (dir === "out") !== (s.dir === "out");
   return flips ? { ...s, dir, values: s.alt!, alt: s.values } : { ...s, dir };
 }
-export interface WaveDiagram { title: string; cycles: number; period: number; signals: WaveSignal[] }
+/**
+ * A label over a row at a point in time (cycle 2 is the start of cycle 2, 2.5 its middle), or with
+ * `to` an arrow to another point: both ends pointed along one row, like a setup time; one end between rows.
+ */
+export interface WaveNote { id: string; signal: string; cycle: number; to?: { signal: string; cycle: number }; text: string }
+export interface WaveDiagram { title: string; cycles: number; period: number; signals: WaveSignal[]; notes?: WaveNote[] }
 
 export const MAX_CYCLES = 64;
 /** Where the Waveform panel leaves a sampled diagram for /studio/timing to open. */
 export const FROM_SIM_KEY = "bitflow_studio_wave_from_sim";
+/** Where the FSM designer leaves a run for /studio/timing to open. */
+export const FROM_FSM_KEY = "bitflow_studio_wave_from_fsm";
 export const MAX_WIDTH = 32;
 
 // ── Values ────────────────────────────────────────────────────────────────────
@@ -89,6 +99,12 @@ export function validate(d: WaveDiagram): WaveIssue[] {
   }
   if (d.signals.filter((s) => s.dir === "clock").length > 1) err("Use one clock row (the testbench drives a single clock).");
   if (!d.signals.some((s) => s.dir === "out")) out.push({ level: "warning", msg: "No output rows, so the testbench has nothing to check." });
+  for (const n of d.notes ?? []) {
+    for (const end of n.to ? [n, n.to] : [n]) {
+      if (!d.signals.some((s) => s.name === end.signal)) out.push({ level: "warning", msg: `The note "${n.text}" points at a row "${end.signal}" that isn't there, so it isn't drawn.` });
+      else if (!(end.cycle >= 0 && end.cycle <= d.cycles)) out.push({ level: "warning", msg: `The note "${n.text}" is at cycle ${end.cycle}, outside the diagram.` });
+    }
+  }
   return out;
 }
 
@@ -97,7 +113,7 @@ export function validate(d: WaveDiagram): WaveIssue[] {
 export const GEOM = { labelW: 120, cycleW: 52, rowH: 36, top: 26, pad: 8 };
 
 const esc = (s: string) => s.replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
-const COLOR = { clock: "#8b8fa3", in: "#00e87a", out: "#ffb547", bus: "#4db8ff", grid: "#1d1f29", text: "#c8cad6", dim: "#4a4d60", x: "#3a3d4f" };
+const COLOR = { clock: "#8b8fa3", in: "#00e87a", out: "#ffb547", bus: "#4db8ff", grid: "#1d1f29", text: "#c8cad6", dim: "#4a4d60", x: "#3a3d4f", note: "#ff6bcb" };
 
 /** The whole diagram as a standalone SVG document (also what the editor shows). */
 export function diagramSvg(d: WaveDiagram): string {
@@ -149,6 +165,25 @@ export function diagramSvg(d: WaveDiagram): string {
       }
     }
   });
+  for (const n of d.notes ?? []) {
+    const r = d.signals.findIndex((s) => s.name === n.signal);
+    if (r < 0) continue;
+    const place = (c: number) => Math.max(xOf(0), Math.min(xOf(d.cycles), xOf(c)));
+    const x1 = place(n.cycle), y1 = top + r * rowH + rowH / 2;
+    if (!n.to) {
+      parts.push(`<text x="${x1}" y="${top + r * rowH + pad - 1}" text-anchor="middle" font-size="9" font-weight="700" font-family="monospace" fill="${COLOR.note}">${esc(n.text)}</text>`);
+      continue;
+    }
+    const r2 = d.signals.findIndex((s) => s.name === n.to!.signal);
+    if (r2 < 0) continue;
+    const x2 = place(n.to.cycle), y2 = top + r2 * rowH + rowH / 2, len = Math.hypot(x2 - x1, y2 - y1);
+    if (!len) continue;
+    const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+    const head = (x: number, y: number, dx: number, dy: number) => `<path d="M ${x} ${y} L ${x - dx * 6 - dy * 3} ${y - dy * 6 + dx * 3} L ${x - dx * 6 + dy * 3} ${y - dy * 6 - dx * 3} Z" fill="${COLOR.note}"/>`;
+    parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COLOR.note}" stroke-width="1.2"/>`, head(x2, y2, ux, uy));
+    if (r === r2) parts.push(head(x1, y1, -ux, -uy));
+    if (n.text) parts.push(`<text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 4}" text-anchor="middle" font-size="10" font-family="monospace" fill="${COLOR.note}">${esc(n.text)}</text>`);
+  }
   const title = d.title.trim() ? `<title>${esc(d.title)}</title>` : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${title}${parts.join("")}</svg>`;
 }
@@ -371,6 +406,14 @@ export function fromVcd(signals: VcdLike[], maxTime: number, maxCycles = 32, uni
   return { title: "From a simulation", cycles: Math.max(1, outTimes.length), period, signals: rows };
 }
 
+/** A diagram from a VCD file's text: each name once (a testbench and its design share names), without parameters and counters. */
+export function diagramFromVcdText(text: string, maxCycles = 32): WaveDiagram {
+  const vcd = parseVcd(text);
+  const firsts = vcd.signals.filter((s, i) => s.type !== "parameter" && s.type !== "integer" && vcd.signals.findIndex((x) => x.name === s.name) === i);
+  if (!firsts.length) throw new Error("No signals were found in that file. Is it a VCD?");
+  return fromVcd(firsts.slice(0, 24), vcd.maxTime, maxCycles, nsPerUnit(vcd.timescale));
+}
+
 // ── Examples ──────────────────────────────────────────────────────────────────
 
 const row = (name: string, dir: WaveSignal["dir"], width: number, wave: string): WaveSignal =>
@@ -387,6 +430,9 @@ export const WAVE_EXAMPLES: { label: string; diagram: WaveDiagram }[] = [
     row("clk", "clock", 1, ""),
     row("d", "in", 1, "0 1 1 0 1 0 0 1"),
     row("q", "out", 1, "x 0 1 1 0 1 0 0"),
+  ], notes: [
+    { id: "n1", signal: "d", cycle: 1.5, to: { signal: "d", cycle: 2 }, text: "setup" },
+    { id: "n2", signal: "clk", cycle: 4, to: { signal: "q", cycle: 4.2 }, text: "clk→q" },
   ] } },
   { label: "AND gate (no clock)", diagram: { title: "AND gate", cycles: 4, period: 10, signals: [
     row("a", "in", 1, "0 0 1 1"),

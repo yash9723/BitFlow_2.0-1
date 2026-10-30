@@ -51,6 +51,7 @@ jobs:
       - run: npm run check-logic
       - run: npm run check-logic-circuit
       - run: npm run check-fsm
+      - run: npm run check-fsm-tools
       - run: npm run check-wave
       - run: npm run check-circuit
       - run: npm run check-circuit-challenges

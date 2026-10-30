@@ -8,17 +8,22 @@
  * Canvas: double-click empty space for a state; drag a state to move it; drag from
  * the green handle of the selected state (or shift-drag a state) to another state,
  * or back onto itself, for a transition; click to select, Delete to remove.
+ * Minimize merges equivalent states (Undo brings them back), and a typed input sequence runs from reset and can open
+ * in the timing-diagram tool (lib/studio/fsm-tools.ts).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import GeneratedCode from "@/components/studio/GeneratedCode";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { synthesizeDesign } from "@/lib/synth/client";
 import type { Values } from "@/lib/studio/expr";
 import {
   type FsmModel, type FsmState, type FsmTransition, type Port, FSM_EXAMPLES, MAX_PORT_WIDTH,
-  fromExtracted, generateTestbench, generateVerilog, guidedWalk, step, validate,
+  fromExtracted, generateTestbench, generateVerilog, guidedWalk, stateCodes, step, validate,
 } from "@/lib/studio/fsm";
+import { type Minimized, minimizeFsm, parseSequence, traceToDiagram } from "@/lib/studio/fsm-tools";
+import { FROM_FSM_KEY } from "@/lib/studio/wave";
 
 const R = 34;                         // state circle radius
 const VIEW = { w: 780, h: 470 };
@@ -42,6 +47,7 @@ const EMPTY: FsmModel = {
 };
 
 export default function FsmTool() {
+  const router = useRouter();
   const [stored, setModel] = useLocalStorage<FsmModel>("bitflow_studio_fsm", FSM_EXAMPLES[0].model);
   const m = valid(stored) ? stored : FSM_EXAMPLES[0].model;
   const [sel, setSel] = useState<Sel>(null);
@@ -72,7 +78,8 @@ export default function FsmTool() {
   );
 
   const update = (f: (m: FsmModel) => FsmModel) => setModel(f(m));
-  const load = (model: FsmModel) => { setModel(model); setSel(null); setSimState(model.reset); setHistory([]); setTbSource("auto"); };
+  const [beforeMinimize, setBeforeMinimize] = useState<FsmModel | null>(null);
+  const load = (model: FsmModel) => { setModel(model); setSel(null); setSimState(model.reset); setHistory([]); setTbSource("auto"); setBeforeMinimize(null); };
   const clock = () => {
     if (!preview) return;
     setHistory((h) => [...h, { state: simState, inputs: simInputs, outputs: preview.outputs, taken: preview.taken }]);
@@ -98,6 +105,24 @@ export default function FsmTool() {
     return () => window.removeEventListener("keydown", onKey);
   }, [deleteSel]);
 
+  /** Run typed inputs from reset; the table shows every cycle. */
+  const run = (text: string): string | null => {
+    const seq = parseSequence(m, text);
+    if (typeof seq === "string") return seq;
+    let state = m.reset;
+    const rows: SimStep[] = seq.map((inputs) => {
+      const r = step(m, state, inputs), row = { state, inputs, outputs: r.outputs, taken: r.taken };
+      state = r.next;
+      return row;
+    });
+    setHistory(rows);
+    setSimState(state);
+    return null;
+  };
+  const toTiming = () => {
+    try { localStorage.setItem(FROM_FSM_KEY, JSON.stringify(traceToDiagram(m, history))); } catch { window.alert("Your browser blocked local storage, so the run can't be passed on."); return; }
+    router.push("/studio/timing");
+  };
   const lastTaken = history.length ? history[history.length - 1].taken : null;
   return (
     <div className="space-y-5">
@@ -120,6 +145,13 @@ export default function FsmTool() {
       </div>
 
       <Header m={m} update={update} />
+      <Minimize key={logicKey} m={m} onApply={(small) => { const was = m; load(small); setBeforeMinimize(was); }} />
+      {beforeMinimize && (
+        <p role="status" className="font-mono text-[11px] text-ghost -mt-3">
+          Minimized from {beforeMinimize.states.length} states to {m.states.length}.{" "}
+          <button className="text-info hover:underline" onClick={() => load(beforeMinimize)}>Undo</button>
+        </p>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]">
         <Canvas m={m} sel={sel} setSel={setSel} update={update} simState={simState} lastTaken={lastTaken} />
@@ -130,7 +162,7 @@ export default function FsmTool() {
       </div>
 
       <Simulator m={m} enabled={simulable} state={simState} inputs={simInputs} setInputs={setSimInputs}
-                 preview={preview} history={history} onClock={clock} onReset={resetSim} />
+                 preview={preview} history={history} onClock={clock} onReset={resetSim} onRun={run} onTiming={toTiming} />
 
       <section className="space-y-3 border-t border-rim/40 pt-5">
         <div className="flex flex-wrap items-center gap-3 font-mono text-[11px]">
@@ -203,9 +235,12 @@ function Header({ m, update }: { m: FsmModel; update: (f: (m: FsmModel) => FsmMo
       </div>
       <label className="flex items-center gap-2 text-dim">encoding
         <select value={m.encoding} onChange={(e) => update((x) => ({ ...x, encoding: e.target.value as FsmModel["encoding"] }))} className={field}>
-          <option value="binary">binary</option><option value="onehot">one-hot</option>
+          <option value="binary">binary</option><option value="onehot">one-hot</option><option value="gray">Gray</option>
         </select>
       </label>
+      <span className="text-dim" title="The value each state has in the state register">
+        {(() => { const c = stateCodes(m); return m.states.slice(0, 16).map((s, i) => `${s.name}=${c.value(i).toString(2).padStart(c.width, "0")}`).join(" "); })()}{m.states.length > 16 ? " …" : ""}
+      </span>
       {ports("inputs")}
       {ports("outputs")}
     </div>
@@ -484,10 +519,47 @@ function Issues({ issues, onPick }: { issues: ReturnType<typeof validate>; onPic
 
 // ── Simulator ──────────────────────────────────────────────────────────────────
 
-function Simulator({ m, enabled, state, inputs, setInputs, preview, history, onClock, onReset }: {
+/** Which states can be merged, and how the method got there; Apply replaces the machine, and Undo brings it back. */
+function Minimize({ m, onApply }: { m: FsmModel; onApply: (m: FsmModel) => void }) {
+  const [result, setResult] = useState<Minimized | string | null>(null);
+  const btn = "px-2 py-1 rounded border border-rim/60 text-ghost hover:text-bright";
+  const changes = result && typeof result !== "string" && (result.merged.length > 0 || result.unreachable.length > 0);
+  return (
+    <div className="font-mono text-[11px] space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={btn} onClick={() => setResult(result ? null : minimizeFsm(m))} title="Find states that behave the same, by partition refinement">{result ? "Hide" : "Minimize states"}</button>
+        {typeof result === "string" && <span className="text-warn">{result}</span>}
+        {result && typeof result !== "string" && !changes && <span className="text-phosphor/80">✓ Already minimal: no two states behave the same.</span>}
+      </div>
+      {result && typeof result !== "string" && changes && (
+        <div className="rounded-xl border border-info/30 bg-info/5 p-3 space-y-2">
+          <p className="text-pale">{m.states.length} states can become {result.model.states.length}.</p>
+          <ul className="text-ghost space-y-0.5">
+            {result.merged.map((g) => <li key={g.keep}>{g.gone.join(", ")} behave{g.gone.length === 1 ? "s" : ""} exactly like {g.keep}, so {g.gone.length === 1 ? "it merges" : "they merge"} into {g.keep}.</li>)}
+            {result.unreachable.length > 0 && <li>{result.unreachable.join(", ")} can never be reached, so {result.unreachable.length === 1 ? "it goes" : "they go"}.</li>}
+          </ul>
+          <ol className="text-dim space-y-0.5">
+            {result.passes.map((p, i) => (
+              <li key={i}>{i === 0 ? "Group by outputs:" : `Split by next state, round ${i}:`} <span className="text-pale">{p.map((g) => `{${g.join(" ")}}`).join(" ")}</span></li>
+            ))}
+          </ol>
+          <button className="px-3 py-1 rounded bg-info/20 border border-info/50 text-info hover:text-bright" onClick={() => onApply((result as Minimized).model)}>Apply</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Simulator({ m, enabled, state, inputs, setInputs, preview, history, onClock, onReset, onRun, onTiming }: {
   m: FsmModel; enabled: boolean; state: string; inputs: Values; setInputs: (v: Values) => void;
   preview: ReturnType<typeof step> | null; history: SimStep[]; onClock: () => void; onReset: () => void;
+  /** Runs typed inputs from reset; returns what's wrong with them, if anything. */
+  onRun: (text: string) => string | null; onTiming: () => void;
 }) {
+  const [seq, setSeq] = useState("");
+  const [seqError, setSeqError] = useState<string | null>(null);
+  const single = m.inputs.length === 1 && m.inputs[0].width === 1;
+  const example = !m.inputs.length ? "8" : single ? "1011 0101" : m.inputs.map((p) => (p.width === 1 ? "1" : "2")).join(",") + " " + m.inputs.map(() => "0").join(",");
   const name = (id: string) => m.states.find((s) => s.id === id)?.name ?? "?";
   const btn = "px-3 py-1.5 rounded-lg border font-mono text-[12px] disabled:opacity-40";
   return (
@@ -516,6 +588,17 @@ function Simulator({ m, enabled, state, inputs, setInputs, preview, history, onC
           <span className="text-dim">outputs now: {m.outputs.map((o) => <span key={o.name} className="ml-2 text-warn">{o.name}={String(preview.outputs[o.name])}</span>)}</span>
         )}
         {preview && <span className="text-dim">next: <span className="text-pale">{name(preview.next)}</span></span>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+        <label className="flex items-center gap-2 text-dim">run from reset
+          <input value={seq} onChange={(e) => setSeq(e.target.value)} placeholder={example} spellCheck={false} aria-label="Inputs to run, one cycle after another"
+                 onKeyDown={(e) => { if (e.key === "Enter" && enabled) setSeqError(onRun(seq)); }}
+                 className="w-56 bg-pit border border-rim/60 rounded px-2 py-1 text-[12px] text-pale" />
+        </label>
+        <button onClick={() => setSeqError(onRun(seq))} disabled={!enabled} className="px-2 py-1 rounded border border-rim/60 text-ghost hover:text-bright disabled:opacity-40">Run</button>
+        {history.length > 0 && <button onClick={onTiming} disabled={!enabled} className="px-2 py-1 rounded border border-rim/60 text-ghost hover:text-bright disabled:opacity-40" title="Open this run as a timing diagram">Open in timing diagram →</button>}
+        {seqError ? <span className="text-danger">{seqError}</span>
+          : <span className="text-dim">{!m.inputs.length ? "how many cycles" : single ? `bits of ${m.inputs[0].name}` : `one group per cycle: ${m.inputs.map((p) => p.name).join(",")}`}</span>}
       </div>
       {!enabled && <p className="font-mono text-[11px] text-dim">Fix the errors to simulate.</p>}
       {history.length > 0 && (

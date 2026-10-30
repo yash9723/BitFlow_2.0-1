@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  type WaveDiagram, WAVE_EXAMPLES, diagramSvg, fromVcd, fromWaveJson, generateTestbench, matchDesign,
+  type WaveDiagram, WAVE_EXAMPLES, diagramFromVcdText, diagramSvg, fromVcd, fromWaveJson, generateTestbench, matchDesign,
   nsPerUnit, numberOf, resolved, setDir, stubModule, toWaveJson, validate,
 } from "../lib/studio/wave";
 
@@ -88,4 +88,51 @@ assert.equal(nsPerUnit("10 ns"), 10);
 assert.equal(nsPerUnit("1us"), 1000);
 const clkPs = { ...clk, changes: clk.changes.map((c) => ({ ...c, time: c.time * 1000 })) };
 assert.equal(fromVcd([clkPs, cnt], 60000, 4, nsPerUnit("1ps")).period, 10, "edges 10000 ps apart are a 10 ns period");
+// Notes: drawn over the diagram, escaped, and warned about when they point at nothing
+const noted: WaveDiagram = { title: "n", cycles: 4, period: 10, signals: [{ name: "clk", dir: "clock", width: 1, values: [] }, { name: "d", dir: "in", width: 1, values: ["0"] }, { name: "q", dir: "out", width: 1, values: ["x"] }],
+  notes: [{ id: "a", signal: "d", cycle: 1.5, to: { signal: "d", cycle: 2 }, text: "t<su>" }, { id: "b", signal: "q", cycle: 3, text: "ok" }, { id: "c", signal: "clk", cycle: 1, to: { signal: "q", cycle: 2 }, text: "" }] };
+const nsvg = diagramSvg(noted);
+assert.ok(nsvg.includes("t&#60;su&#62;") && !nsvg.includes("<su>"), "note text is escaped");
+assert.ok(nsvg.includes(">ok<"));
+assert.equal((nsvg.match(/fill="#ff6bcb"\/>/g) ?? []).length, 3, "both heads on one row, one between rows");
+assert.deepEqual(validate(noted).filter((i) => /note/i.test(i.msg)), []);
+const lost = validate({ ...noted, notes: [{ id: "x", signal: "gone", cycle: 1, text: "a" }, { id: "y", signal: "d", cycle: 9, text: "b" }] });
+assert.ok(lost.some((i) => i.level === "warning" && /row "gone"/.test(i.msg)));
+assert.ok(lost.some((i) => i.level === "warning" && /outside the diagram/.test(i.msg)));
+assert.ok(!diagramSvg({ ...noted, notes: [{ id: "x", signal: "gone", cycle: 1, text: "zzz" }] }).includes("zzz"), "a lost note isn't drawn");
+assert.deepEqual(generateTestbench(noted, "m"), generateTestbench({ ...noted, notes: [] }, "m"), "notes don't change the testbench");
+// A VCD file: names once, no parameters or counters, the clock found, time in nanoseconds
+const vcdFile = `$timescale 1ps $end
+$scope module tb $end
+$var wire 1 ! clk $end
+$var reg 2 " count $end
+$var integer 32 # errors $end
+$var parameter 8 $ WIDTH $end
+$scope module dut $end
+$var wire 1 ! clk $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+#0
+0!
+b00 "
+#5000
+1!
+b01 "
+#10000
+0!
+#15000
+1!
+b10 "
+#20000
+0!
+#25000
+1!
+`;
+const fromFile = diagramFromVcdText(vcdFile);
+assert.deepEqual(fromFile.signals.map((s) => [s.name, s.dir]), [["clk", "clock"], ["count", "in"]]);
+assert.equal(fromFile.period, 10);
+assert.ok(fromFile.cycles >= 2);
+assert.throws(() => diagramFromVcdText("not a vcd at all"), /No signals/);
+
 console.log("wave: all checks passed");

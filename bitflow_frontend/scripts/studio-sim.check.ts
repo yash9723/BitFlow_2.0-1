@@ -7,13 +7,14 @@
 import assert from "node:assert/strict";
 import { simulateOnBackend } from "../lib/backend";
 import { type Cell, type TruthTable, generateVerilog } from "../lib/studio/logic-min";
-import { type FsmModel, FSM_EXAMPLES, generateTestbench as fsmTestbench, generateVerilog as fsmVerilog, guidedWalk } from "../lib/studio/fsm";
+import { type FsmModel, FSM_EXAMPLES, generateTestbench as fsmTestbench, generateVerilog as fsmVerilog, guidedWalk, step as fsmStep } from "../lib/studio/fsm";
 import { WAVE_EXAMPLES, fromVcd, generateTestbench as waveTestbench, nsPerUnit, setDir } from "../lib/studio/wave";
 import { parseVcd } from "../lib/vcd-parser";
 import {
   CIRCUIT_EXAMPLES, defaultEvents as circuitEvents, generateTestbench as circuitTestbench, generateVerilog as circuitVerilog, inputParts, outputParts,
 } from "../lib/studio/circuit";
 import { NONE, makeBlock } from "../lib/studio/circuit-edit";
+import { minimizeFsm, traceToDiagram } from "../lib/studio/fsm-tools";
 import { circuitFromTable } from "../lib/studio/logic-circuit";
 import { GENERATORS, type Values, defaults } from "../lib/studio/generators";
 import { TEMPLATES } from "../lib/templates";
@@ -58,7 +59,7 @@ const widthy: FsmModel = {
   ],
 };
 for (const { label, model } of [...FSM_EXAMPLES, { label: "width rules", model: widthy }]) {
-  for (const encoding of ["binary", "onehot"] as const) {
+  for (const encoding of ["binary", "onehot", "gray"] as const) {
     const m = { ...model, encoding };
     cases.push([`fsm: ${label} (${encoding})`, { design: fsmVerilog(m), testbench: fsmTestbench(m, guidedWalk(m, 60, 3)) }]);
   }
@@ -86,6 +87,18 @@ for (const { label, circuit } of [...CIRCUIT_EXAMPLES, ...Object.entries(PART_CA
   if (typeof r === "string") throw new Error(`${label}: ${r}`);
   const top = { ...r.circuit, blocks: { core: r.def } };
   cases.push([`circuit block: ${label}`, { design: circuitVerilog(top), testbench: circuitTestbench(top, circuitEvents(circuit, 64, 5)) }]);
+}
+
+// Minimized machines still pass, and a run from the FSM designer checks out as a timing diagram against the same Verilog
+for (const { label, model } of FSM_EXAMPLES) {
+  const small = minimizeFsm(model);
+  if (typeof small === "string") throw new Error(`${label}: ${small}`);
+  cases.push([`fsm minimized: ${label}`, { design: fsmVerilog(small.model), testbench: fsmTestbench(small.model, guidedWalk(small.model, 60, 3)) }]);
+  // The minimized design against the original machine's expected outputs: behaviour unchanged
+  cases.push([`fsm minimized against the original: ${label}`, { design: fsmVerilog(small.model), testbench: fsmTestbench(model, guidedWalk(model, 60, 5)) }]);
+  let state = model.reset;
+  const trace = guidedWalk(model, 24, 9).map((inputs) => { const r = fsmStep(model, state, inputs), row = { state, inputs, outputs: r.outputs }; state = r.next; return row; });
+  cases.push([`fsm run as a timing diagram: ${label}`, { design: fsmVerilog(model), testbench: waveTestbench(traceToDiagram(model, trace), model.module) }]);
 }
 
 // Circuits the K-map tool draws, in all four forms

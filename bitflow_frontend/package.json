@@ -28,6 +28,7 @@
     "check-logic": "tsx scripts/logic-min.check.ts",
     "check-logic-circuit": "tsx scripts/logic-circuit.check.ts",
     "check-fsm": "tsx scripts/fsm-gen.check.ts",
+    "check-fsm-tools": "tsx scripts/fsm-tools.check.ts",
     "check-wave": "tsx scripts/wave.check.ts",
     "check-circuit": "tsx scripts/circuit.check.ts",
     "check-circuit-challenges": "tsx scripts/circuit-challenges.check.ts",

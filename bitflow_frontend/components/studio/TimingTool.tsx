@@ -5,7 +5,8 @@
  * The model, renderer and generators live in lib/studio/wave.ts.
  * Loaded client-only (components/studio/loaders.tsx): the draft is in localStorage.
  * The Waveform panel's "→ Timing" leaves a sampled diagram under FROM_SIM_KEY,
- * which this page offers to open.
+ * and the FSM designer a run under FROM_FSM_KEY, which this page offers to open.
+ * A VCD file can be opened directly, and notes (labels, arrows) drawn over the diagram.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,7 +14,7 @@ import GeneratedCode from "@/components/studio/GeneratedCode";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { downloadBlob } from "@/lib/api";
 import {
-  type WaveDiagram, type WaveSignal, FROM_SIM_KEY, GEOM, MAX_CYCLES, MAX_WIDTH, WAVE_EXAMPLES, diagramSvg, fromWaveJson,
+  type WaveDiagram, type WaveNote, type WaveSignal, FROM_FSM_KEY, FROM_SIM_KEY, GEOM, MAX_CYCLES, MAX_WIDTH, WAVE_EXAMPLES, diagramFromVcdText, diagramSvg, fromWaveJson,
   generateTestbench, matchDesign, resolved, setDir, stubModule, toWaveJson, validate,
 } from "@/lib/studio/wave";
 import { nameProblem } from "@/lib/studio/logic-min";
@@ -41,13 +42,19 @@ export default function TimingTool() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(FROM_SIM_KEY);
-      if (!raw) return;
-      localStorage.removeItem(FROM_SIM_KEY);
-      const sampled = JSON.parse(raw) as WaveDiagram;
-      if (valid(sampled) && window.confirm("Open the diagram sampled from your simulation? It replaces the current diagram.")) {
-        setD(sampled);
-        setFromSim(true);
+      if (raw) {
+        localStorage.removeItem(FROM_SIM_KEY);
+        const sampled = JSON.parse(raw) as WaveDiagram;
+        if (valid(sampled) && window.confirm("Open the diagram sampled from your simulation? It replaces the current diagram.")) {
+          setD(sampled);
+          setFromSim(true);
+        }
       }
+      const raw2 = localStorage.getItem(FROM_FSM_KEY);
+      if (!raw2) return;
+      localStorage.removeItem(FROM_FSM_KEY);
+      const run = JSON.parse(raw2) as WaveDiagram;
+      if (valid(run) && window.confirm("Open the run from the FSM designer? It replaces the current diagram.")) setD(run);
     } catch { /* storage blocked or bad data: nothing to open */ }
   }, [setD]);
 
@@ -156,6 +163,8 @@ export default function TimingTool() {
             <button className={btn} onClick={() => svgToPng(svg).then((b) => downloadBlob(`${fileName(d)}.png`, b, "image/png")).catch(() => window.alert("This browser couldn't make the PNG; use the SVG."))}>Download PNG</button>
             <button className={btn} onClick={() => downloadBlob(`${fileName(d)}.json`, toWaveJson(d), "application/json")}>Download WaveJSON</button>
           </div>
+          <Notes d={d} setD={setD} />
+          <ImportVcd onDiagram={(nd) => { setD(nd); setFromSim(true); }} />
           <ImportWaveJson onDiagram={(nd) => { setD(nd); setFromSim(false); }} />
         </div>
       </div>
@@ -185,7 +194,11 @@ function Rows({ d, setD, setSignal }: { d: WaveDiagram; setD: (d: WaveDiagram) =
       <div className="text-dim">Rows</div>
       {d.signals.map((s, r) => (
         <div key={r} className="flex flex-wrap items-center gap-2">
-          <input value={s.name} aria-label={`Row ${r + 1} name`} onChange={(e) => setSignal(r, (x) => ({ ...x, name: e.target.value.trim() }))}
+          <input value={s.name} aria-label={`Row ${r + 1} name`} onChange={(e) => {
+            const name = e.target.value.trim(), rename = (x: string) => (x === s.name ? name : x);     // notes follow the row
+            setD({ ...d, signals: d.signals.map((x, i) => (i === r ? { ...x, name } : x)),
+              notes: d.notes?.map((n) => ({ ...n, signal: rename(n.signal), ...(n.to ? { to: { ...n.to, signal: rename(n.to.signal) } } : {}) })) });
+          }}
                  className={`w-24 ${field} ${nameProblem(s.name) ? "border-danger/60" : ""}`} />
           <select value={s.dir} aria-label={`${s.name} direction`} onChange={(e) => setSignal(r, (x) => setDir(x, e.target.value as WaveSignal["dir"]))} className={field}>
             <option value="clock">clock</option><option value="in">input</option><option value="out">output</option>
@@ -219,6 +232,77 @@ function Issues({ issues }: { issues: ReturnType<typeof validate> }) {
     <ul className="space-y-1 font-mono text-[11px] max-h-48 overflow-auto">
       {issues.map((i, k) => <li key={k} className={i.level === "error" ? "text-danger" : "text-warn"}>{i.level === "error" ? "✗" : "!"} {i.msg}</li>)}
     </ul>
+  );
+}
+
+/** Labels and arrows over the diagram: a cycle number is the start of that cycle, so 2.5 is its middle. */
+function Notes({ d, setD }: { d: WaveDiagram; setD: (d: WaveDiagram) => void }) {
+  const notes = d.notes ?? [];
+  const field = "bg-pit border border-rim/60 rounded px-1.5 py-0.5 text-[12px] text-pale";
+  const put = (id: string, patch: Partial<WaveNote>) => setD({ ...d, notes: notes.map((n) => (n.id === id ? { ...n, ...patch } : n)) });
+  const add = (arrow: boolean) => {
+    const row = d.signals.find((s) => s.dir !== "clock") ?? d.signals[0];
+    if (!row) return;
+    const id = `n${Date.now().toString(36)}${notes.length}`;
+    setD({ ...d, notes: [...notes, { id, signal: row.name, cycle: 1, ...(arrow ? { to: { signal: row.name, cycle: 2 } } : {}), text: arrow ? "t_su" : "note" }] });
+  };
+  const rowPick = (value: string, label: string, onChange: (v: string) => void) => (
+    <select value={value} aria-label={label} onChange={(e) => onChange(e.target.value)} className={field}>
+      {!d.signals.some((s) => s.name === value) && <option value={value}>{value} (gone)</option>}
+      {d.signals.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+    </select>
+  );
+  const cyclePick = (value: number, label: string, onChange: (v: number) => void) => (
+    <input type="number" min={0} max={d.cycles} step={0.5} value={value} aria-label={label} className={`w-14 ${field}`} onChange={(e) => onChange(Number(e.target.value) || 0)} />
+  );
+  return (
+    <div className="space-y-2 font-mono text-[11px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-dim">Notes</span>
+        <button onClick={() => add(false)} className="px-2 py-0.5 rounded border border-dashed border-rim text-ghost hover:text-bright">+ label</button>
+        <button onClick={() => add(true)} className="px-2 py-0.5 rounded border border-dashed border-rim text-ghost hover:text-bright">+ arrow</button>
+        <span className="text-dim">A cycle number is that cycle&apos;s start: 2.5 is its middle.</span>
+      </div>
+      {notes.map((n) => (
+        <div key={n.id} className="flex flex-wrap items-center gap-1.5">
+          <input value={n.text} aria-label="Note text" maxLength={40} className={`w-20 ${field}`} onChange={(e) => put(n.id, { text: e.target.value })} />
+          {rowPick(n.signal, "Note row", (signal) => put(n.id, { signal }))}
+          {cyclePick(n.cycle, "Note cycle", (cycle) => put(n.id, { cycle }))}
+          {n.to && <>
+            <span className="text-dim">→</span>
+            {rowPick(n.to.signal, "Arrow end row", (signal) => put(n.id, { to: { ...n.to!, signal } }))}
+            {cyclePick(n.to.cycle, "Arrow end cycle", (cycle) => put(n.id, { to: { ...n.to!, cycle } }))}
+          </>}
+          <button onClick={() => setD({ ...d, notes: notes.filter((x) => x.id !== n.id) })} aria-label={`Remove note ${n.text}`} className="px-1 text-dim hover:text-danger">×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const MAX_VCD_BYTES = 8 * 1024 * 1024;
+
+/** A .vcd file from any simulator, read here in the browser and sampled into a diagram. */
+function ImportVcd({ onDiagram }: { onDiagram: (d: WaveDiagram) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const open = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    if (file.size > MAX_VCD_BYTES) { setError("That file is over 8 MB. Dump fewer signals or a shorter run."); return; }
+    try {
+      const nd = diagramFromVcdText(await file.text());
+      if (window.confirm(`Replace the current diagram with ${nd.signals.length} signals over ${nd.cycles} cycles from ${file.name}? Rows come in as inputs: mark the outputs.`)) {
+        onDiagram({ ...nd, title: file.name.replace(/\.vcd$/i, "") });
+      }
+    } catch (e) { setError((e as Error).message || "That file couldn't be read as a VCD."); }
+  };
+  return (
+    <details className="font-mono text-[11px]">
+      <summary className="cursor-pointer text-ghost">Open a VCD file</summary>
+      <p className="mt-2 text-dim">Read in your browser, not uploaded. With a clk or clock signal, one cycle per rising edge, up to 32.</p>
+      <input type="file" accept=".vcd,text/plain" aria-label="VCD file" className="mt-2 block text-ghost" onChange={(e) => { open(e.target.files?.[0]); e.target.value = ""; }} />
+      {error && <p className="mt-1 text-danger">{error}</p>}
+    </details>
   );
 }
 
