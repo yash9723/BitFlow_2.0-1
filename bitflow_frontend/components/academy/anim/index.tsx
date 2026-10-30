@@ -24,6 +24,13 @@ const ANIMS: Record<AnimId, ComponentType> = {
   "adder-race": dynamic(() => import("./circuits").then((m) => m.AdderRace), { ssr: false, loading }),
   "shift-add": dynamic(() => import("./circuits").then((m) => m.ShiftAdd), { ssr: false, loading }),
   booth: dynamic(() => import("./circuits").then((m) => m.Booth), { ssr: false, loading }),
+  "sr-latch": dynamic(() => import("./sequential").then((m) => m.SrLatch), { ssr: false, loading }),
+  "latch-vs-ff": dynamic(() => import("./sequential").then((m) => m.LatchVsFf), { ssr: false, loading }),
+  "shift-register": dynamic(() => import("./sequential").then((m) => m.ShiftRegister), { ssr: false, loading }),
+  "ripple-vs-sync": dynamic(() => import("./sequential").then((m) => m.RippleVsSync), { ssr: false, loading }),
+  "ring-johnson": dynamic(() => import("./sequential").then((m) => m.RingJohnson), { ssr: false, loading }),
+  "fsm-detector": dynamic(() => import("./sequential").then((m) => m.FsmDetector), { ssr: false, loading }),
+  "state-minimize": dynamic(() => import("./sequential").then((m) => m.StateMinimize), { ssr: false, loading }),
 };
 
 export default function Animation({ id }: { id: AnimId }) {

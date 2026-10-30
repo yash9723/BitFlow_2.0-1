@@ -8,6 +8,7 @@ export const ANIM_IDS = [
   "noise-chain", "place-value", "divide-by-two", "column-add", "number-wheel", "encoder-disc",
   "cmos-gate", "venn", "kmap-neighbours", "qm-merge",
   "inverter-curve", "load-delay", "compare-bits", "mux-router", "adder-race", "shift-add", "booth",
+  "sr-latch", "latch-vs-ff", "shift-register", "ripple-vs-sync", "ring-johnson", "fsm-detector", "state-minimize",
 ] as const;
 export type AnimId = (typeof ANIM_IDS)[number];
 
@@ -177,6 +178,83 @@ export function boothSteps(m: number, multiplier: number, w: number) {
   }
   return { rows, product: a * 2 ** w + q };
 }
+
+// ── Storing a bit ─────────────────────────────────────────────────────────────
+/**
+ * A NOR latch, one gate delay at a time, from where it is now: both gates update together.
+ * Returns each state until it stops changing; `settles` is false if it never does
+ * (both inputs released together from S = R = 1).
+ */
+export function srSteps(s: number, r: number, q: number, qn: number, limit = 8) {
+  const nor = (a: number, b: number) => (a | b) ^ 1;
+  const out: { q: number; qn: number }[] = [];
+  for (let i = 0; i < limit; i++) {
+    const next = { q: nor(r, qn), qn: nor(s, q) };
+    if (next.q === q && next.qn === qn) return { steps: out, settles: true };
+    out.push(next);
+    q = next.q; qn = next.qn;
+  }
+  return { steps: out, settles: false };
+}
+
+/** One tick of a latch and a flip-flop watching the same signals. */
+export function latchFfTick(prev: { clk: number; latch: number; ff: number }, clk: number, d: number) {
+  return { clk, d, latch: clk ? d : prev.latch, ff: clk && !prev.clk ? d : prev.ff };
+}
+
+/** One clock of a shift register, leftmost bit first. */
+export function shiftStep(bits: number[], serialIn: number, dir: "right" | "left") {
+  return dir === "right"
+    ? { bits: [serialIn, ...bits.slice(0, -1)], out: bits[bits.length - 1] }
+    : { bits: [...bits.slice(1), serialIn], out: bits[0] };
+}
+
+// ── Counters ──────────────────────────────────────────────────────────────────
+/** A ripple counter's values after a clock edge: each stage toggles only when the one before falls. */
+export function rippleSteps(v: number, w: number) {
+  const out: number[] = [];
+  let cur = v;
+  for (let bit = 0; bit < w; bit++) {
+    const was = (cur >> bit) & 1;
+    cur ^= 1 << bit;
+    out.push(cur);
+    if (!was) break;
+  }
+  return out;
+}
+export const ringNext = (b: number[]) => [b[b.length - 1], ...b.slice(0, -1)];
+export const johnsonNext = (b: number[]) => [b[b.length - 1] ^ 1, ...b.slice(0, -1)];
+
+// ── State machines ────────────────────────────────────────────────────────────
+export interface MachineState { name: string; next: [number, number]; out: number }
+/** "101" detectors, allowing overlaps. Moore: output by state. Mealy: output on the transition into a match. */
+export const MOORE_101: MachineState[] = [
+  { name: "S0", next: [0, 1], out: 0 }, { name: "S1", next: [2, 1], out: 0 },
+  { name: "S10", next: [0, 3], out: 0 }, { name: "S101", next: [2, 1], out: 1 },
+];
+export const MEALY_101: MachineState[] = [
+  { name: "S0", next: [0, 1], out: 0 }, { name: "S1", next: [2, 1], out: 0 }, { name: "S10", next: [0, 1], out: 0 },
+];
+export const mealyOut = (state: number, input: number) => (state === 2 && input === 1 ? 1 : 0);
+
+/** Moore state minimization: the partition after each round of splitting by where states go. */
+export function partitionSteps(states: MachineState[]) {
+  const groups = states.map((s) => s.out);
+  const rounds: number[][] = [[...groups]];
+  for (;;) {
+    const last = rounds[rounds.length - 1];
+    const keys = states.map((s, i) => `${last[i]}:${last[s.next[0]]},${last[s.next[1]]}`);
+    const ids = [...new Set(keys)];
+    const next = keys.map((k) => ids.indexOf(k));
+    if (new Set(next).size === new Set(last).size) return rounds;
+    rounds.push(next);
+  }
+}
+/** A 7-state machine with redundant states, for the minimization animation. */
+export const REDUCIBLE: MachineState[] = [
+  { name: "A", next: [1, 2], out: 0 }, { name: "B", next: [3, 4], out: 0 }, { name: "C", next: [3, 4], out: 0 },
+  { name: "D", next: [0, 5], out: 0 }, { name: "E", next: [0, 6], out: 0 }, { name: "F", next: [0, 5], out: 1 }, { name: "G", next: [0, 5], out: 1 },
+];
 
 // ── K-map ─────────────────────────────────────────────────────────────────────
 /** The cells one variable away: on a K-map these touch, wrapping round the edges. */

@@ -15,7 +15,7 @@ import { compile, toBits, validate } from "../lib/studio/circuit";
 import { challengeById } from "../lib/studio/circuit-challenges";
 import { crossesPart, routeAll } from "../lib/studio/circuit-route";
 import { wireRoute } from "../lib/studio/circuit-edit";
-import { ANIM_IDS, LEVEL, addColumns, asSigned, boothSteps, claCarryTime, claLevels, cmosState, compareSteps, divideSteps, encoderError, fromGray, inverterOut, inverterState, loadModel, neighbours, noiseChain, qmSteps, rcWave, reads, rippleCarryTime, shiftAddSteps, toGray, wheelMove } from "../lib/academy/anim";
+import { ANIM_IDS, LEVEL, addColumns, asSigned, MEALY_101, MOORE_101, REDUCIBLE, boothSteps, claCarryTime, claLevels, cmosState, compareSteps, divideSteps, encoderError, fromGray, inverterOut, inverterState, johnsonNext, latchFfTick, loadModel, mealyOut, neighbours, noiseChain, partitionSteps, qmSteps, rcWave, reads, ringNext, rippleCarryTime, rippleSteps, shiftAddSteps, shiftStep, srSteps, toGray, wheelMove } from "../lib/academy/anim";
 import { type Cell, type Implicant, minimizationSteps, primeImplicants } from "../lib/studio/logic-min";
 import { type Parsed, counterexample, parseBool } from "../lib/studio/boolexpr";
 import { draw } from "../lib/academy/draw";
@@ -121,7 +121,7 @@ for (const t of ACADEMY_TOPICS) {
     });
   }
 }
-assert.ok(circuits >= 20 && kmaps >= 9 && practice >= 50, "chapters lost their circuits or practice questions");
+assert.ok(circuits >= 30 && kmaps >= 14 && practice >= 75, "chapters lost their circuits or practice questions");
 
 // ── Worked figures in the text are computed here, not trusted ─────────────────
 function says(slug: string, ...facts: string[]) {
@@ -243,6 +243,28 @@ assert.equal(parity(0b1011), 1);
   }
 }
 
+// ── Chapters 13 to 16: claims in the text, computed ───────────────────────────
+{
+  // The counter chapter's unused states really do return to the sequence.
+  const mod5 = (s: number) => { const q2 = s >> 2, q1 = (s >> 1) & 1, q0 = s & 1; return ((q1 & q0) << 2) | ((q1 ^ q0) << 1) | ((q2 | q0) ^ 1); };
+  assert.deepEqual([0, 1, 2, 3, 4].map(mod5), [1, 2, 3, 4, 0]);
+  assert.deepEqual([5, 6, 7].map(mod5), [2, 2, 4]);
+  says("counters", "State 5 goes to 2, state 6 goes to 2, and state 7 goes to 4");
+  assert.equal(5 * 10, 50); assert.equal(1000 / 50, 20);
+  assert.equal(1000 / (8 + 6 + 2), 62.5);
+  assert.equal(Math.ceil(Math.log2(60)), 6);
+  // The exam question's D2 = q1, D1 = q0, D0 = q2' counter has a cycle of 6.
+  { let s = 0, n = 0; do { s = (((s >> 1) & 1) << 2) | ((s & 1) << 1) | ((s >> 2) ^ 1); n++; } while (s !== 0); assert.equal(n, 6); }
+  // The LFSR in the registers chapter: 15 states, and it leaves out only 1111.
+  { const seen = new Set<number>(); let s = 0; do { seen.add(s); s = ((s << 1) & 15) | (((s >> 3) ^ (s >> 2) ^ 1) & 1); } while (s !== 0); assert.equal(seen.size, 15); assert.ok(!seen.has(15));
+    assert.equal(((15 << 1) & 15) | (((15 >> 3) ^ (15 >> 2) ^ 1) & 1), 15, "1111 is stuck"); }
+  says("registers", "1, 3, 7, E, D, B, 6");
+  assert.equal(Math.floor(asSigned(0b1011, 4) / 2), -3);
+  assert.equal(9600 / 10, 960);
+  says("sequential", "1 → 0 → 1 → **0**");
+  assert.equal(Math.ceil(Math.log2(17)), 5); assert.equal(Math.ceil(Math.log2(9)), 4);
+}
+
 // ── The animations' logic ─────────────────────────────────────────────────────
 assert.deepEqual([...anims].sort(), [...ANIM_IDS].sort(), "every animation is used by a chapter");
 {
@@ -284,6 +306,48 @@ assert.deepEqual([...anims].sort(), [...ANIM_IDS].sort(), "every animation is us
     }
   }
   assert.deepEqual(neighbours(5, 4).sort((a, b) => a - b), [1, 4, 7, 13]);
+
+  // The SR latch: set, reset and hold settle where they should; releasing S = R = 1 together never settles.
+  assert.deepEqual(srSteps(1, 0, 0, 1).steps.at(-1), { q: 1, qn: 0 });
+  assert.deepEqual(srSteps(0, 1, 1, 0).steps.at(-1), { q: 0, qn: 1 });
+  assert.deepEqual(srSteps(0, 0, 1, 0), { steps: [], settles: true });
+  assert.deepEqual(srSteps(1, 1, 1, 0).steps.at(-1), { q: 0, qn: 0 });
+  assert.equal(srSteps(0, 0, 0, 0).settles, false);
+  // Latch against flip-flop: the latch follows D while the clock is high, the flip-flop only at the rise.
+  { let s = { clk: 0, latch: 0, ff: 0 };
+    s = latchFfTick(s, 1, 1); assert.deepEqual([s.latch, s.ff], [1, 1]);
+    s = latchFfTick(s, 1, 0); assert.deepEqual([s.latch, s.ff], [0, 1]);
+    s = latchFfTick(s, 0, 1); assert.deepEqual([s.latch, s.ff], [0, 1]);
+    s = latchFfTick(s, 1, 0); assert.deepEqual([s.latch, s.ff], [0, 0]); }
+  // Shift register.
+  assert.deepEqual(shiftStep([1, 0, 1, 1], 0, "right"), { bits: [0, 1, 0, 1], out: 1 });
+  assert.deepEqual(shiftStep([1, 0, 1, 1], 0, "left"), { bits: [0, 1, 1, 0], out: 1 });
+  // Ripple counters end up at v + 1, passing through one wrong value per extra stage.
+  for (let v = 0; v < 16; v++) {
+    const st = rippleSteps(v, 4), trailing = (v ^ (v + 1)).toString(2).length;
+    assert.equal(st.at(-1), (v + 1) % 16); assert.equal(st.length, Math.min(trailing, 4));
+  }
+  assert.deepEqual(rippleSteps(7, 4), [6, 4, 0, 8]);
+  // Ring and Johnson periods.
+  { const period = (next: (b: number[]) => number[], start: number[]) => { let b = next(start), n = 1; while (b.join() !== start.join()) { b = next(b); n++; } return n; };
+    assert.equal(period(ringNext, [1, 0, 0, 0]), 4); assert.equal(period(johnsonNext, [0, 0, 0, 0]), 8); assert.equal(period(johnsonNext, [0, 0, 0, 0, 0]), 10); }
+  // The detectors match a brute-force search for 101 on every input of 12 bits, and agree with each other.
+  for (let word = 0; word < 4096; word++) {
+    let moore = 0, mealy = 0, last3 = 0;
+    for (let i = 0; i < 12; i++) {
+      const x = (word >> i) & 1, seen = i >= 2 && ((last3 << 1) | x) === 0b101;
+      const mo = mealyOut(mealy, x);
+      moore = MOORE_101[moore].next[x]; mealy = MEALY_101[mealy].next[x];
+      assert.equal(MOORE_101[moore].out, seen ? 1 : 0, "Moore detector"); assert.equal(mo, seen ? 1 : 0, "Mealy detector");
+      last3 = ((last3 << 1) | x) & 3;
+    }
+  }
+  // State minimization ends at the 4 classes the chapter claims, and they really are equivalent.
+  { const rounds = partitionSteps(REDUCIBLE), end = rounds.at(-1)!;
+    assert.equal(new Set(end).size, 4);
+    assert.equal(end[1], end[2]); assert.equal(end[3], end[4]); assert.equal(end[5], end[6]); assert.notEqual(end[0], end[1]);
+    const run = (from: number, word: number, len: number) => { let s = from, out = ""; for (let i = 0; i < len; i++) { s = REDUCIBLE[s].next[(word >> i) & 1]; out += REDUCIBLE[s].out; } return out; };
+    for (let a = 0; a < 7; a++) for (let b = 0; b < 7; b++) for (let w = 0; w < 256; w++) if (end[a] === end[b]) assert.equal(run(a, w, 8), run(b, w, 8), "merged states behave the same"); }
 
   // The inverter: output falls as input rises, symmetric, near the rails at each end; both on only mid-swing.
   for (let v = 0; v < 5; v += 0.1) assert.ok(inverterOut(v) >= inverterOut(v + 0.1));

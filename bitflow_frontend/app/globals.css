@@ -119,6 +119,9 @@
 /* Something new appearing in an Academy animation */
 .anim-in { transform-box: fill-box; transform-origin: center; animation: anim-in 240ms cubic-bezier(0.23, 1, 0.32, 1) both; }
 @keyframes anim-in { from { opacity: 0; transform: scale(0.94); } }
+/* The same for something already positioned with a transform */
+.anim-fade { animation: anim-fade 240ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@keyframes anim-fade { from { opacity: 0; } }
 
 /* Respect reduced-motion preference — kill decorative animation, keep instant */
 /* ─────────────────────────────────────────────────────────────────────────── */

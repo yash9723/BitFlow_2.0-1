@@ -20,10 +20,12 @@ import logicFamilies    from "@/content/logic-families/chapter";
 import addersComparators from "@/content/adders-comparators/chapter";
 import combinational    from "@/content/combinational/chapter";
 import arithmeticCircuits from "@/content/arithmetic-circuits/chapter";
+import sequential       from "@/content/sequential/chapter";
+import registers        from "@/content/registers/chapter";
+import counters         from "@/content/counters/chapter";
+import fsms             from "@/content/fsms/chapter";
 
-import sequential       from "@/content/sequential/index.json";
 import timing           from "@/content/timing/index.json";
-import fsms             from "@/content/fsms/index.json";
 import memory           from "@/content/memory/index.json";
 
 const RAW_TOPICS: AcademyTopic[] = [
@@ -40,6 +42,8 @@ const RAW_TOPICS: AcademyTopic[] = [
   combinational,
   arithmeticCircuits,
   sequential,
+  registers,
+  counters,
   timing,
   fsms,
   memory,
