@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import SiteHeader from "@/components/SiteHeader";
 
 type Entry = { rank: number; username: string; profile: boolean; totalXp: number; solved: number; isMe: boolean };
 type Mine = { username: string; totalXp: number; solved: number; rank: number | null } | null;
@@ -34,17 +35,7 @@ export default function LeaderboardPage() {
 
   return (
     <div className="min-h-screen bg-void text-bright">
-      <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 border-b border-rim/50 bg-void/80 backdrop-blur-md">
-        <Link href="/" className="font-display font-bold text-lg hover:text-phosphor transition-colors">
-          BitFlow
-        </Link>
-        <nav className="flex items-center gap-4 sm:gap-6 text-[12px] text-ghost">
-          <Link href="/sandbox" className="hidden sm:inline hover:text-bright transition-colors">Sandbox IDE</Link>
-          <Link href="/learn" className="hover:text-bright transition-colors">Learning</Link>
-          <Link href="/arena" className="hover:text-bright transition-colors">Arena</Link>
-          <span className="text-phosphor" aria-current="page">Leaderboard</span>
-        </nav>
-      </header>
+      <SiteHeader />
 
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
         <div>

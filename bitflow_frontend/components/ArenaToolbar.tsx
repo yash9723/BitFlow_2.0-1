@@ -10,6 +10,7 @@
 import Link from "next/link";
 import type { ArenaRunState, UseArenaProblemReturn } from "@/hooks/useArenaProblem";
 import type { ArenaSubmissionResult } from "@/lib/arena/types";
+import { NavMenuButton } from "@/components/SiteHeader";
 
 interface Props {
   title:      string;
@@ -54,6 +55,7 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, on
 
       {/* Left — breadcrumb */}
       <div className="flex items-center gap-2 min-w-0">
+        <NavMenuButton />
         <Link href="/" className="flex items-center gap-1.5 group shrink-0">
           <img
             src="/bitflow_logo_64.png"

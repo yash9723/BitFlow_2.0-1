@@ -10,6 +10,7 @@ import { DESIGN_STORAGE_KEY } from "@/hooks/useSimulation";
 import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import type { ProfileData } from "@/lib/profile";
 import { GuardianPanel } from "@/components/ConsentGate";
+import SiteHeader from "@/components/SiteHeader";
 
 /* ── Lattice background: electrons flowing along a chip-grid, converging
    on a central chip outline. Low-opacity, meant to blend not distract. ── */
@@ -686,46 +687,7 @@ function DashboardContent() {
       <LatticeBackground />
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between gap-3 h-14 px-4 sm:px-6 border-b border-rim/50 bg-void/50 backdrop-blur-md">
-        <Link href="/" className="flex items-center gap-2 shrink-0">
-          <img src="/bitflow_logo_64.png" alt="BitFlow" className="w-7 h-7 object-contain" />
-          <span className="font-display font-bold text-lg">BitFlow</span>
-        </Link>
-        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-          <Link href="/classes" className="hidden sm:inline text-[12px] text-ghost hover:text-bright transition-colors">
-            Classes
-          </Link>
-          <Link href="/contests" className="hidden sm:inline text-[12px] text-ghost hover:text-bright transition-colors">
-            Contests
-          </Link>
-          <Link href="/leaderboard" className="hidden sm:inline text-[12px] text-ghost hover:text-bright transition-colors">
-            Leaderboard
-          </Link>
-          <Link
-            href="/profile"
-            className="flex items-center gap-2 group px-2 py-1 rounded-lg hover:bg-pit/60 transition-colors min-w-0"
-          >
-            <div className="w-7 h-7 rounded-full bg-phosphor text-void flex items-center justify-center font-bold text-xs shrink-0">
-              {user?.username?.charAt(0).toUpperCase() || "?"}
-            </div>
-            <span className="text-xs text-pale group-hover:text-bright transition-colors truncate">
-              {user?.username || "Profile"}
-            </span>
-          </Link>
-          <button
-            onClick={() => logout()}
-            className="text-[12px] font-semibold text-ghost hover:text-danger transition-colors px-3 py-1.5 rounded-lg border border-rim hover:border-danger/40 shrink-0"
-          >
-            Logout
-          </button>
-        </div>
-      </nav>
-      {/* Phones: the links that don't fit in the bar above. */}
-      <nav aria-label="More" className="sm:hidden relative z-10 flex items-center gap-5 h-10 px-4 border-b border-rim/50 bg-void/50 text-[12px]">
-        <Link href="/classes" className="text-ghost hover:text-bright transition-colors">Classes</Link>
-        <Link href="/contests" className="text-ghost hover:text-bright transition-colors">Contests</Link>
-        <Link href="/leaderboard" className="text-ghost hover:text-bright transition-colors">Leaderboard</Link>
-      </nav>
+      <SiteHeader />
 
       <main className="relative z-10 flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         <GuardianPanel />

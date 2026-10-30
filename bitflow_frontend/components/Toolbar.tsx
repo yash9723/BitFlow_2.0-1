@@ -21,6 +21,7 @@ import { usePathname } from "next/navigation";
 import type { RunState, SimulateResponse } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
 import { PaletteButton } from "@/components/CommandPalette";
+import { NavMenuButton } from "@/components/SiteHeader";
 
 interface ToolbarProps {
   runState:       RunState;
@@ -103,6 +104,7 @@ export default function Toolbar({
     <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-void/70 backdrop-blur-xl border-b border-rim/50 z-10">
       {/* ── Left: branding + nav ───────────────────────────────────────── */}
       <div className="flex items-center gap-4 min-w-0 overflow-hidden">
+        <NavMenuButton />
         {/* BitFlow mark */}
         <div className="flex items-center gap-3 shrink-0">
           <img

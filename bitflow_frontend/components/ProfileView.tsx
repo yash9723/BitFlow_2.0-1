@@ -12,6 +12,7 @@ import AccountSecurity from "@/components/AccountSecurity";
 import AccountData from "@/components/AccountData";
 import { useAuth } from "@/hooks/useAuth";
 import type { ProfileData } from "@/lib/profile";
+import SiteHeader from "@/components/SiteHeader";
 
 // lib/profile.ts folds beginner/intermediate/advanced into Easy/Medium/Hard
 const DIFF_ORDER = ["Easy", "Medium", "Hard", "Expert"];
@@ -176,18 +177,7 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
   return (
     <div className="min-h-screen bg-void text-bright">
       {/* Nav */}
-      <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 border-b border-rim/50 bg-void/80 backdrop-blur-md">
-        <Link href="/" className="font-display font-bold text-lg hover:text-phosphor transition-colors">
-          BitFlow
-        </Link>
-        <div className="flex items-center gap-6 text-[12px] text-ghost">
-          <Link href="/sandbox" className="hover:text-bright transition-colors">Sandbox IDE</Link>
-          <Link href="/learn" className="hover:text-bright transition-colors">Learning</Link>
-          <Link href="/academy" className="hidden sm:inline hover:text-bright transition-colors">Academy</Link>
-          <Link href="/arena" className="hover:text-bright transition-colors">Arena</Link>
-          <Link href="/leaderboard" className="hidden sm:inline hover:text-bright transition-colors">Leaderboard</Link>
-        </div>
-      </header>
+      <SiteHeader />
 
       <div className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
         {/* ── Left sidebar ─────────────────────────────────────────── */}

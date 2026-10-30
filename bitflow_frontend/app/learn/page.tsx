@@ -8,6 +8,7 @@ import VLSIRoadmap from "@/components/VLSIRoadmap";
 import type { PathLevel, PathModule, Problem, ProgressRecord } from "@/lib/problem-types";
 import { prewarmSimulator } from "@/lib/sim-status";
 import { groupIntoModules, BEGINNER_MODULE_DEFS, INTERMEDIATE_MODULE_DEFS, ADVANCED_MODULE_DEFS } from "@/lib/problems/modules";
+import SiteHeader from "@/components/SiteHeader";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Visual config mapping
@@ -258,24 +259,26 @@ function LevelSection({
         {isArena && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="font-mono text-4xl mb-3 text-danger/30">⚔</div>
-            <h3 className="font-mono text-[14px] text-danger/60 font-bold mb-1">
-              Arena Mode
+            <h3 className="font-mono text-[14px] text-danger/80 font-bold mb-1">
+              Arena
             </h3>
-            <p className="font-mono text-[10px] text-dim/60 max-w-xs leading-relaxed">
-              Timed competitive challenges unlock after completing the Advanced tier.
-              Ranking, contests, and leaderboards coming soon.
+            <p className="font-mono text-[11px] text-ghost max-w-xs leading-relaxed">
+              Harder problems by topic: FSMs, testbenches graded against bugs, formal proofs, timing closure and find-the-bug.
+              Timed contests and the leaderboard are open too.
             </p>
-            <div className="mt-4 font-mono text-[9px] text-danger/40 border border-danger/20 px-4 py-2 rounded">
-              🔒 Locked until Advanced completion · 1,000 XP required
+            <div className="mt-4 flex flex-wrap justify-center gap-2 font-mono text-[11px]">
+              <Link href="/arena" className="px-4 py-2 rounded border border-danger/40 text-danger hover:bg-danger/10">Open the Arena →</Link>
+              <Link href="/contests" className="px-4 py-2 rounded border border-rim text-ghost hover:text-bright">Contests</Link>
+              <Link href="/leaderboard" className="px-4 py-2 rounded border border-rim text-ghost hover:text-bright">Leaderboard</Link>
             </div>
           </div>
         )}
 
         {!isArena && isEmpty && (
           <div className="flex flex-col items-center justify-center py-10 text-center">
-            <div className="font-mono text-[10px] text-dim/50">
-              Problems coming soon.
-            </div>
+            <Link href="/problems" className="font-mono text-[11px] text-ghost hover:text-bright">
+              Nothing here yet: browse all problems →
+            </Link>
           </div>
         )}
 
@@ -380,40 +383,11 @@ const advancedQuestions = questions.filter(
       <ScrollUnlock />
       
       {/* Nav */}
-      <header className="sticky top-0 z-10 h-14 flex items-center justify-between gap-4 px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
-        <div className="flex items-center gap-3 shrink-0">
-          <Link href="/" className="flex items-center gap-2 group">
-            <img
-              src="/bitflow_logo_64.png"
-              alt="BitFlow"
-              className="w-6 h-6 object-contain rounded opacity-80 group-hover:opacity-100 transition-opacity"
-            />
-            <span className="font-display text-[13px] font-bold text-bright">BitFlow</span>
-          </Link>
-          <span className="hidden sm:inline text-rim">·</span>
-          <span className="hidden sm:inline font-mono text-[11px] text-ghost">Learning Path</span>
-        </div>
-
-        <div className="flex items-center gap-4 sm:gap-5 min-w-0 overflow-x-auto whitespace-nowrap font-mono text-[11px]">
-          {progress && (
-            <div className="hidden sm:block text-[11px] text-phosphor bg-phosphor/10 border border-phosphor/25 backdrop-blur-md rounded-full px-3 py-1">
-              🏆 {progress.totalXp} XP
-            </div>
-          )}
-          <Link href="/dashboard" className="text-ghost hover:text-bright transition-colors">
-            Dashboard
-          </Link>
-          <Link href="/sandbox" className="text-ghost hover:text-bright transition-colors">
-            Sandbox
-          </Link>
-          <Link href="/arena" className="text-ghost hover:text-bright transition-colors">
-            Arena
-          </Link>
-          <Link href="/academy" className="text-ghost hover:text-bright transition-colors">
-            Academy
-          </Link>
-        </div>
-      </header>
+      <SiteHeader>
+        {progress && (
+          <span className="hidden sm:inline text-[11px] text-phosphor bg-phosphor/10 border border-phosphor/25 rounded-full px-3 py-1">🏆 {progress.totalXp} XP</span>
+        )}
+      </SiteHeader>
 
       {/* Hero */}
       <div className="relative px-6 py-10 border-b border-rim/30">

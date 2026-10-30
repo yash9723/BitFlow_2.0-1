@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { prewarmSimulator } from "@/lib/sim-status";
 import Link from "next/link";
+import SiteHeader from "@/components/SiteHeader";
 /** What the hub needs per problem (app/arena/page.tsx); never code. */
 export interface HubProblem {
   slug: string; title: string; difficulty: string; category: string; xpReward: number; blurb: string;
@@ -69,30 +70,7 @@ export default function ArenaHubClient({ problems: all }: ArenaHubClientProps) {
         }}
       />
 
-      <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
-        <Link href="/" className="flex items-center gap-3">
-          <img src="/bitflow_logo_64.png" alt="BitFlow" className="w-7 h-7 object-contain" />
-          <div className="leading-none">
-            <div className="font-display text-[13px] font-bold">BitFlow</div>
-            <div className="font-mono text-[9px] text-dim uppercase tracking-widest">HDL Arena</div>
-          </div>
-        </Link>
-
-        <nav className="flex items-center gap-5">
-          <Link href="/dashboard" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
-            Dashboard
-          </Link>
-          <Link href="/sandbox" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
-            Sandbox IDE
-          </Link>
-          <Link href="/learn" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
-            Learn
-          </Link>
-          <Link href="/academy" className="font-mono text-[11px] text-ghost hover:text-bright transition-colors">
-            Academy
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader />
 
       <div className="relative z-[1] max-w-6xl mx-auto px-6 py-10">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 mb-10">

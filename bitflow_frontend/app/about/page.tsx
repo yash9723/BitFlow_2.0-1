@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
+import SiteHeader from "@/components/SiteHeader";
 
 export default function AboutPage() {
   return (
@@ -11,21 +12,7 @@ export default function AboutPage() {
       <div className="absolute top-0 left-1/4 w-80 h-80 bg-phosphor/5 rounded-full blur-[120px] pointer-events-none" />
       
       {/* Navigation */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-3 border-b border-rim/50 bg-void/80 backdrop-blur-md">
-        <div className="flex items-center gap-10">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/bitflow_logo_64.png" alt="BitFlow home" width={28} height={28} className="w-7 h-7 object-contain" priority />
-            <span className="font-display font-bold text-lg">BitFlow</span>
-          </Link>
-          <div className="hidden md:flex items-center gap-6 text-[11px] font-semibold tracking-wider uppercase">
-            <Link href="/" className="text-ghost hover:text-bright transition-colors pb-0.5">Home</Link>
-            <Link href="/sandbox" className="text-ghost hover:text-bright transition-colors pb-0.5">Sandbox IDE</Link>
-            <Link href="/learn" className="text-ghost hover:text-bright transition-colors pb-0.5">Learning</Link>
-            <Link href="/about" className="text-phosphor border-b-2 border-phosphor pb-0.5" aria-current="page">About</Link>
-            <Link href="/contact" className="text-ghost hover:text-bright transition-colors pb-0.5">Contact</Link>
-          </div>
-        </div>
-      </nav>
+      <SiteHeader />
 
       {/* Content */}
       <section className="relative z-10 max-w-3xl mx-auto px-6 pt-20 pb-20">

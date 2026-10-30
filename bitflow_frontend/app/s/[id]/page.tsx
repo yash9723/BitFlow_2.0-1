@@ -7,6 +7,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import ForkButton from "@/components/ForkButton";
+import SiteHeader from "@/components/SiteHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -50,10 +51,7 @@ export default async function SharedDesignPage({ params }: { params: { id: strin
 
   return (
     <div className="min-h-screen bg-void text-bright">
-      <header className="sticky top-0 z-10 h-14 flex items-center justify-between px-4 sm:px-6 border-b border-rim/50 bg-void/80 backdrop-blur-md">
-        <Link href="/" className="font-display font-bold text-lg hover:text-phosphor transition-colors">BitFlow</Link>
-        <Link href="/sandbox" className="text-[12px] text-ghost hover:text-bright transition-colors">Sandbox IDE</Link>
-      </header>
+      <SiteHeader />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0">

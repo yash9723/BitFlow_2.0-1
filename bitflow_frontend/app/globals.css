@@ -70,6 +70,11 @@
     overflow: auto !important;
     height: auto !important;
   }
+  /* The document scrolls, not the body: a body with overflow auto would be the scroll
+     container sticky headers (components/SiteHeader.tsx) stick to, and it never scrolls. */
+  html.page-scrollable body {
+    overflow: visible !important;
+  }
 
   /* Make the Next.js root div fill the viewport */
   #__next {

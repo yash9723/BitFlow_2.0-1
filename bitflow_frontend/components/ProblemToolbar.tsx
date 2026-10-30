@@ -17,6 +17,7 @@
 import Link from "next/link";
 import type { ProblemRunState } from "@/hooks/useProblem";
 import type { Difficulty } from "@/lib/problem-types";
+import { NavMenuButton } from "@/components/SiteHeader";
 
 const DIFF_DOT: Record<Difficulty, string> = {
   beginner:     "bg-phosphor",
@@ -83,6 +84,7 @@ export default function ProblemToolbar({
     <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-surface border-b border-rim z-10">
       {/* ── Left ────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
+        <NavMenuButton />
         {/* Back link */}
         <Link
           href="/learn"

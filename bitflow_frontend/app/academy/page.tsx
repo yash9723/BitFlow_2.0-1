@@ -14,6 +14,7 @@ import {
   DIFFICULTY_LABELS,
   DIFFICULTY_STYLES,
 } from "@/lib/academy-content";
+import SiteHeader from "@/components/SiteHeader";
 
 export default function AcademyHubPage() {
   const [activeTab, setActiveTab] = useState<"topics" | "roadmap">("topics");
@@ -32,34 +33,7 @@ export default function AcademyHubPage() {
           }}
         />
 
-        <header className="sticky top-0 z-10 h-14 flex items-center justify-between gap-4 px-6 bg-void/70 border-b border-rim/50 backdrop-blur-xl">
-          <div className="flex items-center gap-3 shrink-0">
-            <Link href="/" className="flex items-center gap-2 group">
-              <img
-                src="/bitflow_logo_64.png"
-                alt="BitFlow"
-                className="w-6 h-6 object-contain rounded opacity-80 group-hover:opacity-100 transition-opacity"
-              />
-              <span className="font-display text-[13px] font-bold text-bright">BitFlow</span>
-            </Link>
-            <span className="hidden sm:inline text-rim">·</span>
-            <span className="hidden sm:inline font-mono text-[11px] text-ghost">Digital Electronics Academy</span>
-          </div>
-          <div className="flex items-center gap-4 sm:gap-5 min-w-0 overflow-x-auto whitespace-nowrap font-mono text-[11px]">
-            <Link href="/dashboard" className="text-ghost hover:text-bright transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/learn" className="text-ghost hover:text-bright transition-colors">
-              Learning Path
-            </Link>
-            <Link href="/arena" className="text-ghost hover:text-bright transition-colors">
-              HDL Arena
-            </Link>
-            <Link href="/sandbox" className="text-ghost hover:text-bright transition-colors">
-              Sandbox
-            </Link>
-          </div>
-        </header>
+        <SiteHeader />
 
         {/* Hero Header */}
         <div className="relative z-[1] px-6 py-10 border-b border-rim/30">

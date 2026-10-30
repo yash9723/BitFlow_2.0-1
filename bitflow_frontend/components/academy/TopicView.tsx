@@ -18,6 +18,7 @@ import {
   markTopicCompleted,
   loadAcademyProgress,
 } from "@/lib/academy-progress-storage";
+import SiteHeader from "@/components/SiteHeader";
 
 type Tab = "learn" | "quiz" | "flashcards" | "videos";
 
@@ -48,7 +49,8 @@ export default function TopicView({ topic, prev, next }: Props) {
     <div className="min-h-screen bg-void text-bright">
       <ScrollUnlock />
 
-      <header className="sticky top-0 z-10 h-12 flex items-center justify-between px-6 bg-surface/90 border-b border-rim backdrop-blur-sm">
+      <SiteHeader />
+      <header className="sticky top-14 z-20 h-12 flex items-center justify-between px-6 bg-surface/90 border-b border-rim backdrop-blur-sm">
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/academy" className="font-mono text-[10px] text-dim hover:text-ghost shrink-0">
             ← Academy
@@ -61,9 +63,6 @@ export default function TopicView({ topic, prev, next }: Props) {
             </span>
           )}
         </div>
-        <Link href="/" className="font-mono text-[10px] text-dim hover:text-ghost shrink-0">
-          Sandbox
-        </Link>
       </header>
 
       <div className="px-6 py-8 border-b border-rim/30 bg-gradient-to-b from-surface/15 to-transparent">

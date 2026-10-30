@@ -5,6 +5,7 @@ import Link from "next/link";
 import ScrollUnlock from "@/components/ScrollUnlock";
 import AuthGate from "@/components/AuthGate";
 import VLSIRoadmap from "@/components/VLSIRoadmap";
+import SiteHeader from "@/components/SiteHeader";
 
 export default function AcademyRoadmapPage() {
   return (
@@ -13,38 +14,7 @@ export default function AcademyRoadmapPage() {
         <ScrollUnlock />
 
         {/* Navigation */}
-        <header className="sticky top-0 z-20 h-14 flex items-center justify-between gap-4 px-6 bg-void/80 border-b border-rim/50 backdrop-blur-xl">
-          <div className="flex items-center gap-3 shrink-0">
-            <Link href="/" className="flex items-center gap-2 group">
-              <img
-                src="/bitflow_logo_64.png"
-                alt="BitFlow"
-                className="w-6 h-6 object-contain rounded opacity-80 group-hover:opacity-100 transition-opacity"
-              />
-              <span className="font-display text-[13px] font-bold text-bright">BitFlow</span>
-            </Link>
-            <span className="hidden sm:inline text-rim">·</span>
-            <span className="hidden sm:inline font-mono text-[11px] text-ghost">Academy · VLSI Career Roadmap</span>
-          </div>
-
-          <div className="flex items-center gap-4 sm:gap-5 min-w-0 overflow-x-auto whitespace-nowrap font-mono text-[11px]">
-            <Link href="/academy" className="text-info font-semibold hover:text-bright transition-colors">
-              ← Back to Academy Hub
-            </Link>
-            <Link href="/dashboard" className="text-ghost hover:text-bright transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/learn" className="text-ghost hover:text-bright transition-colors">
-              Learning Path
-            </Link>
-            <Link href="/arena" className="text-ghost hover:text-bright transition-colors">
-              Arena
-            </Link>
-            <Link href="/sandbox" className="text-ghost hover:text-bright transition-colors">
-              Sandbox
-            </Link>
-          </div>
-        </header>
+        <SiteHeader />
 
         {/* Hero Banner */}
         <div className="relative px-6 py-12 border-b border-rim/30 bg-gradient-to-b from-surface/20 via-pit/20 to-transparent">

@@ -3,7 +3,7 @@
  * header, readable prose column and the operator/contact footer.
  */
 
-import Image from "next/image";
+import SiteHeader from "@/components/SiteHeader";
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
 import { CONTACT_EMAIL, OPERATOR, SITE_NAME } from "@/lib/site";
@@ -11,17 +11,7 @@ import { CONTACT_EMAIL, OPERATOR, SITE_NAME } from "@/lib/site";
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-void text-bright">
-      <nav className="flex items-center justify-between h-14 px-5 sm:px-6 border-b border-rim/50">
-        <Link href="/" className="flex items-center gap-2">
-          <Image src="/bitflow_logo_64.png" alt="" width={28} height={28} className="w-7 h-7 object-contain" priority />
-          <span className="font-display font-bold text-lg">{SITE_NAME}</span>
-        </Link>
-        <div className="flex gap-5 text-[12px]">
-          <Link href="/privacy" className="text-ghost hover:text-bright">Privacy</Link>
-          <Link href="/terms" className="text-ghost hover:text-bright">Terms</Link>
-          <Link href="/contact" className="text-ghost hover:text-bright">Contact</Link>
-        </div>
-      </nav>
+      <SiteHeader />
       <article className="max-w-2xl mx-auto px-5 py-14 text-[14px] leading-relaxed text-pale
                           [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:text-bright [&_h1]:mb-2
                           [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-bright [&_h2]:mt-10 [&_h2]:mb-3

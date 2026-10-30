@@ -19,6 +19,7 @@ import CommandPalette from "@/components/CommandPalette";
 import Analytics from "@/components/Analytics";
 import ConsentGate from "@/components/ConsentGate";
 import SiteNotice from "@/components/SiteNotice";
+import { NavDrawer } from "@/components/SiteHeader";
 import { inter, mono } from "@/lib/fonts";
 import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL, jsonLd } from "@/lib/site";
 import "./globals.css";
@@ -98,6 +99,7 @@ export default function RootLayout({
           <CommandPalette />
           <Analytics />
           <SiteNotice />
+          <NavDrawer />
           <ConsentGate />
         </AuthProvider>
       </body>
