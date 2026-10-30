@@ -129,8 +129,10 @@ def _run_limited(
             raise subprocess.TimeoutExpired(cmd, timeout)
         log.seek(0)
         data = log.read(MAX_OUTPUT_BYTES + 1)
-    if proc.returncode in (137, -9) and time.monotonic() - t0 >= timeout - 0.5:
-        raise subprocess.TimeoutExpired(cmd, timeout)   # killed by `timeout` (128 + SIGKILL)
+    # A failure after the whole time limit is `timeout` firing. Don't go by its exit code: GNU's
+    # is 137 with -s KILL, but it isn't the same in every coreutils (Ubuntu 26.04's differs).
+    if proc.returncode != 0 and time.monotonic() - t0 >= timeout - 0.5:
+        raise subprocess.TimeoutExpired(cmd, timeout)
 
     text = data[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
     if len(data) > MAX_OUTPUT_BYTES:
