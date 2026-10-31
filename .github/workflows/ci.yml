@@ -46,6 +46,7 @@ jobs:
       - run: npm run check-similarity
       - run: npm run check-dpdp
       - run: npm run check-lessons
+      - run: npm run check-hardware
       - run: npm run check-academy
       - run: npm run check-admin
       - run: npm run check-radix

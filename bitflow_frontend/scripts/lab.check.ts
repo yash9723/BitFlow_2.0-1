@@ -10,7 +10,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { LESSONS } from "../lib/lab/lessons";
-import { boardDesign, grade, missingParts, simParams, topModule, withParams } from "../lib/lab/run";
+import { boardDesign, grade, missingParts, simParams, topModule, Tester, withParams } from "../lib/lab/run";
+import { HW_CHECKS } from "../lib/lab/hardware";
 import { synthesize, type RunYosys } from "../lib/synth/run";
 import type { BoardNetlist } from "../lib/gate-sim";
 
@@ -54,6 +55,19 @@ async function lessons() {
     // The real-board wrapper must parse and keep the board's port names.
     const board = await netlist(boardDesign(SOLUTIONS?.[lesson.slug] ?? lesson.starter, lesson.ports, "tangnano9k"));
     if ("btn" in lesson.ports) assert.ok(board.ports.btn_n, `${lesson.slug}: wrapper has btn_n`);
+    // "Check on my board" must expect what a correct design really does (lib/lab/hardware.ts).
+    if (SOLUTIONS && HW_CHECKS[lesson.slug]) {
+      const t = new Tester(await netlist(withParams(SOLUTIONS[lesson.slug], simParams(lesson))));
+      const FRAME = 16 * 11;
+      for (const s of HW_CHECKS[lesson.slug]) {
+        t.serial = "";
+        if (s.kind === "action") { t.press("btn", 1, 100); t.run(FRAME * (s.reply.length + 3)); assert.ok(t.serial.includes(s.reply), `${lesson.slug}: board check got ${JSON.stringify(t.serial)}`); continue; }
+        t.send(s.send);
+        t.run(FRAME * (s.send.length + (s.kind === "reply" ? s.reply.length : 0) + 3));
+        if (s.kind === "reply") assert.equal(t.serial, s.reply, `${lesson.slug}: board check sending ${JSON.stringify(s.send)}`);
+        else assert.equal(t.get("led"), s.leds, `${lesson.slug}: board check LEDs after ${JSON.stringify(s.send)}`);
+      }
+    }
   }
   assert.equal(failed, 0, `${failed} lesson(s) failed`);
   console.log(`lab lessons: all ${LESSONS.length} passed`);

@@ -13,7 +13,7 @@ import { loadAcademyProgress, saveAcademyProgress } from "@/lib/academy-progress
 export const LESSONS_SYNCED = "bitflow:lessons-synced";
 const OWNER = "bitflow_progress_owner";
 
-interface Item { kind: "lab" | "academy"; slug: string; done?: boolean; quizScore?: number; draft?: string | null }
+interface Item { kind: "lab" | "academy"; slug: string; done?: boolean; quizScore?: number; draft?: string | null; hwBoard?: string }
 interface Row { kind: string; slug: string; done: boolean; quizScore: number | null }
 
 /** Send progress to the account. Returns the XP it earned (0 for a guest or on failure). */
@@ -29,6 +29,14 @@ export async function fetchDraft(kind: Item["kind"], slug: string): Promise<stri
   try {
     const res = await fetch(`/api/progress/lessons?kind=${kind}&slug=${encodeURIComponent(slug)}`);
     return res.ok ? ((await res.json()).draft ?? null) : null;
+  } catch { return null; }
+}
+
+/** The real board this Lab lesson was verified on, or null. */
+export async function fetchHwBoard(slug: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/progress/lessons?kind=lab&slug=${encodeURIComponent(slug)}`);
+    return res.ok ? ((await res.json()).hwBoard ?? null) : null;
   } catch { return null; }
 }
 

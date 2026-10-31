@@ -7,6 +7,8 @@
 import { LESSONS } from "@/lib/lab/lessons";
 import { ACADEMY_TOPICS } from "@/lib/academy-content";
 import { quizPassed } from "@/lib/academy-progress-storage";
+import { HW_CHECKS } from "@/lib/lab/hardware";
+import { BOARDS } from "@/lib/synth/boards";
 
 export type LessonKind = "lab" | "academy";
 export const LESSON_XP: Record<LessonKind, number> = { lab: 20, academy: 15 };
@@ -32,7 +34,7 @@ export function parseLessonKey(key: string): { kind: LessonKind; slug: string; t
   return title ? { kind, slug, title } : null;
 }
 
-export interface LessonItem { kind: LessonKind; slug: string; done?: boolean; quizScore?: number; draft?: string | null }
+export interface LessonItem { kind: LessonKind; slug: string; done?: boolean; quizScore?: number; draft?: string | null; hwBoard?: string }
 
 /** Why a client-sent item can't be stored, or null. */
 export function lessonProblem(item: unknown): string | null {
@@ -41,6 +43,7 @@ export function lessonProblem(item: unknown): string | null {
   if (typeof i.slug !== "string" || !lessonTitle(i.kind, i.slug)) return "Unknown lesson.";
   if (i.quizScore !== undefined && (!Number.isInteger(i.quizScore) || i.quizScore < 0 || i.quizScore > 1000)) return "Bad quiz score.";
   if (i.draft !== undefined && i.draft !== null && (typeof i.draft !== "string" || i.draft.length > MAX_DRAFT_CHARS)) return "Draft too large.";
+  if (i.hwBoard !== undefined && (i.kind !== "lab" || !HW_CHECKS[i.slug] || typeof i.hwBoard !== "string" || !Object.keys(BOARDS).includes(i.hwBoard))) return "Bad board.";
   return null;
 }
 

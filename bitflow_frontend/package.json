@@ -53,6 +53,7 @@
     "check-verilog-lang": "tsx scripts/verilog-lang.check.ts",
     "check-leaks": "tsx scripts/check-bundle-leaks.ts",
     "check-lab": "tsx scripts/lab.check.ts",
+    "check-hardware": "tsx scripts/hardware.check.ts",
     "db:export": "tsx scripts/db-transfer.ts export",
     "db:import": "tsx scripts/db-transfer.ts import"
   },

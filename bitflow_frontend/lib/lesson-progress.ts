@@ -40,14 +40,14 @@ export async function recordChallenge(userId: string, slug: string, xp: number, 
 /** Upsert the items; returns the XP this call awarded. Items must have passed lessonProblem(). */
 export async function recordLessons(userId: string, items: LessonItem[]): Promise<number> {
   let awarded = 0;
-  for (const { kind, slug, done, quizScore, draft } of items) {
+  for (const { kind, slug, done, quizScore, draft, hwBoard } of items) {
     const key = { userId_kind_slug: { userId, kind, slug } };
     const before = await prisma.lessonProgress.findUnique({ where: key, select: { quizScore: true } });
     const best = quizScore === undefined ? before?.quizScore ?? null : Math.max(quizScore, before?.quizScore ?? 0);
     const row = await prisma.lessonProgress.upsert({
       where:  key,
-      create: { userId, kind, slug, quizScore: best, draft: draft ?? null },
-      update: { quizScore: best, ...(draft !== undefined ? { draft } : {}) },
+      create: { userId, kind, slug, quizScore: best, draft: draft ?? null, hwBoard },
+      update: { quizScore: best, ...(draft !== undefined ? { draft } : {}), ...(hwBoard ? { hwBoard } : {}) },
       select: { id: true },
     });
     if (!done || !counts(kind, slug, best)) continue;

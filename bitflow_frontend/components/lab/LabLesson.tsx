@@ -24,15 +24,20 @@ import { VIEWS, viewFor, type ViewId } from "@/lib/lab/boards3d";
 import { rich } from "./rich";
 import { useAuth } from "@/hooks/useAuth";
 import { LESSONS_SYNCED, fetchDraft, reportLesson } from "@/lib/lesson-sync";
+import BoardCheck from "./BoardCheck";
+import { traceToParsed, traceToVcd, type Trace } from "@/lib/studio/circuit-analysis";
+import type { ParsedVcd } from "@/lib/vcd-parser";
 
 const Editor = dynamic(() => import("@/components/Editor"), { ssr: false, loading: () => <div className="h-full bg-pit" /> });
 const ModelShelf = dynamic(() => import("./ModelShelf"), { ssr: false });
+const WaveformPanel = dynamic(() => import("@/components/WaveformPanel"), { ssr: false, loading: () => <div className="h-40 bg-pit" /> });
 const Board3D = dynamic(() => import("./Board3D"), { ssr: false, loading: () => <div className="h-full grid place-items-center font-mono text-[11px] text-dim">Loading the board…</div> });
 
 /** Boards a lesson can be built for here; those in FLASH are also programmed from /flash. */
 const BUILD_BOARDS = (Object.keys(BOARDS) as BoardId[]).filter((id) => buildsInBrowser(BOARDS[id]));
 const LOG_LINES = 60;
 const LOG_GAP_MS = 150;   // a port that changes faster than this is logged at most this often
+const WAVE_CYCLES = 8000; // the waveform tab keeps this many of the latest clock cycles
 
 type Status = { kind: "idle" } | { kind: "building" } | { kind: "error"; text: string };
 type Flash = { kind: "idle" } | { kind: "building" } | { kind: "error"; text: string } | { kind: "ready"; name: string; bytes: Uint8Array; notes: string[] };
@@ -74,6 +79,12 @@ export default function LabLesson({ slug }: { slug: string }) {
   const soundRef = useRef(false);
   const [typedLine, setTypedLine] = useState("");
   const [keysDown, setKeysDown] = useState<boolean[]>(Array(16).fill(false));
+  // The waveform tab: every port but the clock, recorded only while the tab is open.
+  const trace = useRef<Trace | null>(null);
+  const [waveOpen, setWaveOpen] = useState(false);
+  const waveOpenRef = useRef(false);
+  const [wave, setWave] = useState<ParsedVcd | null>(null);
+  const [waveEmpty, setWaveEmpty] = useState(false);
 
   useEffect(() => {
     const draft = loadDraft(slug);
@@ -143,6 +154,8 @@ export default function LabLesson({ slug }: { slug: string }) {
       clock.current = 0;
       io.current = { toDesign: new UartTransmitter(UART_CYCLES), fromDesign: new UartReceiver(UART_CYCLES) };
       logged.current = {};
+      trace.current = null;
+      setWave(null);
       setLog([]); setSerial("");
       setReady(true); setRunning(true);
     } catch (e) {
@@ -168,6 +181,10 @@ export default function LabLesson({ slug }: { slug: string }) {
       const ex = extras.current, hasKeys = "row" in s.ports && "col" in s.ports, hasSr = "sr_clk" in s.ports;
       const hasServo = "servo" in s.ports, hasBuzz = "buzz" in s.ports;
       let buzzEdges = 0, buzzLast = hasBuzz ? s.get("buzz")[0] : 0;
+      if (waveOpenRef.current && !trace.current) {
+        trace.current = { probes: Object.entries(s.ports).filter(([name]) => name !== "clk").map(([name, p]) => ({ name, width: p.bits.length })), steps: [] };
+      }
+      const rec = waveOpenRef.current ? trace.current : null;
       const sample = () => {
         if ("led" in s.ports) s.get("led").forEach((b, i) => { if (i < 6) leds[i] += b; });
         if ("rgb" in s.ports) { const [b, g, r] = s.get("rgb"); rgb[0] += r; rgb[1] += g; rgb[2] += b; }
@@ -189,7 +206,13 @@ export default function LabLesson({ slug }: { slug: string }) {
             if (r !== null) received += r === "error" ? "�" : String.fromCharCode(r);
           }
           sample();
+          rec?.steps.push(rec.probes.map((p) => toNumber(s.get(p.name))));
         }
+        if (rec && !("clk" in s.ports)) {   // no clock: one step per change of the ports (a switch flipped)
+          const row = rec.probes.map((p) => toNumber(s.get(p.name)));
+          if (row.join() !== rec.steps.at(-1)?.join()) rec.steps.push(row);
+        }
+        if (rec && rec.steps.length > WAVE_CYCLES) rec.steps.splice(0, rec.steps.length - WAVE_CYCLES);
         if (n === 0) sample();
       } catch (e) {
         setRunning(false);
@@ -290,6 +313,17 @@ export default function LabLesson({ slug }: { slug: string }) {
     if (flash.kind !== "ready") return;
     try { await putBitstream({ name: flash.name, board, bytes: flash.bytes }); } catch { /* /flash still takes a file */ }
     window.open("/flash", "_blank", "noopener");
+  };
+
+  const toggleWave = (open: boolean) => {
+    setWaveOpen(open);
+    waveOpenRef.current = open;
+    if (!open) trace.current = null;   // a gap in the recording would read as a flat signal
+  };
+  const captureWave = () => {
+    const captured = !!trace.current?.steps.length;
+    setWaveEmpty(!captured);
+    if (captured) setWave(traceToParsed(trace.current!));
   };
 
   const passed = results?.every((g) => g.ok) ?? false;
@@ -504,8 +538,30 @@ export default function LabLesson({ slug }: { slug: string }) {
               {board === "tinyfpga-bx" && <li>The TinyFPGA BX is programmed by its own USB bootloader: download the file and run tinyprog -p {flash.kind === "ready" ? flash.name : "the file"}.</li>}
             </ul>
           </div>
+          <BoardCheck slug={slug} code={code} board={board} ports={Object.keys(lesson.ports)} signedIn={!!userId} />
         </section>
       </div>
+
+      <details className="rounded-lg border border-rim bg-pit/40" onToggle={(e) => toggleWave(e.currentTarget.open)}>
+        <summary className={`${heading} px-4 py-3 cursor-pointer`}>Waveform</summary>
+        {waveOpen && (
+          <div className="border-t border-rim">
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2">
+              <button className={`${btnCls} border-info/50 text-info hover:bg-info/10`} onClick={captureWave} disabled={!ready}>Capture the latest cycles</button>
+              {wave && trace.current && (
+                <button className={`${btnCls} border-rim text-ghost hover:text-bright`} onClick={() => downloadBlob(`${slug}.vcd`, traceToVcd(trace.current!, slug.replace(/-/g, "_")), "text/plain")}>Download VCD</button>
+              )}
+              <span className="font-mono text-[10px] text-dim">
+                {!ready ? "Run the design first."
+                  : waveEmpty ? "Nothing recorded yet: let the design run for a moment, then capture again."
+                  : hasClock ? `Records every port except the clock while this is open, up to ${WAVE_CYCLES.toLocaleString("en-IN")} cycles. Time is in clock cycles.`
+                  : "This design has no clock, so each change of its ports is one step. Flip a switch, then capture."}
+              </span>
+            </div>
+            {wave && <div className="h-[320px] border-t border-rim"><WaveformPanel parsedVcd={wave} viewKey={`lab:${slug}`} /></div>}
+          </div>
+        )}
+      </details>
     </div>
   );
 }

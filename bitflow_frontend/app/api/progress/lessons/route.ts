@@ -2,8 +2,8 @@
  * app/api/progress/lessons/route.ts — your Board Lab and Academy progress (lib/lesson-progress.ts).
  *
  * GET                  — every lesson you've touched (no drafts)
- * GET ?kind=&slug=     — that lesson's saved draft
- * POST { items: [{ kind, slug, done?, quizScore?, draft? }] } — up to MAX_ITEMS; returns the XP awarded
+ * GET ?kind=&slug=     — that lesson's saved draft, and the real board it was verified on
+ * POST { items: [{ kind, slug, done?, quizScore?, draft?, hwBoard? }] } — up to MAX_ITEMS; returns the XP awarded
  */
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth-utils";
@@ -24,8 +24,8 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const kind = params.get("kind"), slug = params.get("slug");
   if (kind && slug) {
-    const row = await prisma.lessonProgress.findUnique({ where: { userId_kind_slug: { userId: user.id, kind, slug } }, select: { draft: true } });
-    return NextResponse.json({ draft: row?.draft ?? null });
+    const row = await prisma.lessonProgress.findUnique({ where: { userId_kind_slug: { userId: user.id, kind, slug } }, select: { draft: true, hwBoard: true } });
+    return NextResponse.json({ draft: row?.draft ?? null, hwBoard: row?.hwBoard ?? null });
   }
   const lessons = await prisma.lessonProgress.findMany({
     where:  { userId: user.id },
