@@ -177,6 +177,7 @@
   --apex-steel: #989da8;
   --apex-red: #ff4136;
   --apex-ember: #ff7a1a;
+  --apex-glow: rgba(255, 65, 54, 0.55);
   background: var(--apex-bg);
   color: var(--apex-text);
 }
@@ -191,42 +192,58 @@
 .apex-flame {
   background: linear-gradient(180deg, #ffc860 0 32%, #ff7a1a 32% 64%, #e8261b 64% 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
-  filter: drop-shadow(4px 4px 0 #4f0b07);
+  filter: drop-shadow(4px 4px 0 #4f0b07) hue-rotate(calc(var(--doom, 0) * 115deg));
 }
 .apex-pixelfire { position: absolute; left: 0; bottom: 0; width: 100%; pointer-events: none; image-rendering: pixelated; }
 .apex-pixelfire-strip { height: 50%; opacity: 0.55; }
 .apex-card { background: rgba(14, 12, 13, 0.9); border: 1px solid var(--apex-line); border-radius: 14px; }
 .apex-card-pinned {
-  border-color: rgba(255, 65, 54, 0.55);
-  box-shadow: 0 0 0 1px rgba(255, 65, 54, 0.12), 0 12px 44px -18px rgba(255, 60, 30, 0.45);
+  border-color: var(--apex-glow);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--apex-glow) 22%, transparent), 0 12px 44px -18px var(--apex-glow);
 }
 .apex-kind { color: var(--apex-ember); letter-spacing: 0.04em; }
-.apex-new { padding: 1px 7px; border-radius: 999px; background: #d21f16; color: #ffffff; font-weight: 700; }
+.apex-new { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, #d21f16, #0d7a3a calc(var(--doom, 0) * 100%)); color: #ffffff; font-weight: 700; }
 .apex-list { list-style: none; }
 .apex-list li { position: relative; padding-left: 18px; }
 .apex-list li::before { content: ""; position: absolute; left: 2px; top: 0.62em; width: 6px; height: 6px; border-radius: 1px; transform: rotate(45deg); background: var(--apex-red); }
 .apex code { background: #1a1718; border-color: var(--apex-line); color: #ffb37a; }
 .apex-strip { border: 1px solid rgba(255, 65, 54, 0.5); }
 
+/* Scrolling down turns the page: --doom goes from 0 to 1 (components/PixelFire.tsx). Colours only, plus iron plates behind everything. */
+@supports (color: color-mix(in srgb, red, blue)) {
+  .apex {
+    --apex-bg: color-mix(in srgb, #050405, #040b07 calc(var(--doom, 0) * 100%));
+    --apex-line: color-mix(in srgb, #2e2b2e, #24443a calc(var(--doom, 0) * 100%));
+    --apex-red: color-mix(in oklch, #ff4136, #39d96b calc(var(--doom, 0) * 100%));
+    --apex-ember: color-mix(in oklch, #ff7a1a, #7df0a0 calc(var(--doom, 0) * 100%));
+    --apex-glow: color-mix(in oklch, rgba(255, 65, 54, 0.55), rgba(57, 217, 107, 0.55) calc(var(--doom, 0) * 100%));
+  }
+  .apex-card { background: color-mix(in srgb, rgba(14, 12, 13, 0.9), rgba(8, 18, 13, 0.9) calc(var(--doom, 0) * 100%)); }
+}
+.apex-doom {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: var(--doom, 0);
+  background-color: #060d09;
+  background-image:
+    radial-gradient(circle at 14px 14px, #6f9080 0 3px, #020503 3px 5px, transparent 5px),
+    radial-gradient(circle at 166px 14px, #6f9080 0 3px, #020503 3px 5px, transparent 5px),
+    radial-gradient(circle at 14px 106px, #6f9080 0 3px, #020503 3px 5px, transparent 5px),
+    radial-gradient(circle at 166px 106px, #6f9080 0 3px, #020503 3px 5px, transparent 5px),
+    linear-gradient(90deg, #34503f 0 2px, #010302 2px 5px, transparent 5px),
+    linear-gradient(180deg, #34503f 0 2px, #010302 2px 5px, transparent 5px),
+    linear-gradient(180deg, #1a2e23, #0e1b14);
+  background-size: 180px 120px;
+}
+/* The sorcerous glow, behind where the title sits. */
+.apex-doom::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(70% 45% at 50% 24%, rgba(57, 217, 107, 0.34), rgba(57, 217, 107, 0.1) 55%, transparent 80%);
+}
+
 /* The title and fire stay put; the posts scroll up over the title. */
 .apex-stage { position: fixed; inset: 56px 0 0 0; z-index: 0; }
-/* The feed's empty top sits over the title, so only the posts themselves take clicks. */
-.apex-feed { position: relative; z-index: 10; padding-top: max(58svh, 340px); padding-bottom: 35svh; pointer-events: none; }
-.apex-feed > * { pointer-events: auto; }
+.apex-feed { position: relative; z-index: 10; padding-top: max(58svh, 340px); padding-bottom: 35svh; }
 .apex-pixelfire-dock { position: fixed; height: 45svh; z-index: 5; }
 .apex-footer { position: relative; z-index: 25; background: var(--apex-bg); }
-/* The opening film (components/ApexOpening.tsx), held black until it's ready so the page doesn't flash first. */
-html.apex-opening-hold body { visibility: hidden; }
-.apex-opening { position: fixed; inset: 0; z-index: 200; background: var(--apex-bg); transition: opacity 400ms ease-out; }
-.apex-opening-leaving { opacity: 0; pointer-events: none; }
-.apex-opening video { width: 100%; height: 100%; object-fit: cover; }
-.apex-opening-skip {
-  position: absolute; z-index: 1; transform: translateZ(0); top: max(16px, env(safe-area-inset-top)); right: 16px; min-height: 44px; padding: 0 20px;
-  border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 999px; background: rgba(5, 4, 5, 0.6); color: #f2f3f5;
-  font-size: 14px; font-weight: 600;
-}
-.apex-opening-replay { margin-top: 12px; min-height: 44px; font-family: var(--font-mono), monospace; font-size: 12px; color: var(--apex-steel); text-decoration: underline; text-underline-offset: 3px; }
-@media (hover: hover) and (pointer: fine) { .apex-opening-replay:hover { color: #f2f3f5; } .apex-opening-skip:hover { background: rgba(5, 4, 5, 0.9); } }
 @keyframes apex-recede { to { opacity: 0.14; transform: translateY(-28px) scale(0.95); } }
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: scroll()) {

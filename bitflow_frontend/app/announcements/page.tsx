@@ -1,16 +1,15 @@
 /**
  * app/announcements/page.tsx — every update BitFlow rolls out, newest first, under the 3.0 APEX
  * hero. Public; signed-in learners also see what's new since their last visit (lib/announcements.ts).
- * The title and the fire stay put while the posts scroll up over them. A short film opens each release.
+ * The title and the fire stay put while the posts scroll up over them, and scrolling turns the page green and iron.
  * The theme is scoped to `.apex` (app/globals.css): the rest of the site keeps its own colours.
  */
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import PixelFire from "@/components/PixelFire";
 import ScrollUnlock from "@/components/ScrollUnlock";
-import ApexOpening, { ReplayOpening } from "@/components/ApexOpening";
 import { rich } from "@/components/lab/rich";
-import { ANNOUNCEMENT_KINDS, bodyBlocks, isUnread, openingHoldScript, type AnnouncementKind } from "@/lib/announcements";
+import { ANNOUNCEMENT_KINDS, bodyBlocks, isUnread, type AnnouncementKind } from "@/lib/announcements";
 import { publishedAnnouncements, seenAt } from "@/lib/announcements-server";
 import { getSessionUser } from "@/lib/auth-utils";
 import { pixel } from "@/lib/fonts";
@@ -29,12 +28,11 @@ export default async function AnnouncementsPage() {
 
   return (
     <div className="apex min-h-screen flex flex-col">
-      <script dangerouslySetInnerHTML={{ __html: openingHoldScript() }} />
-      <ApexOpening />
       <ScrollUnlock />
       <SiteHeader />
       {user && <MarkSeen />}
 
+      <div aria-hidden className="apex-doom" />
       <header className="apex-stage">
         <div className="apex-recede max-w-3xl mx-auto px-4 sm:px-6 pt-12 sm:pt-16">
           <p className="apex-eyebrow">Announcements</p>
@@ -45,7 +43,6 @@ export default async function AnnouncementsPage() {
           <p className="mt-6 max-w-xl text-[15px] leading-relaxed apex-steel">
             Every new feature, improvement and fix, posted here as it ships.
           </p>
-          <ReplayOpening />
         </div>
       </header>
 

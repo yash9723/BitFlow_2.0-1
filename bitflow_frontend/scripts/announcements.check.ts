@@ -3,9 +3,9 @@
  * (npx tsx scripts/announcements.check.ts).
  */
 import assert from "node:assert/strict";
-import { announcementProblem, ANNOUNCEMENT_KINDS, badgeText, bodyBlocks, isPublished, isUnread, MAX_BODY, MAX_TITLE, OPENING_HOLD_CLASS, OPENING_KEY, OPENING_VERSION, openingHoldScript, shouldPlayOpening, sortAnnouncements } from "../lib/announcements";
+import { announcementProblem, ANNOUNCEMENT_KINDS, badgeText, bodyBlocks, isPublished, isUnread, MAX_BODY, MAX_TITLE, sortAnnouncements } from "../lib/announcements";
 import { RELEASE_POSTS } from "../content/announcements";
-import { coolingFor, emberAt, FIRE_PALETTE, newFire, paintEmbers, paintFire, stepFire, stoke, stokedCooling } from "../lib/pixel-fire";
+import { coolingFor, DOOM_PALETTE, doomAt, emberAt, FIRE_PALETTE, newFire, paintEmbers, paintFire, stepFire, stoke, stokedCooling } from "../lib/pixel-fire";
 
 // The release posts themselves.
 assert.equal(new Set(RELEASE_POSTS.map((p) => p.id)).size, RELEASE_POSTS.length, "ids are unique");
@@ -58,28 +58,6 @@ assert.deepEqual(bodyBlocks("- a\nnot a bullet"), [{ type: "p", text: "- a not a
 assert.deepEqual(bodyBlocks("<script>x</script>"), [{ type: "p", text: "<script>x</script>" }]);
 assert.deepEqual(bodyBlocks("  \n\n "), []);
 
-// The opening film: once per release, and never for reduced motion or data saver.
-const plain = { reducedMotion: false, saveData: false };
-assert.equal(shouldPlayOpening(null, "3.0", plain), true, "first visit plays");
-assert.equal(shouldPlayOpening("3.0", "3.0", plain), false, "same release doesn't");
-assert.equal(shouldPlayOpening("3.0", "3.1", plain), true, "a new release plays once more");
-assert.equal(shouldPlayOpening(null, "3.0", { ...plain, reducedMotion: true }), false);
-assert.equal(shouldPlayOpening(null, "3.0", { ...plain, saveData: true }), false);
-
-// The hold script makes the same call from the page's HTML, and survives blocked storage.
-const holdAfter = (getItem: () => string | null, reduce = false) => {
-  const classes = new Set<string>();
-  new Function("localStorage", "matchMedia", "navigator", "document", "setTimeout", openingHoldScript())(
-    { getItem }, () => ({ matches: reduce }), {}, { documentElement: { classList: { add: (c: string) => classes.add(c), remove: (c: string) => classes.delete(c) } } }, () => 0,
-  );
-  return classes.has(OPENING_HOLD_CLASS);
-};
-assert.equal(holdAfter(() => null), true, "first visit holds the page black");
-assert.equal(holdAfter(() => OPENING_VERSION), false, "a return visit doesn't");
-assert.equal(holdAfter(() => null, true), false, "reduced motion doesn't");
-assert.equal(holdAfter(() => { throw new Error("blocked"); }), false, "blocked storage doesn't");
-assert.ok(openingHoldScript().includes(OPENING_KEY));
-
 // Pixel fire: a repeatable random source, so a failure here can be reproduced.
 let seed = 12345;
 const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 2 ** 32; };
@@ -124,5 +102,34 @@ assert.equal(stoke(0.5, 100000), 1, "a flare never goes past full");
 assert.equal(stoke(0, 100), stoke(0, -100), "either direction stokes it");
 let fading = 1; for (let i = 0; i < 60; i++) fading = stoke(fading, 0);
 assert.ok(fading < 0.01, "it dies back when scrolling stops");
+
+// Scrolling down turns the page green.
+assert.equal(doomAt(0, 800, 5000), 0, "untouched at the top");
+assert.equal(doomAt(200, 800, 5000), 0, "starts a quarter screen down");
+assert.equal(doomAt(1600, 800, 5000), 1, "complete by two screens");
+assert.equal(doomAt(99999, 800, 5000), 1, "stays complete");
+assert.equal(doomAt(500, 800, 500), 1, "a short page still gets there");
+assert.equal(doomAt(100, 800, 100), 0, "a page too short to scroll stays as it is");
+assert.ok(doomAt(900, 800, 5000) > doomAt(500, 800, 5000), "rises with the scroll");
+assert.equal(DOOM_PALETTE.length, FIRE_PALETTE.length, "every heat has a green");
+for (const [r, g] of DOOM_PALETTE.slice(1, -1)) assert.ok(g > r, "green outweighs red");
+// The turn is dithered: every pixel is pure fire or pure green, never a muddy blend of the two.
+const shadesAt = (doom: number) => {
+  const painted = new Uint8ClampedArray(heat.length * 4);
+  paintFire(heat, painted, doom, cols);
+  let red = 0, turned = 0;
+  for (let i = 0; i < heat.length; i++) {
+    if (heat[i] < 2.5) continue;
+    const level = Math.floor(heat[i]), rgb = [painted[i * 4], painted[i * 4 + 1], painted[i * 4 + 2]];
+    if (rgb.every((c, k) => c === FIRE_PALETTE[level][k])) red++;
+    else if (rgb.every((c, k) => c === DOOM_PALETTE[level][k])) turned++;
+    else assert.fail("a pixel is a blend of the two palettes");
+  }
+  return { red, turned };
+};
+assert.equal(shadesAt(0).turned, 0, "all fire at the top");
+assert.equal(shadesAt(1).red, 0, "all green when fully turned");
+const halfway = shadesAt(0.5);
+assert.ok(Math.abs(halfway.red - halfway.turned) < (halfway.red + halfway.turned) * 0.2, "about half and half midway");
 
 console.log("announcements: OK");

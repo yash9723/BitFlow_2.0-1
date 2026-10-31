@@ -27,22 +27,6 @@ export interface AnnouncementPost {
   publishedAt: Date | string;
 }
 
-/** Raise this with a new film in public/apex-opening/ and every browser plays the new one once. */
-export const OPENING_VERSION = "3.0";
-export const OPENING_KEY = "bitflow_apex_opening";
-export const OPENING_HOLD_CLASS = "apex-opening-hold";
-
-/** Whether the opening plays by itself. Kept free of outside names: openingHoldScript runs this function's own source. */
-export function shouldPlayOpening(seen: string | null, version: string, env: { reducedMotion: boolean; saveData: boolean }) {
-  return seen !== version && !env.reducedMotion && !env.saveData;
-}
-
-/**
- * Runs in the page's HTML before first paint, so a film that is about to play doesn't flash the page first.
- * The hold is released by components/ApexOpening.tsx, or after six seconds if the app's code never arrives.
- */
-export const openingHoldScript = () => `try{if((${shouldPlayOpening})(localStorage.getItem("${OPENING_KEY}"),"${OPENING_VERSION}",{reducedMotion:matchMedia("(prefers-reduced-motion: reduce)").matches,saveData:!!(navigator.connection&&navigator.connection.saveData)})){var h=document.documentElement;h.classList.add("${OPENING_HOLD_CLASS}");setTimeout(function(){h.classList.remove("${OPENING_HOLD_CLASS}")},6000)}}catch(e){}`;
-
 const time = (d: Date | string) => new Date(d).getTime();
 
 /** Why this post can't be stored, or null. */
