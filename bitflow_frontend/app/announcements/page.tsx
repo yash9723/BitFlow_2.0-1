@@ -1,13 +1,16 @@
 /**
  * app/announcements/page.tsx — every update BitFlow rolls out, newest first, under the 3.0 APEX
  * hero. Public; signed-in learners also see what's new since their last visit (lib/announcements.ts).
+ * The title and the fire stay put while the posts scroll up over them. A short film opens each release.
  * The theme is scoped to `.apex` (app/globals.css): the rest of the site keeps its own colours.
  */
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import PixelFire from "@/components/PixelFire";
+import ScrollUnlock from "@/components/ScrollUnlock";
+import ApexOpening, { ReplayOpening } from "@/components/ApexOpening";
 import { rich } from "@/components/lab/rich";
-import { ANNOUNCEMENT_KINDS, bodyBlocks, isUnread, type AnnouncementKind } from "@/lib/announcements";
+import { ANNOUNCEMENT_KINDS, bodyBlocks, isUnread, openingHoldScript, type AnnouncementKind } from "@/lib/announcements";
 import { publishedAnnouncements, seenAt } from "@/lib/announcements-server";
 import { getSessionUser } from "@/lib/auth-utils";
 import { pixel } from "@/lib/fonts";
@@ -26,12 +29,14 @@ export default async function AnnouncementsPage() {
 
   return (
     <div className="apex min-h-screen flex flex-col">
+      <script dangerouslySetInnerHTML={{ __html: openingHoldScript() }} />
+      <ApexOpening />
+      <ScrollUnlock />
       <SiteHeader />
       {user && <MarkSeen />}
 
-      <header className="apex-hero relative overflow-hidden">
-        <PixelFire className="apex-pixelfire-hero" />
-        <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-16 pb-[170px] sm:pt-24 sm:pb-[210px]">
+      <header className="apex-stage">
+        <div className="apex-recede max-w-3xl mx-auto px-4 sm:px-6 pt-12 sm:pt-16">
           <p className="apex-eyebrow">Announcements</p>
           <h1 className={`${pixel.className} leading-[0.9] tracking-wide mt-4 text-[72px] sm:text-[120px]`}>
             <span className="apex-silver">BitFlow 3.0</span>{" "}
@@ -40,10 +45,11 @@ export default async function AnnouncementsPage() {
           <p className="mt-6 max-w-xl text-[15px] leading-relaxed apex-steel">
             Every new feature, improvement and fix, posted here as it ships.
           </p>
+          <ReplayOpening />
         </div>
       </header>
 
-      <main className="relative flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 pb-20 space-y-4">
+      <main className="apex-feed flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 space-y-10">
         {posts.length === 0 && <p className="apex-steel text-sm">Nothing posted yet.</p>}
         {posts.map((p) => {
           const fresh = !!user && isUnread(p, seen);
@@ -65,7 +71,8 @@ export default async function AnnouncementsPage() {
         })}
       </main>
 
-      <SiteFooter />
+      <PixelFire stoked className="apex-pixelfire-dock" />
+      <div className="apex-footer"><SiteFooter /></div>
     </div>
   );
 }
