@@ -29,6 +29,7 @@ export const NAV_LINKS: { href: string; label: string; wide?: boolean }[] = [
   { href: "/academy", label: "Academy" },
   { href: "/studio", label: "Studio" },
   { href: "/sandbox", label: "Sandbox" },
+  { href: "/interview", label: "Interview", wide: true },
   { href: "/contests", label: "Contests", wide: true },
   { href: "/leaderboard", label: "Leaderboard", wide: true },
 ];

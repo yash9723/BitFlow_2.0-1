@@ -99,6 +99,13 @@ const problems: CheckProblem[] = [
 const errors: string[] = [];
 const fail = (slug: string, msg: string) => errors.push(`${slug}: ${msg}`);
 
+// The seed upserts by slug, so a repeated slug would silently replace the other problem.
+const seenSlugs = new Set<string>();
+for (const p of problems) {
+  if (seenSlugs.has(p.slug)) fail(p.slug, "this slug is used by more than one problem");
+  seenSlugs.add(p.slug);
+}
+
 for (const p of problems) {
   if (p.problemType === "formal") {
     // The skeleton is a property harness for the solver (Yosys), not a simulation testbench;

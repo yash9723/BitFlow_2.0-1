@@ -54,6 +54,7 @@ import type { AIMessage }            from "@/lib/ai-providers";
 import type { IDEContext }           from "@/lib/ai-prompts";
 import { reportError } from "@/lib/error-log";
 import { canUseAi } from "@/lib/privacy";
+import { activeMock } from "@/lib/interview-server";
 
 interface RequestBody {
   messages: AIMessage[];
@@ -71,6 +72,9 @@ export async function POST(req: NextRequest) {
   if (!canUseAi(user)) {
     // DPDP: an under-18 account's code goes to the AI provider only with a parent's permission.
     return NextResponse.json({ error: "The AI tutor needs your parent's or guardian's permission. They can allow it from the parent link on your dashboard." }, { status: 403 });
+  }
+  if (await activeMock(user.id)) {
+    return NextResponse.json({ error: "The AI tutor is off during your mock interview." }, { status: 403 });
   }
   const { success } = await rateLimit(req, { limit: 20, windowMs: 60_000, prefix: "ai", key: `user:${user.id}` });
   if (!success) {

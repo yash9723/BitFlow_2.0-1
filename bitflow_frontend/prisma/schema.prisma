@@ -49,6 +49,7 @@ model User {
   certificates     Certificate[]
   comments         Comment[]
   lessonProgress   LessonProgress[]
+  mockInterviews   MockInterview[]
 
   @@index([guardianTokenHash])
 }
@@ -431,6 +432,20 @@ model LessonProgress {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, kind, slug])
+}
+
+// A timed mock interview (lib/interview.ts). Results come from the user's Submissions in its window.
+model MockInterview {
+  id         String    @id @default(uuid())
+  userId     String
+  problems   String    // JSON stringified string[] (Question.slug)
+  startedAt  DateTime  @default(now())
+  endsAt     DateTime
+  finishedAt DateTime? // set when the learner ends it early
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
 }
 
 model GuardianConsent {

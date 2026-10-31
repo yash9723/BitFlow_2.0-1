@@ -12,6 +12,9 @@ import { VERIFICATION_PROBLEMS } from "./verification";
 import { FORMAL_PROBLEMS } from "./formal";
 import { TIMING_PROBLEMS } from "./timing";
 import { PRACTICE_ARENA } from "./practice";
+import { COMBINATIONAL_PROBLEMS } from "./combinational";
+import { SEQUENTIAL_PROBLEMS } from "./sequential";
+import { PROTOCOL_PROBLEMS } from "./protocol";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Flat registry — all arena problems across all categories
@@ -23,9 +26,9 @@ export const ALL_ARENA_PROBLEMS: ArenaProblem[] = [
   ...FORMAL_PROBLEMS,
   ...TIMING_PROBLEMS,
   ...PRACTICE_ARENA,
-  // TODO: ...COMBINATIONAL_PROBLEMS,
-  // TODO: ...SEQUENTIAL_PROBLEMS,
-  // TODO: ...PROTOCOL_PROBLEMS,
+  ...COMBINATIONAL_PROBLEMS,
+  ...SEQUENTIAL_PROBLEMS,
+  ...PROTOCOL_PROBLEMS,
 ];
 
 /** O(1) slug lookup */

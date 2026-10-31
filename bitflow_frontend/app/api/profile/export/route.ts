@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   if (!success) return NextResponse.json({ error: "You can download your data 3 times an hour. Please try again later." }, { status: 429 });
 
   const id = me.id;
-  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons] = await Promise.all([
+  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: {
       username: true, role: true, publicProfile: true, createdAt: true,
       birthYear: true, birthMonth: true, consentVersion: true, consentAt: true, guardianStatus: true, guardianAllowAi: true, nomineeName: true, nomineeContact: true } }),
@@ -45,6 +45,7 @@ export async function GET(request: Request) {
     prisma.guardianConsent.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" }, select: { guardianName: true, relationship: true, allowAi: true, createdAt: true } }),
     prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "asc" }, take: 1000, select: { action: true, detail: true, createdAt: true } }),
     prisma.lessonProgress.findMany({ where: { userId: id }, select: { kind: true, slug: true, done: true, quizScore: true, hwBoard: true, draft: true, xpAwarded: true, completedAt: true, updatedAt: true } }),
+    prisma.mockInterview.findMany({ where: { userId: id }, orderBy: { startedAt: "asc" }, select: { problems: true, startedAt: true, endsAt: true, finishedAt: true } }),
   ]);
   if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
   await audit(id, "data.exported", id);
@@ -69,6 +70,7 @@ export async function GET(request: Request) {
     shareLinks: shares.map((s) => ({ ...s, url: `/s/${s.id}`, files: parse(s.files) })),
     certificates: certificates.map((c) => ({ ...c, url: `/c/${c.id}` })),
     comments: comments.map(({ question, ...c }) => ({ problem: question.slug, ...c })),
+    mockInterviews: mocks.map((m) => ({ ...m, problems: parse(m.problems) })),
     classes: { member: memberships.map((m) => ({ name: m.classroom.name, role: m.role, joined: m.joinedAt })), teaching: owned },
   };
   const date = new Date().toISOString().slice(0, 10);

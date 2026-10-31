@@ -11,6 +11,7 @@ import { prisma }       from "@/lib/prisma";
 import { reportError } from "@/lib/error-log";
 import { getSessionUser } from "@/lib/auth-utils";
 import { lockedBehind } from "@/lib/unlock";
+import { closedByMock } from "@/lib/interview-server";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,12 @@ export async function GET(
 ) {
   try {
     const { slug } = params;
+    const me = await getSessionUser();
     const question = await prisma.question.findUnique({
       where: { slug },
     });
 
-    if (!question || (question.archived && (await getSessionUser())?.role !== "ADMIN")) {
+    if (!question || (question.archived && me?.role !== "ADMIN")) {
       return NextResponse.json(
         { error: `Problem not found: ${slug}` },
         { status: 404 }
@@ -32,7 +34,7 @@ export async function GET(
     }
 
     // A find-the-bug problem is one edit from its parent's answer: nothing until that's solved.
-    const lock = await lockedBehind(question, (await getSessionUser())?.id);
+    const lock = await lockedBehind(question, me?.id);
     if (lock) {
       return NextResponse.json({ error: `Solve "${lock.title}" first.`, locked: lock }, { status: 403 });
     }
@@ -41,14 +43,17 @@ export async function GET(
     const {
       hiddenTestbench: _hb, hiddenTestcases: _ht, referenceSolution: _ref, mutants: _mut, unlockAfter: _ua, editorial: _ed, ...publicQuestion
     } = question;
+    // A running mock interview closes this problem's hints and worked solution.
+    const closed = !!me && await closedByMock(me.id, slug);
     // Parse all JSON-stringified fields back to arrays/objects
     const parsed = {
       ...publicQuestion,
+      ...(closed ? { solutionExplanation: null } : {}),
       starterCode:    await carriedStarter(question.starterCode),
       tags:           safeParseJson(question.tags,           []),
       constraints:    safeParseJson(question.constraints,    []),
       examples:       safeParseJson(question.examples,       []),
-      hints:          safeParseJson(question.hints,          []),
+      hints:          closed ? [] : safeParseJson(question.hints, []),
       publicTestcases: safeParseJson(question.publicTestcases, []),
       dataFiles:       safeParseJson(question.dataFiles, null),
     };
