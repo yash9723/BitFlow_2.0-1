@@ -62,6 +62,7 @@ interface RequestBody {
 }
 
 const MAX_MESSAGES     = 40;
+const MAX_PER_DAY      = 200;    // a per-user ceiling on what the tutor can cost
 const MAX_INPUT_CHARS  = 100_000; // whole conversation + IDE context
 
 export async function POST(req: NextRequest) {
@@ -82,6 +83,10 @@ export async function POST(req: NextRequest) {
       { error: "Too many AI requests. Please wait a moment and try again." },
       { status: 429 },
     );
+  }
+  const today = await rateLimit(req, { limit: MAX_PER_DAY, windowMs: 24 * 60 * 60_000, prefix: "ai-day", key: `user:${user.id}` });
+  if (!today.success) {
+    return NextResponse.json({ error: "You've reached today's AI tutor limit. It resets within a day." }, { status: 429 });
   }
 
   try {

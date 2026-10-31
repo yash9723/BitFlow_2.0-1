@@ -1,8 +1,8 @@
 /**
  * GET /api/cron/alerts?window=<minutes> — how many errors the site logged (ErrorLog) in the
  * last window, by place, and whether that crosses ALERT_THRESHOLD (default 10). Called by
- * .github/workflows/alerts.yml with `Authorization: Bearer $CRON_SECRET`, which opens a GitHub
- * issue on a spike. Counts and places only: the repository is public, messages stay in /admin.
+ * .github/workflows/alerts.yml with `Authorization: Bearer $CRON_SECRET`, which fails on a spike
+ * so GitHub emails the owner. Counts and places only: the repository is public, messages stay in /admin.
  * It never calls the simulation server, so checking doesn't keep that awake.
  */
 

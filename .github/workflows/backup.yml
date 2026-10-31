@@ -3,7 +3,7 @@
 # is encrypted (gpg AES-256) before upload. Needs two repository secrets:
 #   NEON_BACKUP_URL    a postgres:// connection string (a read-only role is enough)
 #   BACKUP_PASSPHRASE  the passphrase to decrypt with; keep a copy outside GitHub
-# Without them the job does nothing. Restore:
+# Without them the job fails, so missing backups can't go unnoticed. Restore:
 #   gpg -d bitflow-YYYY-MM-DD.dump.gpg > db.dump && pg_restore --no-owner -d "$DATABASE_URL" db.dump
 name: Database backup
 
@@ -25,12 +25,12 @@ jobs:
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
           if [ -z "$NEON_BACKUP_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
-            echo "::notice::NEON_BACKUP_URL or BACKUP_PASSPHRASE isn't set; skipping."; exit 0; fi
+            echo "::error::NEON_BACKUP_URL or BACKUP_PASSPHRASE isn't set, so nothing was backed up."; exit 1; fi
           sudo apt-get install -y -qq postgresql-common >/dev/null
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
-          sudo apt-get install -y -qq postgresql-client-17 >/dev/null
+          sudo apt-get install -y -qq postgresql-client-18 >/dev/null
           f="bitflow-$(date -u +%F).dump"
-          /usr/lib/postgresql/17/bin/pg_dump --format=custom --no-owner --no-privileges "$NEON_BACKUP_URL" -f "$f"
+          /usr/lib/postgresql/18/bin/pg_dump --format=custom --no-owner --no-privileges "$NEON_BACKUP_URL" -f "$f"
           gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
               --symmetric --cipher-algo AES256 -o "$f.gpg" "$f"
           rm -f "$f"
