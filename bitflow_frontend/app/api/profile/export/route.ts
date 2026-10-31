@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const id = me.id;
   const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: {
-      username: true, role: true, publicProfile: true, createdAt: true,
+      username: true, role: true, publicProfile: true, createdAt: true, announcementsSeenAt: true,
       birthYear: true, birthMonth: true, consentVersion: true, consentAt: true, guardianStatus: true, guardianAllowAi: true, nomineeName: true, nomineeContact: true } }),
     prisma.userXp.findUnique({ where: { userId: id }, select: { totalXp: true, dailyStreak: true, lastDailyBonus: true, updatedAt: true } }),
     prisma.userProgress.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" },

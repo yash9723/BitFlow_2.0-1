@@ -11,6 +11,7 @@ import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import type { ProfileData } from "@/lib/profile";
 import { GuardianPanel } from "@/components/ConsentGate";
 import SiteHeader from "@/components/SiteHeader";
+import AnnouncementStrip from "@/components/AnnouncementStrip";
 import { LESSONS_SYNCED } from "@/lib/lesson-sync";
 
 /* ── Lattice background: electrons flowing along a chip-grid, converging
@@ -698,6 +699,7 @@ function DashboardContent() {
 
       <main className="relative z-10 flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         <GuardianPanel />
+        <AnnouncementStrip />
         {needsRecoveryCode && (
           <Link href="/profile#security" className="block rounded-xl border border-warn/40 bg-warn/5 px-4 py-3 text-[12px] text-warn hover:bg-warn/10 transition-colors">
             Save a recovery code so you can reset your password if you forget it. Profile → Account security →

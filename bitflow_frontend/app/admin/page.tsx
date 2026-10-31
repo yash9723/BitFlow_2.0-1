@@ -14,6 +14,7 @@ const AdminOverview = dynamic(() => import("@/components/admin/AdminOverview"), 
 const AdminProblems = dynamic(() => import("@/components/admin/AdminProblems"), { loading });
 const AdminUsers    = dynamic(() => import("@/components/admin/AdminUsers"), { loading });
 const AdminSystem   = dynamic(() => import("@/components/admin/AdminSystem"), { loading });
+const AdminAnnouncements = dynamic(() => import("@/components/admin/AdminAnnouncements"), { loading });
 const ContestsAdmin  = dynamic(() => import("@/components/ContestsAdmin"), { loading });
 const AnalyticsAdmin = dynamic(() => import("@/components/AnalyticsAdmin"), { loading });
 const MessagesAdmin  = dynamic(() => import("@/components/admin/MessagesAdmin"), { loading });
@@ -48,6 +49,7 @@ const TABS = {
   contests: { label: "Contests", render: () => <Panel><ContestsAdmin /></Panel> },
   analytics:{ label: "Analytics", render: () => <Analytics /> },
   messages: { label: "Messages", render: () => <MessagesAdmin /> },
+  announcements: { label: "Announcements", render: () => <AdminAnnouncements /> },
   system:   { label: "System", render: () => <AdminSystem /> },
 };
 type Tab = keyof typeof TABS;

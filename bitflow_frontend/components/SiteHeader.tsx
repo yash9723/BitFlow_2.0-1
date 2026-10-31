@@ -16,6 +16,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { PaletteButton } from "@/components/CommandPalette";
+import AnnouncementBell from "@/components/AnnouncementBell";
 
 export const OPEN_NAV = "bitflow:nav";
 const openNav = () => window.dispatchEvent(new Event(OPEN_NAV));
@@ -34,6 +35,7 @@ export const NAV_LINKS: { href: string; label: string; wide?: boolean }[] = [
   { href: "/leaderboard", label: "Leaderboard", wide: true },
 ];
 const MORE_LINKS: { href: string; label: string }[] = [
+  { href: "/announcements", label: "Announcements" },
   { href: "/flash", label: "Flash a board" },
   { href: "/academy/roadmap", label: "VLSI roadmap" },
   { href: "/about", label: "About" },
@@ -113,6 +115,7 @@ export default function SiteHeader({ children }: { children?: ReactNode }) {
       <div className="flex items-center gap-2 shrink-0">
         {children}
         <PaletteButton />
+        <AnnouncementBell />
         <AccountMenu />
         <button onClick={openNav} aria-label="Open the menu" className="lg:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-rim text-pale hover:text-bright">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" /></svg>

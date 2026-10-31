@@ -37,6 +37,7 @@ jobs:
       - run: npm run check-problems
       - run: npm run check-gate-sim
       - run: npm run check-contests
+      - run: npm run check-announcements
       - run: npm run check-interview
       - run: npm run check-diagnostics
       - run: npm run check-mutants

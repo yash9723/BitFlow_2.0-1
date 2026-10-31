@@ -167,3 +167,46 @@
   body.lab-report-open #lab-report-root { position: static !important; overflow: visible !important; }
   @page { margin: 14mm; }
 }
+
+/* ── BitFlow 3.0 APEX: announcements theme (black, silver, pixel fire: components/PixelFire.tsx). Scoped; the site keeps its own colours. ── */
+.apex {
+  --apex-bg: #050405;
+  --apex-panel: #0e0c0d;
+  --apex-line: #2e2b2e;
+  --apex-text: #c9ccd3;
+  --apex-steel: #989da8;
+  --apex-red: #ff4136;
+  --apex-ember: #ff7a1a;
+  background: var(--apex-bg);
+  color: var(--apex-text);
+}
+.apex-bright { color: #f2f3f5; }
+.apex-steel { color: var(--apex-steel); }
+.apex-eyebrow { font-family: var(--font-mono), monospace; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--apex-red); }
+.apex-silver {
+  background: linear-gradient(180deg, #ffffff 0 30%, #d5d8de 30% 60%, #a4a8b2 60% 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(4px 4px 0 #3a3b40);
+}
+.apex-flame {
+  background: linear-gradient(180deg, #ffc860 0 25%, #ff7a1a 25% 55%, #ff2d20 55% 80%, #c9150c 80% 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(4px 4px 0 #4f0b07);
+}
+.apex-hero { border-bottom: 1px solid var(--apex-line); }
+.apex-pixelfire { position: absolute; left: 0; bottom: 0; width: 100%; pointer-events: none; image-rendering: pixelated; }
+.apex-pixelfire-hero { height: 150px; }
+@media (min-width: 640px) { .apex-pixelfire-hero { height: 190px; } }
+.apex-pixelfire-strip { height: 50%; opacity: 0.55; }
+.apex-card { background: var(--apex-panel); border: 1px solid var(--apex-line); border-radius: 14px; }
+.apex-card-pinned {
+  border-color: rgba(255, 65, 54, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 65, 54, 0.12), 0 12px 44px -18px rgba(255, 60, 30, 0.45);
+}
+.apex-kind { color: var(--apex-ember); letter-spacing: 0.04em; }
+.apex-new { padding: 1px 7px; border-radius: 999px; background: #d21f16; color: #ffffff; font-weight: 700; }
+.apex-list { list-style: none; }
+.apex-list li { position: relative; padding-left: 18px; }
+.apex-list li::before { content: ""; position: absolute; left: 2px; top: 0.62em; width: 6px; height: 6px; border-radius: 1px; transform: rotate(45deg); background: var(--apex-red); }
+.apex code { background: #1a1718; border-color: var(--apex-line); color: #ffb37a; }
+.apex-strip { border: 1px solid rgba(255, 65, 54, 0.5); }

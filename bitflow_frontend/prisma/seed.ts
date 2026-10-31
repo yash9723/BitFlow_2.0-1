@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { LEARNING_PATH } from "../lib/problems/index";
 import { ALL_ARENA_PROBLEMS } from "../lib/arena/index";
+import { RELEASE_POSTS } from "../content/announcements";
 
 const prisma = new PrismaClient();
 
@@ -64,6 +65,15 @@ async function main() {
 
   const total = await prisma.question.count();
   console.log(`✅ Total: ${total} problems`);
+
+  // Release posts ship with their feature; an admin's edit wins.
+  for (const p of RELEASE_POSTS) {
+    const existing = await prisma.announcement.findUnique({ where: { id: p.id }, select: { adminEditedAt: true } });
+    if (existing?.adminEditedAt) continue;
+    const data = { title: p.title, body: p.body, kind: p.kind, version: p.version ?? null, pinned: p.pinned ?? false, publishedAt: new Date(p.publishedAt) };
+    await prisma.announcement.upsert({ where: { id: p.id }, create: { id: p.id, ...data }, update: data });
+  }
+  console.log(`✅ ${RELEASE_POSTS.length} release posts`);
 }
 
 main()

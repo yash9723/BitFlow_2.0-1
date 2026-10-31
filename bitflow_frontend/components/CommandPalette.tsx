@@ -22,6 +22,7 @@ const PAGES: PaletteItem[] = [
   ["/arena", "Arena: challenge problems"], ["/academy", "Academy: lessons"], ["/academy/roadmap", "VLSI roadmap"], ["/studio", "Design Studio"],
   ["/lab", "Board Lab: 3D FPGA lessons", "board led button fpga hardware"], ["/flash", "Flash a real board", "program usb fpga"],
   ["/classes", "Classes"], ["/contests", "Contests"], ["/leaderboard", "Leaderboard"], ["/profile", "Profile and settings", "account"],
+  ["/announcements", "Announcements: what's new", "updates news release changelog apex"], ["/interview", "Interview prep", "mock interview practice"],
   ["/about", "About BitFlow", "founders"],
 ].map(([href, title, keywords]) => ({ id: `page:${href}`, title, group: "Page", href, keywords }));
 

@@ -8,7 +8,10 @@
  * card take `mono.style.fontFamily` (the real, hashed family name) directly.
  */
 
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Pixelify_Sans } from "next/font/google";
+
+/** The BitFlow 3.0 APEX title (app/announcements): blocky, in the style of Minecraft lettering. */
+export const pixel = Pixelify_Sans({ subsets: ["latin"], weight: "700", display: "swap" });
 
 export const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
 

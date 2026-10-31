@@ -48,6 +48,7 @@ model User {
   projects         Project[]
   certificates     Certificate[]
   comments         Comment[]
+  announcementsSeenAt DateTime? // last opened /announcements: everything newer shows on the bell
   lessonProgress   LessonProgress[]
   mockInterviews   MockInterview[]
 
@@ -446,6 +447,22 @@ model MockInterview {
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, startedAt])
+}
+
+// What students are told about updates (lib/announcements.ts). Release posts are seeded from
+// content/announcements.ts; breach notices are SiteNotice, not this.
+model Announcement {
+  id            String    @id @default(uuid())
+  title         String
+  body          String
+  kind          String    // lib/announcements.ts ANNOUNCEMENT_KINDS
+  version       String?
+  pinned        Boolean   @default(false)
+  publishedAt   DateTime  @default(now())
+  archived      Boolean   @default(false)
+  adminEditedAt DateTime? // set when an admin writes or edits it: the seed then leaves it alone
+
+  @@index([publishedAt])
 }
 
 model GuardianConsent {
