@@ -9,6 +9,8 @@ export const ANIM_IDS = [
   "cmos-gate", "venn", "kmap-neighbours", "qm-merge",
   "inverter-curve", "load-delay", "compare-bits", "mux-router", "adder-race", "shift-add", "booth",
   "sr-latch", "latch-vs-ff", "shift-register", "ripple-vs-sync", "ring-johnson", "fsm-detector", "state-minimize",
+  "setup-hold", "timing-budget", "metastable", "memory-grid", "dram-refresh", "pla-program", "lut-explorer",
+  "sampling", "quantize", "sar-adc", "dac-bits", "blocking-nonblocking", "circuit-to-verilog",
 ] as const;
 export type AnimId = (typeof ANIM_IDS)[number];
 
@@ -255,6 +257,62 @@ export const REDUCIBLE: MachineState[] = [
   { name: "A", next: [1, 2], out: 0 }, { name: "B", next: [3, 4], out: 0 }, { name: "C", next: [3, 4], out: 0 },
   { name: "D", next: [0, 5], out: 0 }, { name: "E", next: [0, 6], out: 0 }, { name: "F", next: [0, 5], out: 1 }, { name: "G", next: [0, 5], out: 1 },
 ];
+
+// ── Timing ────────────────────────────────────────────────────────────────────
+/** What a flip-flop captures when D changes at `edge` ns relative to the clock edge (negative: before it). */
+export const captureResult = (edge: number, setup: number, hold: number) => (edge <= -setup ? "new" : edge >= hold ? "old" : "metastable");
+
+/** One register-to-register path, in ns. skew > 0: the capturing clock arrives later. */
+export function timingBudget(t: { clkToQ: number; logic: number; shortest: number; setup: number; hold: number; skew: number; period: number }) {
+  const need = t.clkToQ + t.logic + t.setup - t.skew;
+  return { need, setupSlack: t.period - need, fmaxMhz: 1000 / need, holdSlack: t.clkToQ + t.shortest - t.hold - t.skew };
+}
+
+/** How long a flip-flop stays undecided if D changed `delta` (a fraction of the rail) from the balance point. */
+export const resolveTime = (delta: number, tau: number) => tau * Math.log(1 / delta);
+/** Mean time between failures of a synchronizer with `settle` ns to resolve. Illustrative tau = 0.2 ns, T0 = 0.1 ns. */
+export const mtbfSeconds = (settle: number, clockMhz: number, dataMhz: number) => Math.exp(settle / 0.2) / (0.1e-9 * clockMhz * 1e6 * dataMhz * 1e6);
+
+// ── Memory and programmable logic ─────────────────────────────────────────────
+export const memoryBits = (addressBits: number, width: number) => 2 ** addressBits * width;
+export const chipsNeeded = (words: number, width: number, chipWords: number, chipWidth: number) => Math.ceil(words / chipWords) * Math.ceil(width / chipWidth);
+/** DRAM: stored charge leaks away, and a refresh reads each cell and writes it back at full charge. */
+export const dramLeak = (q: number[], rate: number) => q.map((v) => v * (1 - rate));
+export const dramRefresh = (q: number[]) => q.map((v) => (v >= 0.5 ? 1 : 0));
+
+/** A PLA: each product term connects to some of a, a', b, b', c, c'; each output ORs some terms. */
+export interface Pla { and: number[][]; or: number[][] }
+export const plaTerm = (cols: number[], inputs: number[]) => cols.length > 0 && cols.every((col) => (col % 2 ? inputs[col >> 1] ^ 1 : inputs[col >> 1]) === 1);
+export const plaEval = (p: Pla, inputs: number[]) => p.or.map((terms) => (terms.some((r) => plaTerm(p.and[r], inputs)) ? 1 : 0));
+const minterm = (m: number) => [0, 1, 2].map((i) => (i * 2) + (((m >> (2 - i)) & 1) ? 0 : 1));
+/** The full adder from the decoder example, on a PLA: 7 terms, sharing m7 between the outputs. */
+export const PLA_FULL_ADDER: Pla = { and: [1, 2, 4, 7, 3, 5, 6].map(minterm), or: [[0, 1, 2, 3], [4, 5, 6, 3]] };
+export const lutRead = (bits: number[], inputs: number[]) => bits[inputs.reduce((n, b) => n * 2 + b, 0)];
+
+// ── Analog and digital ────────────────────────────────────────────────────────
+/** The frequency a sine of f appears to have when sampled at fs; signed, because the alias can run backwards. */
+export const aliasFreq = (f: number, fs: number) => f - fs * Math.round(f / fs);
+export const quantizeCode = (v: number, bits: number, vref: number) => Math.min(2 ** bits - 1, Math.floor((v / vref) * 2 ** bits));
+export const snrDb = (bits: number) => 6.02 * bits + 1.76;
+export const dacOut = (code: number, bits: number, vref: number) => (vref * code) / 2 ** bits;
+export function sarSteps(vin: number, vref: number, bits: number) {
+  const out: { bit: number; trial: number; volts: number; keep: boolean; code: number }[] = [];
+  let code = 0;
+  for (let bit = bits - 1; bit >= 0; bit--) {
+    const trial = code | (1 << bit), volts = dacOut(trial, bits, vref), keep = vin >= volts;
+    if (keep) code = trial;
+    out.push({ bit, trial, volts, keep, code });
+  }
+  return out;
+}
+
+// ── Verilog ───────────────────────────────────────────────────────────────────
+/** `a <= b; b <= a;` against `a = b; b = a;`: the two registers after each line. */
+export function assignSteps(kind: "blocking" | "nonblocking", a: number, b: number) {
+  return kind === "blocking"
+    ? [{ a: b, b }, { a: b, b }, { a: b, b }]
+    : [{ a, b }, { a, b }, { a: b, b: a }];
+}
 
 // ── K-map ─────────────────────────────────────────────────────────────────────
 /** The cells one variable away: on a K-map these touch, wrapping round the edges. */

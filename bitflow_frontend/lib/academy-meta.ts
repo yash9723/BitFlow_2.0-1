@@ -22,8 +22,10 @@ export const ACADEMY_TOPIC_META: AcademyTopicMeta[] = [
   { slug: "registers", title: "Registers and Shift Registers", summary: "Storing a whole word, moving bits along a chain, serial and parallel conversion, and generating pseudo-random bits.", icon: "▤", difficulty: "core", order: 14, estimatedMinutes: 30 },
   { slug: "counters", title: "Counters", summary: "Ripple and synchronous counters, designing any count sequence with K-maps, and ring and Johnson counters.", icon: "⏲", difficulty: "core", order: 15, estimatedMinutes: 40 },
   { slug: "fsms", title: "Finite State Machines", summary: "Moore and Mealy machines, the design recipe from words to gates, sequence detectors and state reduction.", icon: "◎", difficulty: "advanced", order: 16, estimatedMinutes: 45 },
-  { slug: "timing", title: "Timing Concepts", summary: "Setup, hold, clock skew, and metastability — making circuits work at speed.", icon: "⏱", difficulty: "advanced", order: 17, estimatedMinutes: 35 },
-  { slug: "memory", title: "Memory", summary: "SRAM, DRAM, ROM, and register files — storing bits at scale.", icon: "▦", difficulty: "advanced", order: 18, estimatedMinutes: 40 },
+  { slug: "timing", title: "Timing and Hazards", summary: "Setup and hold, how fast a circuit can run, glitches and how to remove them, and what happens when signals cross clock domains.", icon: "⏱", difficulty: "advanced", order: 17, estimatedMinutes: 45 },
+  { slug: "memory", title: "Memories and Programmable Logic", summary: "How RAM and ROM store and find data, why DRAM forgets, sizing memories, and PLAs, PALs and FPGAs.", icon: "▦", difficulty: "core", order: 18, estimatedMinutes: 45 },
+  { slug: "adc-dac", title: "ADC and DAC: Meeting the Analog World", summary: "How digital systems measure and produce real voltages: sampling, aliasing, quantization, and the main converter designs.", icon: "∿", difficulty: "core", order: 19, estimatedMinutes: 35 },
+  { slug: "gates-to-verilog", title: "From Gates to Verilog", summary: "Stop drawing and start describing: how every circuit in this course is written in Verilog, simulated, and turned into real hardware.", icon: "</>", difficulty: "core", order: 20, estimatedMinutes: 40 },
 ];
 
 export const DIFFICULTY_LABELS: Record<string, string> = {

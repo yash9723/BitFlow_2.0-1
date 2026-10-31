@@ -15,16 +15,16 @@ import { compile, toBits, validate } from "../lib/studio/circuit";
 import { challengeById } from "../lib/studio/circuit-challenges";
 import { crossesPart, routeAll } from "../lib/studio/circuit-route";
 import { wireRoute } from "../lib/studio/circuit-edit";
-import { ANIM_IDS, LEVEL, addColumns, asSigned, MEALY_101, MOORE_101, REDUCIBLE, boothSteps, claCarryTime, claLevels, cmosState, compareSteps, divideSteps, encoderError, fromGray, inverterOut, inverterState, johnsonNext, latchFfTick, loadModel, mealyOut, neighbours, noiseChain, partitionSteps, qmSteps, rcWave, reads, ringNext, rippleCarryTime, rippleSteps, shiftAddSteps, shiftStep, srSteps, toGray, wheelMove } from "../lib/academy/anim";
+import { ANIM_IDS, LEVEL, addColumns, asSigned, MEALY_101, MOORE_101, REDUCIBLE, boothSteps, claCarryTime, claLevels, cmosState, compareSteps, divideSteps, encoderError, fromGray, inverterOut, inverterState, johnsonNext, latchFfTick, loadModel, mealyOut, neighbours, noiseChain, partitionSteps, qmSteps, rcWave, reads, ringNext, rippleCarryTime, rippleSteps, shiftAddSteps, shiftStep, srSteps, toGray, wheelMove, PLA_FULL_ADDER, aliasFreq, assignSteps, captureResult, chipsNeeded, dacOut, dramLeak, dramRefresh, lutRead, memoryBits, mtbfSeconds, plaEval, quantizeCode, resolveTime, sarSteps, snrDb, timingBudget } from "../lib/academy/anim";
 import { type Cell, type Implicant, minimizationSteps, primeImplicants } from "../lib/studio/logic-min";
 import { type Parsed, counterexample, parseBool } from "../lib/studio/boolexpr";
 import { draw } from "../lib/academy/draw";
+import { DEFAULT_DELAYS, findHazards } from "../lib/studio/delay-sim";
+import { HAZARD } from "../content/timing/chapter";
 import { DelaySim } from "../lib/studio/delay-sim";
 import { minimizePos, minimizeSop, posText, sopText } from "../lib/studio/logic-min";
 
 const ROOT = process.cwd();
-const blocksOf = (t: AcademyTopic) => t.sections.flatMap((s) => s.blocks ?? []);
-const rewritten = (t: AcademyTopic) => blocksOf(t).length > 0;
 
 function checkCircuit(where: string, b: Extract<AcademyBlock, { kind: "circuit" }>) {
   const errors = validate(b.circuit).filter((i) => i.level === "error");
@@ -78,16 +78,15 @@ for (const t of ACADEMY_TOPICS) {
     assert.equal(new Set(q.options).size, q.options.length, `${t.slug}/${q.id}: repeated option`);
   }
 
-  if (!rewritten(t)) continue;
   assert.ok(t.quiz.length >= 10, `${t.slug}: needs at least 10 quiz questions`);
   assert.ok(t.flashcards.length >= 8, `${t.slug}: needs at least 8 flashcards`);
   // Text supports **bold** and `code` only: a stray * or ` would show up literally on the page.
-  for (const m of JSON.stringify({ sections: t.sections.map((s) => (s.blocks ?? []).map((b) => (b.kind === "circuit" ? b.caption : b.kind === "code" ? "" : b))), quiz: t.quiz, cards: t.flashcards })
-    .replace(/`[^`]*`/g, "").replace(/\*\*[^*]+\*\*/g, "").matchAll(/.{0,30}[*`].{0,30}/g)) assert.fail(`${t.slug}: stray markup in "${m[0]}"`);
+  for (const m of JSON.stringify({ sections: t.sections.map((s) => s.blocks.map((b) => (b.kind === "circuit" ? b.caption : b.kind === "code" ? "" : b))), quiz: t.quiz, cards: t.flashcards })
+    .replace(/`[^`]*`/g, "").replace(/\*\*[^*]+\*\*/g, "").replace(/@\(\*\)/g, "").matchAll(/.{0,30}[*`].{0,30}/g)) assert.fail(`${t.slug}: stray markup in "${m[0]}"`);
   for (const s of t.sections) {
     const where = `${t.slug}/${s.id}`;
-    assert.ok(s.blocks?.length, `${where}: empty section`);
-    s.blocks!.forEach((b, i) => {
+    assert.ok(s.blocks.length, `${where}: empty section`);
+    s.blocks.forEach((b, i) => {
       const at = `${where}[${i}]`;
       switch (b.kind) {
         case "circuit": circuits++; checkCircuit(at, b); break;
@@ -121,7 +120,9 @@ for (const t of ACADEMY_TOPICS) {
     });
   }
 }
-assert.ok(circuits >= 30 && kmaps >= 14 && practice >= 75, "chapters lost their circuits or practice questions");
+assert.equal(ACADEMY_TOPICS.length, 20, "the course has 20 chapters");
+assert.deepEqual(ACADEMY_TOPICS.map((t) => t.order), Array.from({ length: 20 }, (_, i) => i + 1), "numbered 1 to 20 with no gaps");
+assert.ok(circuits >= 35 && kmaps >= 15 && practice >= 100, "chapters lost their circuits or practice questions");
 
 // ── Worked figures in the text are computed here, not trusted ─────────────────
 function says(slug: string, ...facts: string[]) {
@@ -263,6 +264,47 @@ assert.equal(parity(0b1011), 1);
   assert.equal(9600 / 10, 960);
   says("sequential", "1 → 0 → 1 → **0**");
   assert.equal(Math.ceil(Math.log2(17)), 5); assert.equal(Math.ceil(Math.log2(9)), 4);
+}
+
+// ── Chapters 17 to 20: claims in the text, computed ───────────────────────────
+{
+  const close = (a: number, b: number, tol = 0.05) => assert.ok(Math.abs(a - b) <= tol, `${a} ≈ ${b}`);
+  // The hazard the chapter describes: y glitches when a falls with b = c = 1, and y_fixed doesn't.
+  { const { net } = compile(HAZARD), sim = new GateSim(net);
+    for (const [port, v] of [["b", 1], ["c", 1], ["a", 1]] as const) sim.set(port, [v]);
+    const t = new DelaySim(net, DEFAULT_DELAYS, (b) => sim.net(b)).run("a", [0]);
+    assert.deepEqual(findHazards(t, net).map((h) => [h.port, h.kind]), [["y", "static-1"]]); }
+  // Timing figures.
+  assert.equal(1000 / (2 + 5 + 1), 125); close(1000 / (1 + 3.5 + 2), 154, 0.5); close(1000 / 17, 58.8); close(1000 / 15, 66.7);
+  assert.ok(timingBudget({ clkToQ: 1, logic: 7, shortest: 0.2, setup: 2, hold: 0.5, skew: 1, period: 10 }).holdSlack < 0);
+  close(timingBudget({ clkToQ: 1, logic: 7, shortest: 0.2, setup: 2, hold: 0.5, skew: 1, period: 10 }).holdSlack, -0.3, 1e-9);
+  assert.equal(captureResult(-3, 1.5, 1), "new"); assert.equal(captureResult(3, 1.5, 1), "old"); assert.equal(captureResult(0, 1.5, 1), "metastable");
+  close(resolveTime(1e-3, 0.2), 1.38, 0.01);
+  assert.ok(mtbfSeconds(9, 100, 1) / 3.15e7 > 1e7, "two flip-flops: millions of years"); assert.ok(mtbfSeconds(1, 100, 1) < 1, "one, into logic: under a second");
+  // Memory figures.
+  assert.equal(memoryBits(12, 8) / 8, 4096); assert.equal(chipsNeeded(64, 8, 16, 4), 8); assert.equal(chipsNeeded(4, 8, 1, 4), 8);
+  assert.equal(Math.log2(2 * 1024 * 1024), 21);
+  // DRAM: a leak below half is lost for good; a refresh above it restores the bit.
+  { let q = [1, 0]; for (let i = 0; i < 16; i++) q = dramLeak(q, 0.04); assert.deepEqual(dramRefresh(q), [1, 0]);
+    for (let i = 0; i < 16; i++) q = dramLeak(q, 0.04); assert.deepEqual(dramRefresh(q), [0, 0]); }
+  // The PLA preset really is a full adder, with 7 terms.
+  assert.equal(PLA_FULL_ADDER.and.length, 7);
+  for (let m = 0; m < 8; m++) { const ins = [(m >> 2) & 1, (m >> 1) & 1, m & 1], n = ins[0] + ins[1] + ins[2]; assert.deepEqual(plaEval(PLA_FULL_ADDER, ins), [n & 1, n >> 1], `PLA at ${m}`); }
+  assert.equal(lutRead([0, 0, 0, 1, 0, 1, 1, 1], [1, 0, 1]), 1, "majority of 1, 0, 1");
+  // Converters.
+  assert.equal(Math.abs(aliasFreq(7, 10)), 3); assert.equal(aliasFreq(4, 10), 4); assert.equal(aliasFreq(10, 10), 0); assert.equal(Math.abs(aliasFreq(9, 10)), 1);
+  close(5 / 256, 0.0195, 0.0001); close((3.3 / 1024) * 512, 1.65, 1e-9); assert.equal(4.096 / 4096, 0.001);
+  assert.equal(dacOut(0b1010, 4, 8), 5); close(snrDb(16), 98, 0.1); assert.equal(Math.ceil(Math.log2(5 / 0.001)), 13);
+  assert.equal(quantizeCode(5, 3, 5), 7); assert.equal(quantizeCode(0, 3, 5), 0);
+  for (let v = 0; v < 5; v += 0.1) {
+    const code = sarSteps(v, 5, 4).at(-1)!.code;
+    assert.equal(code, quantizeCode(v, 4, 5), `SAR at ${v}`);
+  }
+  assert.equal(sarSteps(3.2, 5, 4).length, 4);
+  says("adc-dac", "2⁸ − 1 = **255**", "10 × 1 µs = **10 µs**");
+  // Blocking swaps nothing, nonblocking swaps.
+  assert.deepEqual(assignSteps("nonblocking", 1, 2).at(-1), { a: 2, b: 1 });
+  assert.deepEqual(assignSteps("blocking", 1, 2).at(-1), { a: 2, b: 2 });
 }
 
 // ── The animations' logic ─────────────────────────────────────────────────────

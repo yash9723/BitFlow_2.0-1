@@ -1,5 +1,5 @@
 import type { AcademySection } from "@/lib/academy-types";
-import ChapterBlock, { Callout, Rich } from "@/components/academy/ChapterBlocks";
+import ChapterBlock from "@/components/academy/ChapterBlocks";
 
 interface Props {
   sections: AcademySection[];
@@ -14,14 +14,7 @@ export default function ArticleSections({ sections }: Props) {
             {section.heading}
             {section.level === "gate" && <span className="font-mono text-[9px] font-normal px-2 py-0.5 rounded border border-warn/30 bg-warn/10 text-warn uppercase tracking-wider">GATE: fine to skip at first</span>}
           </h2>
-          {section.body && <p className="text-[15px] leading-7 text-pale"><Rich text={section.body} /></p>}
-          {section.bullets && section.bullets.length > 0 && (
-            <ul className="text-[15px] leading-7 text-pale pl-5 list-disc space-y-1">
-              {section.bullets.map((bullet, i) => <li key={i}><Rich text={bullet} /></li>)}
-            </ul>
-          )}
-          {section.callout && <Callout tone={section.callout.type} text={section.callout.text} />}
-          {section.blocks?.map((block, i) => <ChapterBlock key={i} block={block} />)}
+          {section.blocks.map((block, i) => <ChapterBlock key={i} block={block} />)}
         </article>
       ))}
     </div>

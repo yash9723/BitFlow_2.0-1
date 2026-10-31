@@ -24,30 +24,19 @@ import sequential       from "@/content/sequential/chapter";
 import registers        from "@/content/registers/chapter";
 import counters         from "@/content/counters/chapter";
 import fsms             from "@/content/fsms/chapter";
+import timing           from "@/content/timing/chapter";
+import memory           from "@/content/memory/chapter";
+import adcDac           from "@/content/adc-dac/chapter";
+import gatesToVerilog   from "@/content/gates-to-verilog/chapter";
 
-import timing           from "@/content/timing/index.json";
-import memory           from "@/content/memory/index.json";
 
 const RAW_TOPICS: AcademyTopic[] = [
-  whatIsDigital,
-  numberSystems,
-  binaryArithmetic,
-  codes,
-  gates,
-  booleanAlgebra,
-  karnaughMaps,
-  quineMcCluskey,
-  logicFamilies,
-  addersComparators,
-  combinational,
-  arithmeticCircuits,
-  sequential,
-  registers,
-  counters,
-  timing,
-  fsms,
-  memory,
-] as unknown as AcademyTopic[];
+  whatIsDigital, numberSystems, binaryArithmetic, codes,
+  gates, booleanAlgebra, karnaughMaps, quineMcCluskey,
+  logicFamilies, addersComparators, combinational, arithmeticCircuits,
+  sequential, registers, counters, fsms,
+  timing, memory, adcDac, gatesToVerilog,
+];
 
 /** All topics sorted by curriculum order */
 export const ACADEMY_TOPICS: AcademyTopic[] = [...RAW_TOPICS].sort(

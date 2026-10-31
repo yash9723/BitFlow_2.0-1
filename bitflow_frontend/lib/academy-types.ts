@@ -1,8 +1,8 @@
 /**
  * lib/academy-types.ts — Digital Electronics Academy content schema
  *
- * Content lives in bitflow_frontend/content/: <slug>/chapter.ts, or index.json for the
- * chapters not yet rewritten. Renderers in components/academy/ consume these types.
+ * Content lives in bitflow_frontend/content/<slug>/chapter.ts.
+ * Renderers in components/academy/ consume these types.
  */
 import type { AnimId } from "./academy/anim";
 import type { Circuit } from "./studio/circuit";
@@ -49,16 +49,7 @@ export interface AcademySection {
   heading: string;
   /** "gate": goes beyond a first course; beginners can skip it. */
   level?: "gate";
-  /** Chapters not yet rewritten use body, bullets and callout; the rest use blocks. */
-  blocks?: AcademyBlock[];
-  body?: string;
-  /** Optional bullet points rendered below body */
-  bullets?: string[];
-  /** Optional callout box (tip, warning, note) */
-  callout?: {
-    type: "tip" | "warning" | "note";
-    text: string;
-  };
+  blocks: AcademyBlock[];
 }
 
 export interface AcademyQuizQuestion {

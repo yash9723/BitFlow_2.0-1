@@ -31,6 +31,19 @@ const ANIMS: Record<AnimId, ComponentType> = {
   "ring-johnson": dynamic(() => import("./sequential").then((m) => m.RingJohnson), { ssr: false, loading }),
   "fsm-detector": dynamic(() => import("./sequential").then((m) => m.FsmDetector), { ssr: false, loading }),
   "state-minimize": dynamic(() => import("./sequential").then((m) => m.StateMinimize), { ssr: false, loading }),
+  "setup-hold": dynamic(() => import("./systems").then((m) => m.SetupHold), { ssr: false, loading }),
+  "timing-budget": dynamic(() => import("./systems").then((m) => m.TimingBudget), { ssr: false, loading }),
+  metastable: dynamic(() => import("./systems").then((m) => m.Metastable), { ssr: false, loading }),
+  "memory-grid": dynamic(() => import("./systems").then((m) => m.MemoryGrid), { ssr: false, loading }),
+  "dram-refresh": dynamic(() => import("./systems").then((m) => m.DramRefresh), { ssr: false, loading }),
+  "pla-program": dynamic(() => import("./systems").then((m) => m.PlaProgram), { ssr: false, loading }),
+  "lut-explorer": dynamic(() => import("./systems").then((m) => m.LutExplorer), { ssr: false, loading }),
+  sampling: dynamic(() => import("./systems").then((m) => m.Sampling), { ssr: false, loading }),
+  quantize: dynamic(() => import("./systems").then((m) => m.Quantize), { ssr: false, loading }),
+  "sar-adc": dynamic(() => import("./systems").then((m) => m.SarAdc), { ssr: false, loading }),
+  "dac-bits": dynamic(() => import("./systems").then((m) => m.DacBits), { ssr: false, loading }),
+  "blocking-nonblocking": dynamic(() => import("./systems").then((m) => m.BlockingNonblocking), { ssr: false, loading }),
+  "circuit-to-verilog": dynamic(() => import("./systems").then((m) => m.CircuitToVerilog), { ssr: false, loading }),
 };
 
 export default function Animation({ id }: { id: AnimId }) {
