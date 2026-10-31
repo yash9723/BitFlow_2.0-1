@@ -33,7 +33,7 @@ export default async function AnnouncementsPage() {
         <PixelFire className="apex-pixelfire-hero" />
         <div className="relative max-w-3xl mx-auto px-4 sm:px-6 pt-16 pb-[170px] sm:pt-24 sm:pb-[210px]">
           <p className="apex-eyebrow">Announcements</p>
-          <h1 className={`${pixel.className} leading-none mt-4 text-[52px] sm:text-[84px]`}>
+          <h1 className={`${pixel.className} leading-[0.9] tracking-wide mt-4 text-[72px] sm:text-[120px]`}>
             <span className="apex-silver">BitFlow 3.0</span>{" "}
             <span className="apex-flame">APEX</span>
           </h1>

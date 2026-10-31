@@ -184,12 +184,12 @@
 .apex-steel { color: var(--apex-steel); }
 .apex-eyebrow { font-family: var(--font-mono), monospace; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--apex-red); }
 .apex-silver {
-  background: linear-gradient(180deg, #ffffff 0 30%, #d5d8de 30% 60%, #a4a8b2 60% 100%);
+  background: linear-gradient(180deg, #ffffff 0 48%, #b9bcc4 48% 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(4px 4px 0 #3a3b40);
 }
 .apex-flame {
-  background: linear-gradient(180deg, #ffc860 0 25%, #ff7a1a 25% 55%, #ff2d20 55% 80%, #c9150c 80% 100%);
+  background: linear-gradient(180deg, #ffc860 0 32%, #ff7a1a 32% 64%, #e8261b 64% 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(4px 4px 0 #4f0b07);
 }
