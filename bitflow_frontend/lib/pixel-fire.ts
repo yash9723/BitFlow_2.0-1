@@ -7,9 +7,9 @@
  */
 
 type Rgb = [number, number, number];
-const LEVELS = 32;
+const LEVELS = 16;
 
-/** Cold to hot, blended into small steps: enough for a rich fire, few enough that the bands stay hard-edged pixel art. */
+/** Cold to hot in a few hard steps, from near black to white hot: strong contrast, and bands that stay pixel art. */
 const ramp = (stops: [number, Rgb][]): Rgb[] => Array.from({ length: LEVELS }, (_, i) => {
   const at = i / (LEVELS - 1);
   const upper = Math.max(1, stops.findIndex(([stop]) => stop >= at));
@@ -19,23 +19,36 @@ const ramp = (stops: [number, Rgb][]): Rgb[] => Array.from({ length: LEVELS }, (
 });
 
 export const FIRE_PALETTE = ramp([
-  [0, [0, 0, 0]], [0.08, [96, 12, 8]], [0.2, [170, 20, 11]], [0.34, [232, 40, 20]], [0.5, [255, 84, 26]],
-  [0.68, [255, 140, 36]], [0.85, [255, 204, 92]], [1, [244, 244, 238]],
+  [0, [0, 0, 0]], [0.1, [70, 6, 6]], [0.25, [150, 10, 8]], [0.42, [235, 30, 14]], [0.6, [255, 95, 10]],
+  [0.78, [255, 190, 20]], [0.92, [255, 245, 130]], [1, [255, 255, 240]],
 ]);
 /** The same fire, burning sorcerous green once the page has been scrolled down. */
 export const DOOM_PALETTE = ramp([
-  [0, [0, 0, 0]], [0.08, [6, 62, 32]], [0.2, [8, 112, 52]], [0.34, [16, 168, 72]], [0.5, [38, 218, 92]],
-  [0.68, [104, 244, 112]], [0.85, [186, 255, 160]], [1, [238, 255, 234]],
+  [0, [0, 0, 0]], [0.1, [2, 50, 22]], [0.25, [4, 105, 40]], [0.42, [10, 190, 60]], [0.6, [50, 255, 90]],
+  [0.78, [170, 255, 90]], [0.92, [235, 255, 170]], [1, [250, 255, 240]],
 ]);
 const HOTTEST = LEVELS - 1;
 
-/** How far the page has turned, 0 to 1: it starts a quarter screen down and is complete by two screens, or the end of a short page. */
-export function doomAt(scrollY: number, viewport: number, maxScroll: number) {
-  const start = viewport * 0.25, end = Math.min(viewport * 2, maxScroll);
-  return end <= start ? 0 : Math.min(1, Math.max(0, (scrollY - start) / (end - start)));
+/**
+ * Which theme the scroll position calls for: 0 fire, 1 green. It turns a screen down, or most of the way down a short
+ * page, and turns back only well above that, so hovering around the line doesn't set off burst after burst.
+ */
+export function nextTheme(current: number, scrollY: number, viewport: number, maxScroll: number) {
+  const down = Math.min(viewport, maxScroll * 0.8);
+  if (down <= 0) return 0;
+  return scrollY >= down ? 1 : scrollY <= down * 0.6 ? 0 : current;
 }
+
+const ease = (a: number, b: number, v: number) => { const f = Math.min(1, Math.max(0, (v - a) / (b - a))); return f * f * (3 - 2 * f); };
+
+/** The burst, `seconds` after the line is crossed: how far out of control the fire is, how much of it has turned, and whether it's over. */
+export const burstAt = (seconds: number) => ({
+  rage: ease(0, 0.3, seconds) * (1 - ease(0.9, 1.6, seconds)),
+  turned: ease(0.35, 0.9, seconds),
+  done: seconds >= 2,
+});
 /** Cooler than this isn't drawn, which gives the flames a clean edge instead of a haze of dark red. */
-const EDGE = 2.5;
+export const EDGE = 1.2;
 
 /** Heat lost per row so a flame fades out at the top of `rows` rows. */
 export const coolingFor = (rows: number) => (HOTTEST / Math.max(rows, 1)) * 1.1;
@@ -43,8 +56,14 @@ export const coolingFor = (rows: number) => (HOTTEST / Math.max(rows, 1)) * 1.1;
 /** How hard the fire burns, 0 to 1: scrolling stokes it, and it dies back a second or two after you stop. */
 export const stoke = (flare: number, movedPx: number) => Math.min(1, flare * 0.92 + Math.abs(movedPx) / 200);
 
-/** Cooling for that flare: flames fill about three quarters of the canvas at rest, and all of it when fully stoked. */
-export const stokedCooling = (rows: number, flare: number) => coolingFor(rows) * (1.15 - 0.27 * flare);
+/**
+ * Cooling for a canvas as tall as the screen. Normally the flames keep to the bottom 45%: about three quarters of
+ * that at rest, all of it when fully stoked. `rage` takes them off the top of the screen, still burning.
+ */
+export function stokedCooling(rows: number, flare: number, rage = 0) {
+  const usual = coolingFor(rows * 0.5) * (1.15 - 0.27 * flare), wild = coolingFor(rows) * 0.72;
+  return usual + (wild - usual) * rage;
+}
 
 export const newFire = (cols: number, rows: number) => new Float32Array(cols * rows);
 
@@ -65,7 +84,7 @@ for (const [cells, weight] of [[16, 0.65], [48, 0.35]]) {
     NOISE[y * TILE + x] += weight * (top * (1 - fy) + bottom * fy);
   }
 }
-/** Rows a second the noise rises: about as fast as the heat climbs, so a tongue holds together on its way up. */
+/** Rows a second the noise rises, with `time` moving 0.02 a step: as fast as the heat climbs, so a tongue holds together on its way up. */
 const RISE = 50;
 
 /**
