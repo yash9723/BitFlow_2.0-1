@@ -52,6 +52,7 @@ model User {
   announcementsSeenAt DateTime? // last opened /announcements: everything newer shows on the bell
   lessonProgress   LessonProgress[]
   mockInterviews   MockInterview[]
+  institutionMembership InstitutionMember?
 
   @@index([guardianTokenHash])
 }
@@ -246,10 +247,48 @@ model Classroom {
   ownerId     String
   createdAt   DateTime      @default(now())
   maxMarks    Int?          // the teacher's "marks out of N": adds a marks column to the CSV (lib/classes.ts)
+  institutionId String?     // the college department it belongs to (lib/institutions.ts); null = a personal class
 
   owner       User          @relation("OwnedClasses", fields: [ownerId], references: [id], onDelete: Cascade)
+  institution Institution?  @relation(fields: [institutionId], references: [id], onDelete: SetNull)
   members     ClassMember[]
   assignments Assignment[]
+
+  @@index([institutionId])
+}
+
+// ============================================================================
+// INSTITUTIONS — a college department on a pilot or a paid plan (lib/institutions.ts).
+// Set up by site admins; its teachers' classes belong to it, and its heads see the
+// department dashboard (/institution/[slug]). Plans are enforced softly: a banner
+// when one lapses or runs over its seats, never locking anyone out.
+// ============================================================================
+
+model Institution {
+  id         String    @id @default(uuid())
+  name       String    // e.g. "Example Institute of Technology — ECE"
+  slug       String    @unique // the dashboard's address: /institution/<slug>
+  plan       String    @default("pilot") // "pilot" | "department"
+  seatLimit  Int?      // students across its classes; null = no limit
+  validUntil DateTime? // the plan's last day; null = open-ended
+  notes      String?   // admins only: invoice or PO number, contact person
+  createdAt  DateTime  @default(now())
+
+  classrooms Classroom[]
+  members    InstitutionMember[]
+}
+
+model InstitutionMember {
+  id            String      @id @default(uuid())
+  institutionId String
+  userId        String      @unique // one department per account
+  role          String      @default("TEACHER") // "HEAD" (sees the dashboard) | "TEACHER"
+  createdAt     DateTime    @default(now())
+
+  institution   Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([institutionId])
 }
 
 model ClassMember {

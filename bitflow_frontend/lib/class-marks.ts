@@ -59,7 +59,7 @@ export function marksFor(statuses: ProblemStatus[], max: number): number {
 }
 
 /** One spreadsheet cell; neutralises formula injection from usernames/titles. */
-function csvCell(value: string | number): string {
+export function csvCell(value: string | number): string {
   let s = String(value);
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

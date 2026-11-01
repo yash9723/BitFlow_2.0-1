@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { classProgress, classRole, lessonCatalog, maxMarksProblem, progressCsv } from "@/lib/classes";
+import { classPlanNotice } from "@/lib/institutions";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export async function GET(request: Request, { params }: Params) {
     });
   }
 
-  const [progress, roster, catalog] = await Promise.all([
+  const [progress, roster, catalog, planNotice] = await Promise.all([
     classProgress(params.id, teacher ? undefined : me.id),
     teacher
       ? prisma.classMember.findMany({
@@ -67,6 +68,8 @@ export async function GET(request: Request, { params }: Params) {
           select:  { slug: true, title: true, learningLevel: true, difficulty: true },
         }).then((qs) => [...qs.sort((a, b) => levelRank(a.learningLevel) - levelRank(b.learningLevel)), ...lessonCatalog()])
       : null,
+    // The department's plan banner (lapsed, ending, over its seats): teachers only, never blocking.
+    teacher ? classPlanNotice(params.id) : null,
   ]);
 
   return NextResponse.json({
@@ -79,6 +82,7 @@ export async function GET(request: Request, { params }: Params) {
     me: me.id,
     progress,
     ...(teacher ? {
+      planNotice,
       roster: roster!.map((m) => ({ id: m.user.id, username: m.user.username, role: m.role, joinedAt: m.joinedAt, rollNumber: m.rollNumber })),
       catalog,
     } : {}),

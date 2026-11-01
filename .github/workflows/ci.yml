@@ -46,6 +46,8 @@ jobs:
       - run: npm run check-bitstream
       - run: npm run check-similarity
       - run: npm run check-class-marks
+      - run: npm run check-lab-packs
+      - run: npm run check-institutions
       - run: npm run check-dpdp
       - run: npm run check-lessons
       - run: npm run check-hardware

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import ClassAnalytics from "@/components/ClassAnalytics";
+import LabPackPicker from "@/components/LabPackPicker";
 import { LATE_CREDIT } from "@/lib/class-marks";
 
 type Status = "on_time" | "late" | "missing" | "pending";
@@ -27,6 +28,7 @@ type Detail = {
   };
   roster?: { id: string; username: string; role: string; joinedAt: string; rollNumber: string | null }[];
   catalog?: { slug: string; title: string; learningLevel: string; difficulty: string }[];
+  planNotice?: string | null;
 };
 
 const STATUS: Record<Status, { label: string; short: string; cls: string }> = {
@@ -210,11 +212,18 @@ export default function ClassPage() {
         )}
       </div>
 
+      {data.planNotice && (
+        <p role="status" className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-[12px] text-warn">
+          {data.planNotice} <Link href="/contact" className="underline">Contact us to renew or add seats.</Link>
+        </p>
+      )}
+
       {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
 
       {teacher && data.catalog && (
         <NewAssignment catalog={data.catalog} onCreate={(body) => call("POST", `/api/classes/${id}/assignments`, body)} />
       )}
+      {teacher && <LabPackPicker classId={id} onAdded={load} />}
 
       <section className="space-y-3">
         <h2 className="text-[11px] uppercase tracking-[0.18em] text-dim">Assignments</h2>

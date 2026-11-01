@@ -1,6 +1,7 @@
 /**
- * GET  /api/classes — classes I teach or belong to.
- * POST /api/classes — create a class { name }; the creator becomes its teacher.
+ * GET  /api/classes — classes I teach or belong to, and my department (lib/institutions.ts), if any.
+ * POST /api/classes — create a class { name }; the creator becomes its teacher, and a teacher
+ *      in a department creates it in that department.
  */
 
 import { NextResponse } from "next/server";
@@ -15,7 +16,7 @@ export async function GET() {
   const me = await getSessionUser();
   if (!me) return NextResponse.json({ error: "Sign in to see your classes." }, { status: 401 });
 
-  const memberships = await prisma.classMember.findMany({
+  const [memberships, department] = await Promise.all([prisma.classMember.findMany({
     where:   { userId: me.id },
     orderBy: { joinedAt: "desc" },
     select: {
@@ -28,13 +29,17 @@ export async function GET() {
         },
       },
     },
-  });
+  }), prisma.institutionMember.findUnique({
+    where:  { userId: me.id },
+    select: { role: true, institution: { select: { name: true, slug: true } } },
+  })]);
 
   return NextResponse.json({
     classes: memberships.map(({ role, classroom: c }) => ({
       id: c.id, name: c.name, role, teacher: c.owner.username,
       members: c._count.members, assignments: c._count.assignments,
     })),
+    department: department ? { ...department.institution, role: department.role } : null,
   });
 }
 
@@ -51,12 +56,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Class name must be 1 to 80 characters." }, { status: 400 });
   }
 
+  const department = await prisma.institutionMember.findUnique({ where: { userId: me.id }, select: { institutionId: true } });
+
   // Join codes are unique; on the (very unlikely) collision, try a fresh code.
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const classroom = await prisma.classroom.create({
         data: {
-          name, joinCode: newJoinCode(), ownerId: me.id,
+          name, joinCode: newJoinCode(), ownerId: me.id, institutionId: department?.institutionId ?? null,
           members: { create: { userId: me.id, role: "TEACHER" } },
         },
         select: { id: true, name: true, joinCode: true },

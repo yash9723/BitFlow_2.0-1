@@ -99,14 +99,36 @@ lower-case letters, digits, `-` or `_`. The first tag a visitor arrives with is 
   accounts.
 - **Load test**: `npm run load-test -- <url> [students] [runs]` (see below).
 
-### Phase B: during pilots (Dec 2026 – Feb 2027)
+### Phase B: for the pilots (done)
 
-- **Institutions and department plans**: an institution record (plan, seat limit, valid until) linked to its
-  classes, and a department dashboard that adds up their analytics. Enforce plans softly: a banner when a plan
-  lapses, never locking students out.
-- **Teacher onboarding**: a "Start a class" guide on `/classes`, and sample assignment packs per syllabus.
-- **Copy check per assignment**: already part of class analytics (pairs of accepted designs that look copied);
-  improve it with what pilot faculty ask for.
+- **Institutions (departments) and plans.** In Admin → Colleges you create a department with its plan (free pilot
+  or department plan), seat limit and last day, then add its heads and teachers by username. A teacher's existing
+  classes move into the department, and classes they create later belong to it. You can also attach or detach a
+  class by its join code.
+- **Department dashboard** at `/institution/<address>` for the department's heads (and site admins): classes,
+  students against seats, students active this week, how much assigned work is solved, and one row per class, with
+  a CSV export. Heads see class totals only, never student names. Heads find it from their Classes page.
+- **Soft enforcement.** When a plan has 30 days or fewer left, has ended, or has more students than seats, its
+  teachers and heads see a banner with a contact link. Nothing is ever blocked for students or teachers.
+- **Lab packs.** On a class page, "Add a lab pack" creates one assignment per experiment, a week apart: Digital
+  electronics lab (10 experiments), Verilog HDL lab (8) and VLSI design lab (6), built from experiments most
+  university labs share. Teachers can delete or edit any of them.
+- **"Start a class" guide** on `/classes`, open for anyone who has no classes yet.
+- **Copy check** per assignment was already part of class analytics. Improve it with what pilot faculty ask for.
+
+### Setting up a pilot college (step by step)
+
+1. The pilot request arrives in Admin → Messages ("College pilot"). Reply by email and book a call.
+2. Ask the HOD and each teacher to create a BitFlow account and send you their usernames.
+3. In Admin → Colleges, create the department: name like "Example Institute of Technology — ECE", an address
+   like `eit-ece`, plan "Free pilot", the seat count you agreed, and the semester's last day.
+4. Add the HOD as **Head** and each faculty member as **Teacher**.
+5. On the call, have each teacher create their class and add a lab pack, then share the join code with students.
+   Students add their roll numbers when they join.
+6. During the semester, check the department dashboard with the HOD. Near the end, send the dashboard's CSV with
+   your proposal for a department plan.
+7. When they pay, change the plan to "Department plan", set the new seats and last day, and put the PO or invoice
+   number in Notes.
 
 ### Phase C: when demand shows
 
@@ -130,13 +152,16 @@ It creates accounts named `loadtest_<time>_<n>`; delete them from Admin → User
 |------|--------|-----------------|----------|------|-----|-----|--------|
 | 2026-11-01 | Local, 4 cores, SQLite, `MAX_CONCURRENT_SIMULATIONS=4` | 60 × 3 | 60 ok | 180 ok in 2.5 s | 0.54 s | 0.81 s | Pass |
 | 2026-11-01 | Local, 4 cores, SQLite, `MAX_CONCURRENT_SIMULATIONS=4` | 120 × 3 | 120 ok | 360 ok in 5.1 s | 1.01 s | 1.63 s | Pass |
+| 2026-11-01 | Same, after Phase B | 60 × 3 | 60 ok | 180 ok in 2.8 s | 0.59 s | 0.91 s | Pass |
 
 These runs used a small AND-gate simulation. Real lab designs take longer, so leave headroom: aim for p95 under
 about 5 s with the class's real problems.
 
 ## 9. Privacy (DPDP Act)
 
-The privacy notice now mentions the optional roll number, the campaign tag and the pilot form's phone number.
+The privacy notice now mentions the optional roll number, the campaign tag, the pilot form's phone number, and
+that a department's heads see class totals (never names). The personal-data download includes the roll number,
+the campaign tag and department membership.
 These are small, optional additions, so `CONSENT_VERSION` was not bumped. Bump it (in `lib/privacy.ts`) if you
 decide the change is material, and everyone will be asked to accept the notice again. Under-18 students still
 need a parent's consent before joining a class.

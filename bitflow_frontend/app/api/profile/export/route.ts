@@ -23,9 +23,9 @@ export async function GET(request: Request) {
   if (!success) return NextResponse.json({ error: "You can download your data 3 times an hour. Please try again later." }, { status: 429 });
 
   const id = me.id;
-  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks] = await Promise.all([
+  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks, department] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: {
-      username: true, role: true, publicProfile: true, createdAt: true, announcementsSeenAt: true,
+      username: true, role: true, publicProfile: true, createdAt: true, announcementsSeenAt: true, signupSource: true,
       birthYear: true, birthMonth: true, consentVersion: true, consentAt: true, guardianStatus: true, guardianAllowAi: true, nomineeName: true, nomineeContact: true } }),
     prisma.userXp.findUnique({ where: { userId: id }, select: { totalXp: true, dailyStreak: true, lastDailyBonus: true, updatedAt: true } }),
     prisma.userProgress.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" },
@@ -40,12 +40,13 @@ export async function GET(request: Request) {
     prisma.sharedDesign.findMany({ where: { ownerId: id }, select: { id: true, title: true, designCode: true, testbenchCode: true, files: true, createdAt: true } }),
     prisma.certificate.findMany({ where: { userId: id }, select: { id: true, track: true, issuedAt: true } }),
     prisma.comment.findMany({ where: { userId: id }, select: { body: true, hidden: true, createdAt: true, question: { select: { slug: true } } } }),
-    prisma.classMember.findMany({ where: { userId: id }, select: { role: true, joinedAt: true, classroom: { select: { name: true } } } }),
+    prisma.classMember.findMany({ where: { userId: id }, select: { role: true, joinedAt: true, rollNumber: true, classroom: { select: { name: true } } } }),
     prisma.classroom.findMany({ where: { ownerId: id }, select: { name: true, joinCode: true, createdAt: true } }),
     prisma.guardianConsent.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" }, select: { guardianName: true, relationship: true, allowAi: true, createdAt: true } }),
     prisma.auditLog.findMany({ where: { targetId: id }, orderBy: { createdAt: "asc" }, take: 1000, select: { action: true, detail: true, createdAt: true } }),
     prisma.lessonProgress.findMany({ where: { userId: id }, select: { kind: true, slug: true, done: true, quizScore: true, hwBoard: true, draft: true, xpAwarded: true, completedAt: true, updatedAt: true } }),
     prisma.mockInterview.findMany({ where: { userId: id }, orderBy: { startedAt: "asc" }, select: { problems: true, startedAt: true, endsAt: true, finishedAt: true } }),
+    prisma.institutionMember.findUnique({ where: { userId: id }, select: { role: true, createdAt: true, institution: { select: { name: true } } } }),
   ]);
   if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
   await audit(id, "data.exported", id);
@@ -71,7 +72,8 @@ export async function GET(request: Request) {
     certificates: certificates.map((c) => ({ ...c, url: `/c/${c.id}` })),
     comments: comments.map(({ question, ...c }) => ({ problem: question.slug, ...c })),
     mockInterviews: mocks.map((m) => ({ ...m, problems: parse(m.problems) })),
-    classes: { member: memberships.map((m) => ({ name: m.classroom.name, role: m.role, joined: m.joinedAt })), teaching: owned },
+    classes: { member: memberships.map((m) => ({ name: m.classroom.name, role: m.role, rollNumber: m.rollNumber, joined: m.joinedAt })), teaching: owned },
+    department: department ? { name: department.institution.name, role: department.role, since: department.createdAt } : null,
   };
   const date = new Date().toISOString().slice(0, 10);
   return new NextResponse(JSON.stringify(data, null, 2), {

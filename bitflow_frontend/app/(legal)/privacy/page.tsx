@@ -43,7 +43,9 @@ export default function PrivacyPage() {
           anyone with the link.</li>
         <li><strong>Classes:</strong> if you join a class, its teachers see your username and your progress on the class&apos;s
           assignments. You may add your college roll number when you join, so your teacher can match you to their marks list;
-          it is optional, the class&apos;s teachers can see and correct it, and it is deleted when you leave the class.</li>
+          it is optional, the class&apos;s teachers can see and correct it, and it is deleted when you leave the class. If the
+          class belongs to a college department on a {SITE_NAME} college plan, the department&apos;s heads see the class&apos;s totals
+          (how many students, how much is solved), never your name or your work.</li>
         <li><strong>Public boards:</strong> the leaderboard, contest standings and smallest-design boards show your username and
           scores. Students under 18 appear as &quot;Student&quot; with a short code instead.</li>
         <li><strong>Public profile (off by default, never for under-18s):</strong> if you switch it on, anyone can see your stats

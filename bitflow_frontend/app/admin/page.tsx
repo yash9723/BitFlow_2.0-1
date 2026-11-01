@@ -18,6 +18,7 @@ const AdminAnnouncements = dynamic(() => import("@/components/admin/AdminAnnounc
 const ContestsAdmin  = dynamic(() => import("@/components/ContestsAdmin"), { loading });
 const AnalyticsAdmin = dynamic(() => import("@/components/AnalyticsAdmin"), { loading });
 const MessagesAdmin  = dynamic(() => import("@/components/admin/MessagesAdmin"), { loading });
+const InstitutionsAdmin = dynamic(() => import("@/components/admin/InstitutionsAdmin"), { loading });
 
 const EXPORTS = [
   { label: "Submissions JSONL", href: "/api/admin/export?dataset=submissions&format=jsonl" },
@@ -49,6 +50,7 @@ const TABS = {
   contests: { label: "Contests", render: () => <Panel><ContestsAdmin /></Panel> },
   analytics:{ label: "Analytics", render: () => <Analytics /> },
   messages: { label: "Messages", render: () => <MessagesAdmin /> },
+  colleges: { label: "Colleges", render: () => <InstitutionsAdmin /> },
   announcements: { label: "Announcements", render: () => <AdminAnnouncements /> },
   system:   { label: "System", render: () => <AdminSystem /> },
 };

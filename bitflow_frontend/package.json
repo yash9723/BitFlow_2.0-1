@@ -23,6 +23,8 @@
     "check-bitstream": "tsx scripts/bitstream.check.ts",
     "check-similarity": "tsx scripts/similarity.check.ts",
     "check-class-marks": "tsx scripts/class-marks.check.ts",
+    "check-lab-packs": "tsx scripts/lab-packs.check.ts",
+    "check-institutions": "tsx scripts/institutions.check.ts",
     "load-test": "node scripts/load-test.mjs",
     "check-dpdp": "tsx scripts/dpdp.check.ts",
     "check-lessons": "tsx scripts/lessons.check.ts",
