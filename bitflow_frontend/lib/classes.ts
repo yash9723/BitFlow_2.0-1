@@ -11,13 +11,12 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { problemHref } from "@/lib/problem-href";
 import { LESSON_LEVEL, lessonHref, lessonKey, lessonSlugs, lessonTitle, parseLessonKey } from "@/lib/lessons";
+import { byRollNumber, type ClassProgress, type ProblemStatus } from "@/lib/class-marks";
+
+// The pure helpers (roll numbers, marks, the CSV) live in lib/class-marks.ts so pages and checks can use them.
+export * from "@/lib/class-marks";
 
 export type ClassRole     = "TEACHER" | "STUDENT";
-export type ProblemStatus = "on_time" | "late" | "missing" | "pending";
-
-export const STATUS_LABEL: Record<ProblemStatus, string> = {
-  on_time: "on time", late: "late", missing: "missing", pending: "not yet",
-};
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // no 0/O or 1/I
 
@@ -51,13 +50,6 @@ export function statusOf(solvedAt: Date | null | undefined, dueAt: Date, now: Da
   return now > dueAt ? "missing" : "pending";
 }
 
-export interface ClassProgress {
-  assignments: { id: string; title: string; dueAt: string; problems: { slug: string; title: string; difficulty: string; href: string }[] }[];
-  students:    { id: string; username: string }[];
-  /** status[studentId][assignmentId][slug] */
-  status:      Record<string, Record<string, Record<string, ProblemStatus>>>;
-}
-
 /** Assignments (with problem details) and each student's status on each problem. */
 export async function classProgress(classId: string, onlyUserId?: string): Promise<ClassProgress> {
   const assignments = await prisma.assignment.findMany({ where: { classId }, orderBy: { dueAt: "asc" } });
@@ -71,9 +63,9 @@ export async function classProgress(classId: string, onlyUserId?: string): Promi
   const members = await prisma.classMember.findMany({
     where:   { classId, ...(onlyUserId ? { userId: onlyUserId } : { role: "STUDENT" }) },
     orderBy: { joinedAt: "asc" },
-    select:  { user: { select: { id: true, username: true } } },
+    select:  { rollNumber: true, user: { select: { id: true, username: true } } },
   });
-  const students = members.map((m) => m.user);
+  const students = byRollNumber(members.map((m) => ({ ...m.user, rollNumber: m.rollNumber })));
 
   const solved = await prisma.userProgress.findMany({
     where:  { userId: { in: students.map((s) => s.id) }, problemId: { in: questions.map((q) => q.id) }, solved: true },
@@ -117,22 +109,3 @@ export async function classProgress(classId: string, onlyUserId?: string): Promi
 export const lessonCatalog = () => (["lab", "academy"] as const).flatMap((kind) => lessonSlugs(kind).map((slug) => ({
   slug: lessonKey(kind, slug), title: lessonTitle(kind, slug)!, learningLevel: LESSON_LEVEL[kind], difficulty: "Lesson",
 })));
-
-/** One spreadsheet cell; neutralises formula injection from usernames/titles. */
-function csvCell(value: string | number): string {
-  let s = String(value);
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-/** The teacher's progress grid as CSV: one row per student, one column per assigned problem. */
-export function progressCsv(p: ClassProgress): string {
-  const cols = p.assignments.flatMap((a) => a.problems.map((q) => ({ a, q })));
-  const rows = [["Student", ...cols.map(({ a, q }) => `${a.title} / ${q.title}`), "On time", "Late", "Missing"]];
-  for (const s of p.students) {
-    const statuses = cols.map(({ a, q }) => p.status[s.id]?.[a.id]?.[q.slug] ?? "pending");
-    const count = (st: ProblemStatus) => statuses.filter((x) => x === st).length;
-    rows.push([s.username, ...statuses.map((st) => STATUS_LABEL[st]), String(count("on_time")), String(count("late")), String(count("missing"))]);
-  }
-  return rows.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
-}

@@ -1,5 +1,6 @@
 /**
- * POST /api/classes/join — join a class as a student with its code { code }.
+ * POST /api/classes/join — join a class as a student with its code { code, rollNumber? }.
+ * The optional roll number goes into the teacher's marks export (lib/classes.ts).
  * Rate-limited per account so codes can't be guessed by brute force.
  */
 
@@ -8,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
 import { rateLimit } from "@/lib/rate-limit";
 import { canShareWithClass } from "@/lib/privacy";
+import { normalizeRoll, rollNumberProblem } from "@/lib/classes";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,9 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const code = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
+  const rollNumber = normalizeRoll(body?.rollNumber);
+  const badRoll = rollNumberProblem(rollNumber);
+  if (badRoll) return NextResponse.json({ error: badRoll }, { status: 400 });
   const classroom = code
     ? await prisma.classroom.findUnique({ where: { joinCode: code }, select: { id: true, name: true } })
     : null;
@@ -31,11 +36,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No class has that code." }, { status: 404 });
   }
 
-  // Joining twice is a no-op; a teacher stays a teacher.
+  // Joining twice only updates the roll number (when one is given); a teacher stays a teacher.
   await prisma.classMember.upsert({
     where:  { classId_userId: { classId: classroom.id, userId: me.id } },
-    create: { classId: classroom.id, userId: me.id, role: "STUDENT" },
-    update: {},
+    create: { classId: classroom.id, userId: me.id, role: "STUDENT", rollNumber: rollNumber || null },
+    update: rollNumber ? { rollNumber } : {},
   });
   return NextResponse.json({ classroom });
 }

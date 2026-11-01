@@ -1,7 +1,8 @@
 "use client";
 /**
  * /classes/[id] — one class.
- *   Teachers: join code, new assignment, assignments, progress grid (+ CSV), analytics, roster.
+ *   Teachers: join code, new assignment, assignments, progress grid (+ CSV with roll numbers
+ *   and "marks out of N"), analytics, roster with editable roll numbers.
  *   Students: their assignments with per-problem status and links.
  */
 
@@ -9,21 +10,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import ClassAnalytics from "@/components/ClassAnalytics";
+import { LATE_CREDIT } from "@/lib/class-marks";
 
 type Status = "on_time" | "late" | "missing" | "pending";
 type Problem = { slug: string; title: string; difficulty: string; href: string };
 type AssignmentRow = { id: string; title: string; dueAt: string; problems: Problem[] };
 type Detail = {
-  classroom: { id: string; name: string; teacher: string; joinCode?: string };
+  classroom: { id: string; name: string; teacher: string; joinCode?: string; maxMarks?: number | null };
   role: "TEACHER" | "STUDENT";
   isOwner: boolean;
   me: string;
   progress: {
     assignments: AssignmentRow[];
-    students: { id: string; username: string }[];
+    students: { id: string; username: string; rollNumber: string | null }[];
     status: Record<string, Record<string, Record<string, Status>>>;
   };
-  roster?: { id: string; username: string; role: string; joinedAt: string }[];
+  roster?: { id: string; username: string; role: string; joinedAt: string; rollNumber: string | null }[];
   catalog?: { slug: string; title: string; learningLevel: string; difficulty: string }[];
 };
 
@@ -54,6 +56,50 @@ function Chip({ status, compact }: { status: Status; compact?: boolean }) {
     <span title={s.label} className={`inline-block font-mono text-[10px] px-1.5 py-0.5 rounded border ${s.cls}`}>
       {compact ? s.short : s.label}
     </span>
+  );
+}
+
+/** A roll number field that saves when it loses focus or on Enter (PATCH /api/classes/[id]/members). */
+function RollField({ value, label, onSave }: { value: string | null; label: string; onSave: (roll: string) => Promise<string | null> }) {
+  const [draft, setDraft] = useState(value ?? "");
+  const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
+  useEffect(() => setDraft(value ?? ""), [value]);
+  const save = async () => {
+    if (draft.trim().toUpperCase() === (value ?? "")) return;
+    setState("saving");
+    const err = await onSave(draft);
+    setState(err ? "idle" : "saved");
+    if (err) setDraft(value ?? "");
+  };
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <input aria-label={label} value={draft} maxLength={30} placeholder="roll no."
+             className="w-28 bg-pit border border-rim/60 rounded px-2 py-0.5 font-mono uppercase text-[11px] text-bright placeholder:text-dim focus:outline-none focus:border-phosphor/60"
+             onChange={(e) => { setDraft(e.target.value); setState("idle"); }} onBlur={save}
+             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+      {state === "saving" && <span className="text-[10px] text-dim">saving…</span>}
+      {state === "saved" && <span className="text-[10px] text-phosphor">saved</span>}
+    </span>
+  );
+}
+
+/** "Marks out of N" for the CSV export (PATCH /api/classes/[id]); empty removes the marks column. */
+function MarksSetting({ value, onSave }: { value: number | null; onSave: (maxMarks: number | null) => Promise<string | null> }) {
+  const [draft, setDraft] = useState(value == null ? "" : String(value));
+  useEffect(() => setDraft(value == null ? "" : String(value)), [value]);
+  const save = () => {
+    const next = draft.trim() === "" ? null : Number(draft);
+    if (next !== value) onSave(next);
+  };
+  return (
+    <label className="flex items-center gap-1.5 text-[12px] text-ghost"
+           title={`Every problem counts the same; a late solve earns ${LATE_CREDIT * 100}% of its share.`}>
+      Marks out of
+      <input type="number" min={1} max={1000} inputMode="numeric" value={draft} placeholder="—"
+             className="w-16 bg-pit border border-rim/60 rounded px-2 py-0.5 text-[12px] text-bright focus:outline-none focus:border-phosphor/60"
+             onChange={(e) => setDraft(e.target.value)} onBlur={save}
+             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+    </label>
   );
 }
 
@@ -208,7 +254,11 @@ export default function ClassPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-[11px] uppercase tracking-[0.18em] text-dim">Progress</h2>
             {columns.length > 0 && progress.students.length > 0 && (
-              <a href={`/api/classes/${id}?format=csv`} className="text-[12px] text-info hover:underline" download>Export CSV</a>
+              <span className="flex flex-wrap items-center gap-4">
+                <MarksSetting value={classroom.maxMarks ?? null}
+                              onSave={async (maxMarks) => { const err = await call("PATCH", `/api/classes/${id}`, { maxMarks }); setError(err); return err; }} />
+                <a href={`/api/classes/${id}?format=csv`} className="text-[12px] text-info hover:underline" download>Export CSV</a>
+              </span>
             )}
           </div>
           {progress.students.length === 0 ? (
@@ -222,6 +272,7 @@ export default function ClassPage() {
                   <thead>
                     <tr className="border-b border-rim/40">
                       <th scope="col" rowSpan={2} className="text-left font-semibold px-3 py-2 sticky left-0 bg-void">Student</th>
+                      <th scope="col" rowSpan={2} className="text-left font-semibold px-3 py-2">Roll no.</th>
                       {progress.assignments.filter((a) => a.problems.length).map((a) => (
                         <th key={a.id} scope="colgroup" colSpan={a.problems.length} className="px-3 py-1 text-left font-semibold border-l border-rim/30">{a.title}</th>
                       ))}
@@ -236,6 +287,7 @@ export default function ClassPage() {
                     {progress.students.map((s) => (
                       <tr key={s.id} className="border-b border-rim/20 last:border-0">
                         <th scope="row" className="text-left font-normal px-3 py-1.5 sticky left-0 bg-void whitespace-nowrap">{s.username}</th>
+                        <td className="px-3 py-1.5 font-mono text-dim whitespace-nowrap">{s.rollNumber ?? "—"}</td>
                         {columns.map(({ a, p }) => (
                           <td key={`${a.id}:${p.slug}`} className="px-2 py-1.5 border-l border-rim/20">
                             <Chip compact status={progress.status[s.id]?.[a.id]?.[p.slug] ?? "pending"} />
@@ -269,10 +321,14 @@ export default function ClassPage() {
               <li key={m.id} className="flex items-center justify-between gap-2 px-4 py-2 text-[12px]">
                 <span>{m.username} <span className="text-[10px] text-dim ml-2">{m.role === "TEACHER" ? "teacher" : `joined ${when(m.joinedAt)}`}</span></span>
                 {m.role === "STUDENT" && (
-                  <button className={dangerLink}
-                          onClick={async () => { if (confirm(`Remove ${m.username} from the class?`)) setError(await call("DELETE", `/api/classes/${id}/members?userId=${m.id}`)); }}>
-                    Remove
-                  </button>
+                  <span className="flex items-center gap-4">
+                    <RollField value={m.rollNumber} label={`Roll number for ${m.username}`}
+                               onSave={async (rollNumber) => { const err = await call("PATCH", `/api/classes/${id}/members`, { userId: m.id, rollNumber }); setError(err); return err; }} />
+                    <button className={dangerLink}
+                            onClick={async () => { if (confirm(`Remove ${m.username} from the class?`)) setError(await call("DELETE", `/api/classes/${id}/members?userId=${m.id}`)); }}>
+                      Remove
+                    </button>
+                  </span>
                 )}
               </li>
             ))}

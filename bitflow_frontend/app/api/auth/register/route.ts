@@ -7,6 +7,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { reportError } from "@/lib/error-log";
 import { CONSENT_VERSION, birthProblem, isMinor } from "@/lib/privacy";
 import { audit } from "@/lib/privacy-server";
+import { normalizeRef } from "@/lib/signup-source";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,12 @@ export function GET() {
 }
 
 export async function POST(request: Request) {
-  // 5/min per client IP; unidentified clients share a roomier bucket (class sign-ups).
-  const { success } = await rateLimit(request, { limit: 5, anonymousLimit: 30, windowMs: 60_000, prefix: "register" });
+  // A college lab signs up together from one shared (NAT) address, so the per-IP
+  // bucket must fit a whole class with its retries (names taken, short passwords):
+  // 200 per 10 minutes. The form token and honeypot (lib/bot-check.ts) stop scripted
+  // sign-ups; the per-name bucket below stops one client hammering a single username.
+  // scripts/load-test.mjs checks a lab's worth of sign-ups gets through.
+  const { success } = await rateLimit(request, { limit: 200, anonymousLimit: 300, windowMs: 10 * 60_000, prefix: "register" });
   if (!success) {
     return NextResponse.json(
       { error: "Too many registration attempts. Please wait a moment and try again." },
@@ -29,6 +34,18 @@ export async function POST(request: Request) {
     const body = (await request.json()) ?? {};
     const { username, password, role, secretPassword } = body;
     const normalizedUsername = typeof username === "string" ? username.trim() : "";
+
+    if (normalizedUsername) {
+      const perName = await rateLimit(request, {
+        limit: 5, windowMs: 60_000, prefix: "register-name", key: `name:${normalizedUsername.toLowerCase()}`,
+      });
+      if (!perName.success) {
+        return NextResponse.json(
+          { error: "Too many registration attempts. Please wait a moment and try again." },
+          { status: 429 }
+        );
+      }
+    }
 
     if (!normalizedUsername || !password || !role) {
       return NextResponse.json(
@@ -117,6 +134,8 @@ export async function POST(request: Request) {
         guardianStatus: minor ? "pending" : "none",
         consentVersion: CONSENT_VERSION,
         consentAt:      new Date(),
+        // The campaign tag the visit came through (components/RefCapture.tsx); not kept for children.
+        signupSource:   minor ? null : normalizeRef(body.signupSource) || null,
         xp: {
           create: {
             totalXp: 0,

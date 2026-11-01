@@ -18,6 +18,7 @@ model User {
   password    String
   role        String         @default("STUDENT") // "STUDENT" | "ADMIN"
   recoveryCodeHash String?   // one-time password-reset code (scrypt, like passwords); null = none
+  signupSource     String?   // campaign tag from ?ref= / utm_source at sign-up (lib/signup-source.ts); null for children
   publicProfile    Boolean   @default(false) // opt-in: /u/<username> shows stats, badges, certificates
   bannedAt         DateTime? // set by an admin: signed out and can't sign in (lib/auth-utils.ts)
   createdAt   DateTime       @default(now())
@@ -244,6 +245,7 @@ model Classroom {
   joinCode    String        @unique
   ownerId     String
   createdAt   DateTime      @default(now())
+  maxMarks    Int?          // the teacher's "marks out of N": adds a marks column to the CSV (lib/classes.ts)
 
   owner       User          @relation("OwnedClasses", fields: [ownerId], references: [id], onDelete: Cascade)
   members     ClassMember[]
@@ -255,6 +257,7 @@ model ClassMember {
   classId   String
   userId    String
   role      String    @default("STUDENT") // "TEACHER" | "STUDENT"
+  rollNumber String?  // the college's roll / register number, for the marks export (lib/classes.ts)
   joinedAt  DateTime  @default(now())
 
   classroom Classroom @relation(fields: [classId], references: [id], onDelete: Cascade)

@@ -60,6 +60,10 @@ Optional profiles:
 - Check `https://your.domain/sitemap.xml`, `/robots.txt` and a link preview
   (the image is `/opengraph-image`).
 - Page views (cookieless, no consent banner needed) are on the admin page.
+- Before a college lab uses it, run the load test against a staging copy:
+  `cd bitflow_frontend && npm run load-test -- https://staging.your.domain 60 3`
+  (60 students signing up from one address, then running together; see
+  `docs/launch-plan.md` for results and the launch plan).
 
 Re-running `setup_server.sh` pulls and rebuilds. Schema changes that would
 drop data are refused at startup (no `--accept-data-loss`); apply those by hand.

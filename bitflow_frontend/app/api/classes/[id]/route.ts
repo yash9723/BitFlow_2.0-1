@@ -2,14 +2,15 @@
  * GET    /api/classes/[id] — class page data. Members only.
  *          Teachers: join code, roster, everyone's progress, problem catalog.
  *          Students: their own progress on each assignment.
- *        ?format=csv (teachers) — the progress grid as a CSV download.
+ *        ?format=csv (teachers) — the progress grid as a CSV download (roll numbers, marks).
+ * PATCH  /api/classes/[id] { maxMarks } — teachers: "marks out of N" for the CSV (null for none).
  * DELETE /api/classes/[id] — delete the class (its owner, or a site admin).
  */
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth-utils";
-import { classProgress, classRole, lessonCatalog, progressCsv } from "@/lib/classes";
+import { classProgress, classRole, lessonCatalog, maxMarksProblem, progressCsv } from "@/lib/classes";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function GET(request: Request, { params }: Params) {
 
   const classroom = await prisma.classroom.findUnique({
     where:  { id: params.id },
-    select: { id: true, name: true, joinCode: true, ownerId: true, owner: { select: { username: true } } },
+    select: { id: true, name: true, joinCode: true, ownerId: true, maxMarks: true, owner: { select: { username: true } } },
   });
   if (!classroom) return notFound();
   const teacher = role === "TEACHER";
@@ -41,7 +42,7 @@ export async function GET(request: Request, { params }: Params) {
   if (new URL(request.url).searchParams.get("format") === "csv") {
     if (!teacher) return NextResponse.json({ error: "Only teachers can export progress." }, { status: 403 });
     const filename = `${classroom.name.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 40) || "class"}-progress.csv`;
-    return new NextResponse(progressCsv(await classProgress(params.id)), {
+    return new NextResponse(progressCsv(await classProgress(params.id), classroom.maxMarks), {
       headers: {
         "Content-Type":        "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${filename}"`,
@@ -56,7 +57,7 @@ export async function GET(request: Request, { params }: Params) {
       ? prisma.classMember.findMany({
           where:   { classId: params.id },
           orderBy: [{ role: "desc" }, { joinedAt: "asc" }],   // TEACHER before STUDENT
-          select:  { role: true, joinedAt: true, user: { select: { id: true, username: true } } },
+          select:  { role: true, joinedAt: true, rollNumber: true, user: { select: { id: true, username: true } } },
         })
       : null,
     teacher
@@ -71,17 +72,32 @@ export async function GET(request: Request, { params }: Params) {
   return NextResponse.json({
     classroom: {
       id: classroom.id, name: classroom.name, teacher: classroom.owner.username,
-      ...(teacher ? { joinCode: classroom.joinCode } : {}),
+      ...(teacher ? { joinCode: classroom.joinCode, maxMarks: classroom.maxMarks } : {}),
     },
     role,
     isOwner: classroom.ownerId === me.id,
     me: me.id,
     progress,
     ...(teacher ? {
-      roster: roster!.map((m) => ({ id: m.user.id, username: m.user.username, role: m.role, joinedAt: m.joinedAt })),
+      roster: roster!.map((m) => ({ id: m.user.id, username: m.user.username, role: m.role, joinedAt: m.joinedAt, rollNumber: m.rollNumber })),
       catalog,
     } : {}),
   });
+}
+
+export async function PATCH(request: Request, { params }: Params) {
+  const me = await getSessionUser();
+  if (!me) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
+  const role = await classRole(params.id, me);
+  if (!role) return notFound();
+  if (role !== "TEACHER") return NextResponse.json({ error: "Only teachers can change class settings." }, { status: 403 });
+
+  const body = await request.json().catch(() => null);
+  const maxMarks = body?.maxMarks === "" || body?.maxMarks == null ? null : body.maxMarks;
+  const problem = maxMarksProblem(maxMarks);
+  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+  await prisma.classroom.update({ where: { id: params.id }, data: { maxMarks } });
+  return NextResponse.json({ ok: true, maxMarks });
 }
 
 export async function DELETE(_request: Request, { params }: Params) {

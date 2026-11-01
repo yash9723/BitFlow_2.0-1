@@ -1,6 +1,7 @@
 /**
  * GET /api/admin/overview — numbers for the admin Overview tab: users, activity,
- * submissions per day (14 days), problems needing attention, recent errors.
+ * submissions per day (14 days), problems needing attention, recent errors, and sign-ups
+ * per campaign tag over 30 days (User.signupSource, lib/signup-source.ts).
  * Days are bucketed here, not in SQL, so the query works on SQLite and Postgres.
  */
 
@@ -29,7 +30,7 @@ export async function GET() {
   const week = new Date(now - 7 * DAY);
   const month = new Date(now - 30 * DAY);
 
-  const [users, newUsers, submissions, recent, signups, activeUsers, questions, withRef, withMutants, errors7d, attempts, accepted] = await Promise.all([
+  const [users, newUsers, submissions, recent, signups, activeUsers, questions, withRef, withMutants, errors7d, attempts, accepted, sources] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { createdAt: { gte: week } } }),
     prisma.submission.count(),
@@ -43,6 +44,7 @@ export async function GET() {
     prisma.errorLog.count({ where: { createdAt: { gte: week } } }),
     prisma.submission.groupBy({ by: ["problemId"], where: { submissionType: "SUBMIT", createdAt: { gte: month } }, _count: { _all: true } }),
     prisma.submission.groupBy({ by: ["problemId"], where: { submissionType: "SUBMIT", accepted: true, createdAt: { gte: month } }, _count: { _all: true } }),
+    prisma.user.groupBy({ by: ["signupSource"], where: { createdAt: { gte: month } }, _count: { _all: true } }),
   ]);
 
   const perDay = Array.from({ length: DAYS }, (_, i) => ({ day: dayKey(new Date(since.getTime() + i * DAY)), runs: 0, submits: 0, accepted: 0, signups: 0 }));
@@ -81,5 +83,7 @@ export async function GET() {
     mostAttempted: [...health].sort((a, b) => b.submits - a.submits).slice(0, 6),
     hardest:       health.filter((h) => h.submits >= 5).sort((a, b) => a.rate - b.rate).slice(0, 6),
     errors7d,
+    // Sign-ups in the last 30 days by campaign tag; null = no tag (or an under-18 account).
+    signupSources: sources.map((s) => ({ source: s.signupSource, count: s._count._all })).sort((a, b) => b.count - a.count),
   });
 }

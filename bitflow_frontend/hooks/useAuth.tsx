@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { storedRef } from "@/components/RefCapture";
 
 interface UserProfile {
   id: string;
@@ -95,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role, secretPassword, ...botFields, ...consent }),
+        body: JSON.stringify({ username, password, role, secretPassword, ...botFields, ...consent, signupSource: storedRef() }),
       });
       const data = await res.json();
       if (res.ok && data.user) {

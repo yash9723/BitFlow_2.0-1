@@ -14,6 +14,24 @@ interface Overview {
   mostAttempted: ProblemStat[];
   hardest:       ProblemStat[];
   errors7d:    number;
+  signupSources: { source: string | null; count: number }[];
+}
+
+/** Sign-ups per campaign tag (?ref= / utm_source), last 30 days: ambassadors and workshops. */
+function SignupSources({ rows }: { rows: Overview["signupSources"] }) {
+  const tagged = rows.filter((r) => r.source);
+  const untagged = rows.find((r) => !r.source)?.count ?? 0;
+  if (!tagged.length) {
+    return <p className="text-[10px] text-dim">No tagged sign-ups yet. Share links like <code>/?ref=abc-college</code> or <code>/colleges?utm_source=linkedin</code>.</p>;
+  }
+  return (
+    <ul className="space-y-1 text-[11px]">
+      {tagged.map((r) => (
+        <li key={r.source} className="flex justify-between gap-3"><span className="text-pale font-mono">{r.source}</span><span className="text-phosphor">{r.count}</span></li>
+      ))}
+      <li className="flex justify-between gap-3 text-dim"><span>no tag</span><span>{untagged}</span></li>
+    </ul>
+  );
 }
 
 /** Runs + submits per day as stacked bars, accepted submits as the brighter part. */
@@ -136,6 +154,9 @@ export default function AdminOverview() {
         </Card>
         <Card title="Most attempted (30 d)">
           <ProblemList rows={data.mostAttempted} empty="No submissions yet." />
+        </Card>
+        <Card title="Sign-ups by source (30 d)" subtitle="From ?ref= or utm_source on the first visit">
+          <SignupSources rows={data.signupSources ?? []} />
         </Card>
       </div>
     </div>

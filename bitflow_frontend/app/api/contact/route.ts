@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
 import { reportError } from "@/lib/error-log";
+import { pilotMessage, pilotProblem, readPilot } from "@/lib/pilot";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ export async function POST(request: Request) {
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid request." }, { status: 400 }); }
   if (text(body.website)) return NextResponse.json({ ok: true });          // honeypot
+
+  if (body.kind === "pilot") return pilotRequest(body);
 
   const name = text(body.name), email = text(body.email), subject = text(body.subject) || "(no subject)", message = text(body.message);
   const problem =
@@ -41,5 +44,20 @@ export async function POST(request: Request) {
   } catch (err) {
     await reportError("[POST /api/contact]", err);
     return NextResponse.json({ error: "Your message couldn't be saved. Please try again later." }, { status: 500 });
+  }
+}
+
+/** A college pilot request from /colleges (lib/pilot.ts), stored as a "pilot" message. */
+async function pilotRequest(body: Record<string, unknown>) {
+  const pilot = readPilot(body);
+  const problem = pilotProblem(pilot);
+  if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+  try {
+    const { subject, message } = pilotMessage(pilot);
+    await prisma.contactMessage.create({ data: { name: pilot.name, email: pilot.email, subject, message, kind: "pilot" } });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    await reportError("[POST /api/contact pilot]", err);
+    return NextResponse.json({ error: "Your request couldn't be saved. Please try again later." }, { status: 500 });
   }
 }

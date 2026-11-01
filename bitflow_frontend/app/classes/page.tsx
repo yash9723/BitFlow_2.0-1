@@ -17,6 +17,7 @@ export default function ClassesPage() {
   const [classes, setClasses] = useState<ClassRow[] | null>(null);
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  const [roll, setRoll] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,11 +51,14 @@ export default function ClassesPage() {
 
       <div className="grid sm:grid-cols-2 gap-4">
         <form className="border border-rim/60 rounded-xl p-4 bg-pit/40 space-y-3"
-              onSubmit={(e) => { e.preventDefault(); post("/api/classes/join", { code }); }}>
+              onSubmit={(e) => { e.preventDefault(); post("/api/classes/join", { code, rollNumber: roll }); }}>
           <h2 className="text-[13px] font-semibold">Join a class</h2>
           <label className="block text-[11px] text-dim" htmlFor="join-code">Class code from your teacher</label>
           <input id="join-code" className={`${input} font-mono uppercase tracking-widest`} value={code} maxLength={12}
                  onChange={(e) => setCode(e.target.value)} placeholder="e.g. K7QM2XP" autoComplete="off" />
+          <label className="block text-[11px] text-dim" htmlFor="join-roll">Your roll number (optional, for your teacher&apos;s marks list)</label>
+          <input id="join-roll" className={`${input} font-mono uppercase`} value={roll} maxLength={30}
+                 onChange={(e) => setRoll(e.target.value)} placeholder="e.g. 21BEC0042" autoComplete="off" />
           <button className={button} disabled={busy || !code.trim()}>Join</button>
         </form>
 

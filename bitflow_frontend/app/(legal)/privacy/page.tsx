@@ -33,14 +33,17 @@ export default function PrivacyPage() {
       <ul>
         <li><strong>Account:</strong> your username, a salted hash of your password (never the password itself), an optional
           recovery code (also only a hash), and your <em>month and year</em> of birth. <em>Why:</em> to sign you in, and to know
-          whether a parent must agree (under 18). We don&apos;t ask for your email, phone or real name.</li>
+          whether a parent must agree (under 18). We don&apos;t ask for your email, phone or real name. If you came through a
+          link with a campaign tag (for example a college workshop or a student ambassador&apos;s link), we keep that tag with an
+          adult&apos;s account so we know which outreach works; it isn&apos;t kept for under-18 accounts.</li>
         <li><strong>Your work:</strong> the code you run or submit and its results (pass/fail, test output, counterexamples,
           gate counts), lesson progress, XP, streaks, badges, certificates and contest scores. <em>Why:</em> to grade your work,
           save your progress and show it back to you.</li>
         <li><strong>Projects and share links:</strong> designs you save, with their history. A design you share is readable by
           anyone with the link.</li>
         <li><strong>Classes:</strong> if you join a class, its teachers see your username and your progress on the class&apos;s
-          assignments.</li>
+          assignments. You may add your college roll number when you join, so your teacher can match you to their marks list;
+          it is optional, the class&apos;s teachers can see and correct it, and it is deleted when you leave the class.</li>
         <li><strong>Public boards:</strong> the leaderboard, contest standings and smallest-design boards show your username and
           scores. Students under 18 appear as &quot;Student&quot; with a short code instead.</li>
         <li><strong>Public profile (off by default, never for under-18s):</strong> if you switch it on, anyone can see your stats
@@ -49,7 +52,8 @@ export default function PrivacyPage() {
         <li><strong>Consent records:</strong> when you accepted this notice and, for under-18 accounts, the parent&apos;s name,
           relationship, choices and a keyed hash of their IP address, as evidence of consent.</li>
         <li><strong>Your nominee</strong>, if you name one (below).</li>
-        <li><strong>Contact form:</strong> your name, email, subject and message, so we can reply.</li>
+        <li><strong>Contact form:</strong> your name, email, subject and message, so we can reply. A college pilot request
+          (at /colleges) also keeps the phone number, role, college and department you give, to set up the pilot.</li>
       </ul>
 
       <h2>Who processes it for us</h2>

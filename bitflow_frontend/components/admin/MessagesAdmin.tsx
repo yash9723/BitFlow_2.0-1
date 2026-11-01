@@ -25,7 +25,7 @@ export default function MessagesAdmin() {
   if (!data) return <Loading what="messages" />;
   const shown = data.messages.filter((m) => showHandled || !m.handled);
   return (
-    <Card title={`Messages (${data.open} open)`} subtitle="From the contact form at /contact. Reply by email."
+    <Card title={`Messages (${data.open} open)`} subtitle="From the contact form at /contact and pilot requests from /colleges. Reply by email."
           action={<label className="flex items-center gap-1.5 text-[11px] text-ghost"><input type="checkbox" checked={showHandled} onChange={(e) => setShowHandled(e.target.checked)} /> show handled</label>}>
       {!shown.length && <p className="text-[12px] text-dim">No {showHandled ? "" : "open "}messages.</p>}
       <ul className="space-y-3">
@@ -37,6 +37,10 @@ export default function MessagesAdmin() {
                 <span className="px-1.5 rounded border border-warn/50 text-warn text-[10px] uppercase">
                   Data request · due {new Date(new Date(m.createdAt).getTime() + GRIEVANCE_DAYS * 86_400_000).toLocaleDateString()}
                 </span>
+              )}
+              {m.kind === "pilot" && (
+                // A college pilot request from /colleges (lib/pilot.ts).
+                <span className="px-1.5 rounded border border-phosphor/50 text-phosphor text-[10px] uppercase">College pilot</span>
               )}
               <span className="text-bright font-semibold">{m.subject}</span>
               <span className="text-ghost">{m.name}</span>

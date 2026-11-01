@@ -13,7 +13,9 @@
 
 import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/hooks/useAuth";
+import { Suspense } from "react";
 import PageViewTracker from "@/components/PageViewTracker";
+import RefCapture from "@/components/RefCapture";
 import SimulatorWakeNotice from "@/components/SimulatorWakeNotice";
 import CommandPalette from "@/components/CommandPalette";
 import Analytics from "@/components/Analytics";
@@ -97,6 +99,7 @@ export default function RootLayout({
         <AuthProvider>
           {children}
           <PageViewTracker />
+          <Suspense fallback={null}><RefCapture /></Suspense>
           <SimulatorWakeNotice />
           <CommandPalette />
           <Analytics />
