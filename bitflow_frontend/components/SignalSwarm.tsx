@@ -16,23 +16,72 @@
 
 import { useEffect, useRef, useState } from "react";
 import { type Target, buildTimeline, sample } from "@/lib/swarm/plan";
+import { pixel } from "@/lib/fonts";
 
 const SEEN_KEY = "bf-swarm-seen";
 // mostly phosphor greens, with cyan and amber like a terminal's other two colours
 const COLORS = ["#00e87a", "#4db8ff", "#00ff88", "#ffb84d", "#5eead4", "#a3e635", "#38bdf8", "#86efac", "#facc15", "#2dd4bf"];
+const PIXEL_FONT = `${pixel.style.fontFamily}, monospace`;
 const SCRAMBLE = "0123456789ABCDEF#$%&*<>/\|";
 
-/** An 11×16 pixel-art arrow (o = outline, X = fill) — BitFlow's pixel look, drawn as crisp SVG rects. */
-const PIXEL_ARROW = ["o", "oo", "oXo", "oXXo", "oXXXo", "oXXXXo", "oXXXXXo", "oXXXXXXo", "oXXXXXXXo", "oXXXXXooooo", "oXXoXXo", "oXo oXXo", "oo  oXXo", "o    oXXo", "      oXXo", "       oo"];
-function pixelArrow(color: string): string {
+/*
+ * Pixel-art cursor icons, drawn at an integer 2× scale so every pixel stays a crisp 2×2 block.
+ * o = dark outline, X = signal colour, anything else = transparent. Hotspot is the top-left (arrow)
+ * or the centre (crosshair, I-beam).
+ */
+const ICONS: Record<"arrow" | "cross" | "beam", string[]> = {
+  arrow: [
+    "o",
+    "oo",
+    "oXo",
+    "oXXo",
+    "oXXXo",
+    "oXXXXo",
+    "oXXXXXo",
+    "oXXXooo",
+    "oXoXXo",
+    "oo.oXXo",
+    "....oo",
+  ],
+  cross: [
+    "...oXo...",
+    "...oXo...",
+    "...oXo...",
+    "oooo.oooo",
+    "XXX...XXX",
+    "oooo.oooo",
+    "...oXo...",
+    "...oXo...",
+    "...oXo...",
+  ],
+  beam: [
+    "oXXoXXo",
+    "ooXXXoo",
+    "..oXo..",
+    "..oXo..",
+    "..oXo..",
+    "..oXo..",
+    "..oXo..",
+    "ooXXXoo",
+    "oXXoXXo",
+  ],
+};
+const PX = 2;
+
+function pixelIcon(kind: keyof typeof ICONS, color: string): string {
+  const rows = ICONS[kind];
+  const w = Math.max(...rows.map((r) => r.length));
   let rects = "";
-  PIXEL_ARROW.forEach((row, y) =>
+  rows.forEach((row, y) =>
     [...row].forEach((ch, x) => {
       if (ch === "o" || ch === "X") rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${ch === "X" ? color : "#07080a"}"/>`;
     }),
   );
-  return `<svg class="i-arrow" width="14" height="20" viewBox="0 0 11 16" shape-rendering="crispEdges">${rects}</svg>`;
+  return `<svg class="i-${kind}" width="${w * PX}" height="${rows.length * PX}" viewBox="0 0 ${w} ${rows.length}" shape-rendering="crispEdges">${rects}</svg>`;
 }
+
+const TRAIL = 4; // fading pixels left behind each cursor
+const snap = (v: number) => Math.round(v / PX) * PX;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const PRELUDE = `(function(){try{
@@ -117,15 +166,15 @@ export default function SignalSwarm() {
 
     // ── build the overlay once; each frame only updates attributes ──
     const stage = svg("svg", { width: vw, height: vh, viewBox: `0 0 ${vw} ${vh}`, class: "bf-swarm-svg" }, layer);
-    const wireLayer = svg("g", { fill: "none", "stroke-linejoin": "round" }, stage);
+    const wireLayer = svg("g", { fill: "none", "shape-rendering": "crispEdges" }, stage);
     const parts = tl.jobs.map((j) => {
       const color = COLORS[j.cursor % COLORS.length];
-      const wire = svg("polyline", { stroke: color, "stroke-width": 1.5, opacity: 0 }, wireLayer);
-      const vias = [0, 1].map(() => svg("circle", { r: 2.5, fill: color, opacity: 0 }, wireLayer));
+      const wire = svg("polyline", { stroke: color, "stroke-width": 2, opacity: 0 }, wireLayer);
+      const vias = [0, 1].map(() => svg("rect", { width: 6, height: 6, fill: color, opacity: 0 }, wireLayer));
       const box = svg("rect", { fill: `${color}0d`, stroke: color, "stroke-width": 1, "stroke-dasharray": "4 3", opacity: 0 }, stage);
       const badge = svg("g", { opacity: 0 }, stage);
-      const badgeBg = svg("rect", { rx: 3, height: 16, fill: color }, badge);
-      const badgeText = svg("text", { "font-size": 10, fill: "#07080a", "font-family": "var(--font-mono), monospace", y: 11.5 }, badge);
+      const badgeBg = svg("rect", { height: 16, fill: color }, badge);
+      const badgeText = svg("text", { fill: "#07080a", y: 12.5 }, badge);
       const caret = svg("line", { stroke: color, "stroke-width": 2, opacity: 0 }, stage);
       return { job: j, color, wire, vias, box, badge, badgeBg, badgeText, caret };
     });
@@ -133,8 +182,8 @@ export default function SignalSwarm() {
     const clkY = vh - 22;
     const clkX0 = 46;
     const clock = svg("g", {}, stage);
-    svg("text", { x: 14, y: clkY + 4, "font-size": 11, fill: "#80839d", "font-family": "var(--font-mono), monospace" }, clock).textContent = "clk";
-    const clkPath = svg("path", { d: clockPath(clkX0, vw - 14, clkY), fill: "none", stroke: "#00e87a", "stroke-width": 1.25, opacity: 0.8 }, clock);
+    svg("text", { x: 14, y: clkY + 5, fill: "#80839d" }, clock).textContent = "clk";
+    const clkPath = svg("path", { d: clockPath(clkX0, vw - 14, clkY), fill: "none", stroke: "#00e87a", "stroke-width": 2, opacity: 0.8, "shape-rendering": "crispEdges" }, clock);
     const clkLen = clkPath.getTotalLength?.() || vw * 2;
     clkPath.setAttribute("stroke-dasharray", `${clkLen}`);
     const latchRing = svg("circle", { cx: tl.latchPoint.x, cy: tl.latchPoint.y, r: 0, fill: "none", stroke: "#00e87a", "stroke-width": 2, opacity: 0 }, stage);
@@ -143,13 +192,26 @@ export default function SignalSwarm() {
       const color = COLORS[i % COLORS.length];
       const el = document.createElement("div");
       el.className = "bf-swarm-cursor";
-      el.innerHTML = `
-        ${pixelArrow(color)}
-        <svg class="i-cross" width="18" height="18" viewBox="-9 -9 18 18"><path d="M0 -8 V8 M-8 0 H8" stroke="${color}" stroke-width="1.5"/><circle r="2.5" fill="none" stroke="${color}"/></svg>
-        <svg class="i-beam" width="12" height="20" viewBox="-6 -10 12 20"><path d="M-3.5 -9 H3.5 M0 -9 V9 M-3.5 9 H3.5" stroke="${color}" stroke-width="1.6" fill="none"/></svg>
-        <span style="color:${color};border-color:${color}"><b>&gt;</b><em></em><i>_</i></span>`;
+      el.style.setProperty("--c", color);
+      el.innerHTML = `${pixelIcon("arrow", color)}${pixelIcon("cross", color)}${pixelIcon("beam", color)}
+        <span><b>&gt;</b><em></em><i>_</i></span>`;
+      const trail = Array.from({ length: TRAIL }, () => {
+        const px = document.createElement("div");
+        px.className = "bf-swarm-trail";
+        px.style.background = color;
+        layer.appendChild(px);
+        return px;
+      });
       layer.appendChild(el);
-      return { el, text: el.querySelector("em") as HTMLElement, label: c.label, resolved: false };
+      return {
+        el,
+        trail,
+        history: [] as { x: number; y: number }[],
+        text: el.querySelector("em") as HTMLElement,
+        label: c.label,
+        resolved: false,
+        glitchUntil: 0,
+      };
     });
 
     // ── run ──
@@ -193,7 +255,7 @@ export default function SignalSwarm() {
           p.box.setAttribute("opacity", "1");
           const label = `${Math.round(b.w)} × ${Math.round(b.h)}`;
           if (p.badgeText.textContent !== label) p.badgeText.textContent = label;
-          const bw = label.length * 6.2 + 10;
+          const bw = label.length * 5.4 + 10;
           p.badgeBg.setAttribute("width", `${bw}`);
           p.badgeText.setAttribute("x", "5");
           // below-left of the dragging corner, clear of the cursor's own label
@@ -234,8 +296,8 @@ export default function SignalSwarm() {
         w.pts.slice(1, -1).forEach((q, k) => {
           const v = p.vias[k];
           if (!v) return;
-          v.setAttribute("cx", `${q.x}`);
-          v.setAttribute("cy", `${q.y}`);
+          v.setAttribute("x", `${q.x - 3}`);
+          v.setAttribute("y", `${q.y - 3}`);
           v.setAttribute("opacity", `${w.alpha}`);
         });
       });
@@ -261,10 +323,36 @@ export default function SignalSwarm() {
       });
 
       f.cursors.forEach((c, i) => {
-        const el = cursorEls[i].el;
+        const ce = cursorEls[i];
+        const el = ce.el;
+        const x = snap(c.x);
+        const y = snap(c.y);
         el.dataset.mode = c.mode;
-        el.style.transform = `translate(${c.x}px, ${c.y}px)`;
+        el.style.transform = `translate(${x}px, ${y}px)`;
         el.style.opacity = `${1 - f.latch}`;
+
+        // a short trail of pixels, sampled on a coarse grid so it reads as dropped blocks
+        const h = ce.history;
+        const gx = Math.round(x / 6) * 6;
+        const gy = Math.round(y / 6) * 6;
+        if (!h.length || h[0].x !== gx || h[0].y !== gy) {
+          h.unshift({ x: gx, y: gy });
+          if (h.length > TRAIL + 1) h.pop();
+        }
+        ce.trail.forEach((px, k) => {
+          const q = h[k + 1];
+          if (!q || c.mode !== "move") {
+            px.style.opacity = "0";
+            return;
+          }
+          px.style.transform = `translate(${q.x}px, ${q.y}px)`;
+          px.style.opacity = `${(0.55 * (TRAIL - k)) / TRAIL * (1 - f.latch)}`;
+        });
+
+        // the odd glitch: a few frames of RGB split and jitter
+        if (t > ce.glitchUntil + 900 && Math.random() < 0.006) ce.glitchUntil = t + 110;
+        if (t < ce.glitchUntil) el.dataset.glitch = "1";
+        else delete el.dataset.glitch;
       });
 
       if (f.latch > 0) {
@@ -304,20 +392,26 @@ export default function SignalSwarm() {
     <div className="fixed inset-0 z-[60] pointer-events-none">
       <style>{`
         .bf-swarm-svg{position:absolute;inset:0}
-        .bf-swarm-cursor{position:absolute;left:0;top:0;will-change:transform}
+        .bf-swarm-svg text{font-family:${PIXEL_FONT};font-size:14px}
+        .bf-swarm-trail{position:absolute;left:0;top:0;width:4px;height:4px;opacity:0;will-change:transform}
+        .bf-swarm-cursor{position:absolute;left:0;top:0;will-change:transform;image-rendering:pixelated}
         .bf-swarm-cursor svg{position:absolute;left:0;top:0}
         .bf-swarm-cursor .i-cross{left:-9px;top:-9px}
-        .bf-swarm-cursor span em{font-style:normal}
-        .bf-swarm-cursor .i-beam{left:-6px;top:-10px}
+        .bf-swarm-cursor .i-beam{left:-7px;top:-9px}
         .bf-swarm-cursor .i-cross,.bf-swarm-cursor .i-beam{display:none}
         .bf-swarm-cursor[data-mode=drag] .i-arrow,.bf-swarm-cursor[data-mode=type] .i-arrow{display:none}
         .bf-swarm-cursor[data-mode=drag] .i-cross{display:block}
         .bf-swarm-cursor[data-mode=type] .i-beam{display:block}
-        .bf-swarm-cursor span{position:absolute;left:14px;top:19px;white-space:nowrap;border:1px solid;border-radius:3px;padding:0 6px;
-          font:600 10px/16px var(--font-mono),monospace;background:rgba(7,8,10,.88);box-shadow:0 0 10px -2px currentColor;
-          text-shadow:0 0 6px currentColor}
-        .bf-swarm-cursor span b{opacity:.55;margin-right:4px;font-weight:600}
+        /* pixel box: square-notched corners from four 2px edge shadows, a hard drop shadow, scanlines */
+        .bf-swarm-cursor span{position:absolute;left:16px;top:24px;white-space:nowrap;padding:1px 6px 0;
+          font-family:${PIXEL_FONT};font-size:16px;line-height:16px;letter-spacing:.5px;color:var(--c);
+          background:#07080a repeating-linear-gradient(0deg,transparent 0 2px,rgba(255,255,255,.045) 2px 4px);
+          box-shadow:0 -2px 0 0 var(--c),0 2px 0 0 var(--c),-2px 0 0 0 var(--c),2px 0 0 0 var(--c),5px 5px 0 0 rgba(0,0,0,.65)}
+        .bf-swarm-cursor span em{font-style:normal}
+        .bf-swarm-cursor span b{opacity:.5;margin-right:4px;font-weight:400}
         .bf-swarm-cursor span i{font-style:normal;animation:bf-swarm-blink 1s steps(1) infinite}
+        .bf-swarm-cursor[data-glitch] span{transform:translate(2px,-2px);text-shadow:-2px 0 0 #ff2e63,2px 0 0 #08f7fe}
+        .bf-swarm-cursor[data-glitch] svg{transform:translateX(-2px)}
         @keyframes bf-swarm-blink{50%{opacity:0}}
       `}</style>
       <div ref={layerRef} className="absolute inset-0" aria-hidden="true" />
