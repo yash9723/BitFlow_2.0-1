@@ -1,0 +1,272 @@
+/**
+ * lib/swarm/plan.ts — the landing-page "signal swarm" as a pure timeline (no DOM).
+ *
+ * Each page block above the fold is a target. Signal cursors (clk, rst_n, data[7:0], …) take
+ * targets top-down: fly to the nearest block already built, route a Manhattan wire from it like
+ * a place-and-route trace, then either drag out the block's bounding box ("place") or type it in
+ * left to right ("type"). `buildTimeline` schedules everything once; `sample` turns any moment
+ * into what to draw, so the renderer just samples it each animation frame.
+ */
+import { type Pt, clamp, dist, easeInOutCubic, easeOutCubic, partialPath, pathLength, pointAt, travelTime } from "./motion";
+
+export type Kind = "place" | "type";
+
+export interface Target {
+  id: string;
+  kind: Kind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export const SIGNALS = ["clk", "rst_n", "data[7:0]", "valid", "ready", "en", "sel", "q"];
+
+type Mode = "move" | "wire" | "drag" | "type";
+
+interface Segment {
+  t0: number;
+  t1: number;
+  mode: Mode;
+  path: Pt[];
+}
+
+export interface Job {
+  target: Target;
+  cursor: number;
+  /** Wire from an already-built block to this one's start point, or null for the first block. */
+  wire: Pt[] | null;
+  wireStart: number;
+  /** When the cursor starts dragging / typing, and when it lets go. */
+  buildStart: number;
+  buildEnd: number;
+  /** When the block is fully visible. */
+  done: number;
+}
+
+export interface Timeline {
+  jobs: Job[];
+  cursors: { label: string; segments: Segment[] }[];
+  /** All blocks built; the swarm then converges on `latchAt`. */
+  builtAt: number;
+  latchPoint: Pt;
+  latchAt: number;
+  end: number;
+}
+
+export const REVEAL_MS = 260;
+/** A wire may leave a block once its box is this far through being dragged out. */
+export const WIRE_AFTER = 0.6;
+const CONVERGE_MS = 520;
+const LATCH_MS = 380;
+
+/** A Manhattan wire from a to b: vertical-first when b is below a, otherwise horizontal-first. */
+export function routeWire(a: Pt, b: Pt): Pt[] {
+  if (a.x === b.x || a.y === b.y) return [a, b];
+  if (b.y > a.y) {
+    const midY = Math.round((a.y + b.y) / 2);
+    return [a, { x: a.x, y: midY }, { x: b.x, y: midY }, b];
+  }
+  const midX = Math.round((a.x + b.x) / 2);
+  return [a, { x: midX, y: a.y }, { x: midX, y: b.y }, b];
+}
+
+/** Where a block's wire leaves from: its bottom edge if the next block is below, else its right edge. */
+function pinFor(src: Target, dst: Target): Pt {
+  if (dst.y >= src.y + src.h) return { x: Math.round(src.x + Math.min(24, src.w / 2)), y: src.y + src.h };
+  return { x: src.x + src.w, y: Math.round(src.y + Math.min(14, src.h / 2)) };
+}
+
+const startPoint = (t: Target): Pt => (t.kind === "type" ? { x: t.x, y: Math.round(t.y + t.h / 2) } : { x: t.x, y: t.y });
+
+export function buildDuration(t: Target): number {
+  if (t.kind === "type") return clamp(Math.round(t.w / 9) * 12, 200, 650);
+  return clamp(220 + Math.hypot(t.w, t.h) * 0.3, 260, 520);
+}
+
+/** Order targets reading-style: top to bottom, rows of roughly the same top left to right. */
+export function orderTargets(targets: Target[]): Target[] {
+  return targets.slice().sort((a, b) => (Math.abs(a.y - b.y) > 12 ? a.y - b.y : a.x - b.x));
+}
+
+/** Corner points just outside the viewport, spread around it, where the cursors fly in from. */
+function entryPoints(n: number, vw: number, vh: number): Pt[] {
+  const out: Pt[] = [{ x: -24, y: -24 }]; // clk comes in from the top-left, where the first block starts
+  for (let i = 1; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + 0.4;
+    out.push({ x: Math.round(vw / 2 + Math.cos(a) * (vw / 2 + 40)), y: Math.round(vh / 2 + Math.sin(a) * (vh / 2 + 40)) });
+  }
+  return out;
+}
+
+export function buildTimeline(input: Target[], vw: number, vh: number, maxCursors = SIGNALS.length): Timeline {
+  const targets = orderTargets(input);
+  const n = Math.max(1, Math.min(maxCursors, SIGNALS.length, targets.length));
+  const pos = entryPoints(n, vw, vh);
+  const free = new Array(n).fill(0);
+  const cursors = Array.from({ length: n }, (_, i) => ({ label: SIGNALS[i], segments: [] as Segment[] }));
+  const jobs: Job[] = [];
+
+  const push = (c: number, seg: Segment) => {
+    if (seg.t1 > seg.t0) cursors[c].segments.push(seg);
+  };
+
+  targets.forEach((t, i) => {
+    const start = startPoint(t);
+    // the nearest block already scheduled, measured from its wire pin to this block's start point
+    let src: Job | null = null;
+    let best = Infinity;
+    for (const j of jobs) {
+      const d = dist(pinFor(j.target, t), start);
+      if (d < best) {
+        best = d;
+        src = j;
+      }
+    }
+    const wire = src ? routeWire(pinFor(src.target, t), start) : null;
+    const goal = wire ? wire[0] : start;
+
+    // the cursor that can get there soonest; the first block uses cursor 0 so `clk` leads
+    let c = 0;
+    if (i > 0) {
+      let soonest = Infinity;
+      for (let k = 0; k < n; k++) {
+        const arrive = free[k] + travelTime(dist(pos[k], goal));
+        if (arrive < soonest) {
+          soonest = arrive;
+          c = k;
+        }
+      }
+    }
+
+    const fly = travelTime(dist(pos[c], goal));
+    push(c, { t0: free[c], t1: free[c] + fly, mode: "move", path: [pos[c], goal] });
+    let now = free[c] + fly;
+
+    let wireStart = now;
+    if (wire && src) {
+      // wait at the pin until the source block is mostly drawn out
+      wireStart = Math.max(now, src.buildStart + WIRE_AFTER * (src.buildEnd - src.buildStart));
+      push(c, { t0: now, t1: wireStart, mode: "move", path: [goal, goal] });
+      const trace = clamp(pathLength(wire) / 1.8, 140, 420);
+      push(c, { t0: wireStart, t1: wireStart + trace, mode: "wire", path: wire });
+      now = wireStart + trace;
+    }
+
+    const buildStart = now;
+    const buildEnd = buildStart + buildDuration(t);
+    const end: Pt = t.kind === "type" ? { x: t.x + t.w, y: start.y } : { x: t.x + t.w, y: t.y + t.h };
+    push(c, { t0: buildStart, t1: buildEnd, mode: t.kind === "type" ? "type" : "drag", path: [start, end] });
+
+    jobs.push({
+      target: t,
+      cursor: c,
+      wire,
+      wireStart,
+      buildStart,
+      buildEnd,
+      done: t.kind === "type" ? buildEnd : buildEnd + REVEAL_MS,
+    });
+    free[c] = buildEnd + 40;
+    pos[c] = end;
+  });
+
+  const builtAt = Math.max(0, ...jobs.map((j) => j.done));
+  const latchPoint = { x: Math.round(vw / 2), y: Math.round(vh / 2) };
+  for (let k = 0; k < n; k++) {
+    push(k, { t0: free[k], t1: builtAt, mode: "move", path: [pos[k], pos[k]] });
+    const t0 = Math.max(free[k], builtAt);
+    push(k, { t0, t1: t0 + CONVERGE_MS, mode: "move", path: [pos[k], latchPoint] });
+  }
+  const latchAt = builtAt + CONVERGE_MS;
+  return { jobs, cursors, builtAt, latchPoint, latchAt, end: latchAt + LATCH_MS };
+}
+
+// ── Sampling ────────────────────────────────────────────────────────────
+
+export interface CursorFrame {
+  x: number;
+  y: number;
+  mode: Mode;
+  label: string;
+}
+
+export interface TargetFrame {
+  id: string;
+  kind: Kind;
+  /** Dashed bounding box while being dragged (viewport coords), else null. */
+  box: { x: number; y: number; w: number; h: number } | null;
+  /** 0 = hidden, 1 = fully visible. */
+  reveal: number;
+  /** Text caret x while typing, else null. */
+  caret: number | null;
+}
+
+export interface Frame {
+  cursors: CursorFrame[];
+  targets: TargetFrame[];
+  wires: { pts: Pt[]; alpha: number }[];
+  /** 0–1: cursors gathered and the latch flash playing. */
+  latch: number;
+  done: boolean;
+}
+
+function cursorAt(segs: Segment[], t: number): { p: Pt; mode: Mode } {
+  if (!segs.length) return { p: { x: 0, y: 0 }, mode: "move" };
+  if (t <= segs[0].t0) return { p: segs[0].path[0], mode: "move" };
+  for (const s of segs) {
+    if (t < s.t1) {
+      if (t < s.t0) return { p: s.path[0], mode: "move" };
+      const f = (t - s.t0) / (s.t1 - s.t0);
+      const eased = s.mode === "move" ? easeInOutCubic(f) : s.mode === "drag" ? easeOutCubic(f) : f;
+      return { p: pointAt(s.path, eased), mode: s.mode };
+    }
+  }
+  const last = segs[segs.length - 1];
+  return { p: last.path[last.path.length - 1], mode: "move" };
+}
+
+export function sample(tl: Timeline, t: number): Frame {
+  const cursors = tl.cursors.map((c) => {
+    const { p, mode } = cursorAt(c.segments, t);
+    return { x: p.x, y: p.y, mode, label: c.label };
+  });
+
+  const targets: TargetFrame[] = tl.jobs.map((j) => {
+    const tg = j.target;
+    let box: TargetFrame["box"] = null;
+    let reveal = 0;
+    let caret: number | null = null;
+    if (tg.kind === "type") {
+      if (t >= j.buildEnd) reveal = 1;
+      else if (t >= j.buildStart) {
+        // reveal in whole characters (~9px each) so it reads as typing, not a wipe
+        const chars = Math.max(1, Math.round(tg.w / 9));
+        reveal = Math.floor(((t - j.buildStart) / (j.buildEnd - j.buildStart)) * chars) / chars;
+        caret = tg.x + tg.w * reveal;
+      }
+    } else if (t >= j.buildStart) {
+      const f = easeOutCubic(clamp((t - j.buildStart) / (j.buildEnd - j.buildStart), 0, 1));
+      if (t < j.done) box = { x: tg.x, y: tg.y, w: tg.w * f, h: tg.h * f };
+      reveal = clamp((t - j.buildEnd) / REVEAL_MS, 0, 1);
+    }
+    return { id: tg.id, kind: tg.kind, box, reveal, caret };
+  });
+
+  const fade = clamp((t - tl.builtAt) / 400, 0, 1);
+  const wires = tl.jobs
+    .filter((j) => j.wire && t >= j.wireStart)
+    .map((j) => {
+      const trace = j.buildStart - j.wireStart;
+      const f = trace <= 0 ? 1 : clamp((t - j.wireStart) / trace, 0, 1);
+      return { pts: partialPath(j.wire as Pt[], f), alpha: 1 - fade };
+    });
+
+  return {
+    cursors,
+    targets,
+    wires,
+    latch: clamp((t - tl.latchAt) / (tl.end - tl.latchAt), 0, 1),
+    done: t >= tl.end,
+  };
+}

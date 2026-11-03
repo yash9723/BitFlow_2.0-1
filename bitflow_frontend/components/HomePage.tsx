@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SiteLinks } from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
+import SignalSwarm, { SwarmPrelude } from "@/components/SignalSwarm";
 
 /* ── Nav links — centered between logo and Sign In ────────────────── */
 const NAV_LINKS = [
@@ -263,8 +264,11 @@ export default function LandingPage() {
 
   return (
     <main className="min-h-screen bg-void text-bright overflow-x-hidden selection:bg-phosphor/30">
+      {/* First visit: a swarm of signal cursors builds the page (components/SignalSwarm.tsx) */}
+      <SwarmPrelude />
+      <SignalSwarm />
       {/* Navigation — 3-column grid, links always centered between logo and Sign In */}
-      <nav className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
+      <nav data-swarm-target="place" className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
         <Link href="/" className="justify-self-start flex items-center gap-2 group">
           <img
             src="/bitflow_logo_64.png"
@@ -292,19 +296,19 @@ export default function LandingPage() {
       {/* Hero — golden-ratio split (61.8% text / 38.2% visual) */}
       <section className="max-w-[1400px] mx-auto px-6 md:px-10 pt-16 pb-12 grid grid-cols-1 lg:grid-cols-[1.618fr_1fr] gap-10 items-center animate-fade_up">
         <div>
-          <span className="inline-block px-3.5 py-1.5 border border-phosphor/40 rounded text-[11px] tracking-[0.18em] text-phosphor uppercase mb-6">
+          <span data-swarm-target="place" className="inline-block px-3.5 py-1.5 border border-phosphor/40 rounded text-[11px] tracking-[0.18em] text-phosphor uppercase mb-6">
             HDL Engineering Platform
           </span>
-          <h1 className="font-serif text-4xl md:text-5xl leading-[1.12] mb-6">
+          <h1 data-swarm-target="type" className="font-serif text-4xl md:text-5xl leading-[1.12] mb-6">
             Design. <span className="text-phosphor">Learn.</span>
             <br />
             Build.
           </h1>
-          <p className="text-[15px] text-ghost leading-relaxed max-w-md mb-8">
+          <p data-swarm-target="type" className="text-[15px] text-ghost leading-relaxed max-w-md mb-8">
             The all-in-one platform for RTL design, verification, and digital electronics learning — write,
             simulate, and debug Verilog and SystemVerilog right in your browser.
           </p>
-          <div className="flex flex-wrap gap-3.5 mb-10">
+          <div data-swarm-target="place" className="flex flex-wrap gap-3.5 mb-10">
             <Link
               href="/login?mode=register"
               className="px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors hover:-translate-y-0.5"
@@ -318,7 +322,7 @@ export default function LandingPage() {
               See how it works
             </Link>
           </div>
-          <div className="flex gap-14 border-t border-rim pt-6 max-w-md">
+          <div data-swarm-target="place" className="flex gap-14 border-t border-rim pt-6 max-w-md">
             {STATS.map((s) => (
               <div key={s.label}>
                 <div className="font-serif text-2xl text-bright">{s.value}</div>
@@ -328,20 +332,22 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <ChipVisual />
+        <div data-swarm-target="place">
+          <ChipVisual />
+        </div>
       </section>
 
       {/* Why BitFlow */}
       <section className="max-w-[1400px] mx-auto px-6 md:px-10 py-20">
-        <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Why BitFlow</div>
-        <h2 className="font-serif text-3xl md:text-4xl mb-10 leading-tight">
+        <div data-swarm-target="place" className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Why BitFlow</div>
+        <h2 data-swarm-target="type" className="font-serif text-3xl md:text-4xl mb-10 leading-tight">
           The Ultimate
           <br />
           HDL Workbench.
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {WHY_CARDS.map((c) => (
-            <div key={c.title} className="border border-rim rounded-xl p-6 bg-pit">
+            <div key={c.title} data-swarm-target="place" className="border border-rim rounded-xl p-6 bg-pit">
               <div className="w-9 h-9 border border-phosphor/35 rounded-lg flex items-center justify-center text-phosphor mb-5">
                 {c.icon}
               </div>

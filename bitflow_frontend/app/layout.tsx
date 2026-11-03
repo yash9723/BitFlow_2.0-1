@@ -90,8 +90,9 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // suppressHydrationWarning: the landing-page intro (components/SignalSwarm.tsx) sets data-swarm on <html> before hydration
   return (
-    <html lang="en" className={`h-full ${inter.variable} ${mono.variable}`}>
+    <html lang="en" className={`h-full ${inter.variable} ${mono.variable}`} suppressHydrationWarning>
       <body className="h-full overflow-y-auto bg-void text-bright font-mono antialiased">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(SITE_SCHEMA) }} />
         <AuthProvider>
