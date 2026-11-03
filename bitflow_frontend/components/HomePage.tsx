@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SiteLinks } from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
-import SignalSwarm, { SwarmPrelude } from "@/components/SignalSwarm";
+import SignalSwarm, { SwarmPrelude } from "@/components/swarm/SignalSwarm";
+import { REPLAY_EVENT } from "@/lib/swarm/replay";
 
 /* ── Nav links — centered between logo and Sign In ────────────────── */
 const NAV_LINKS = [
@@ -264,7 +265,7 @@ export default function LandingPage() {
 
   return (
     <main className="min-h-screen bg-void text-bright overflow-x-hidden selection:bg-phosphor/30">
-      {/* First visit: a swarm of signal cursors builds the page (components/SignalSwarm.tsx) */}
+      {/* First visit: a swarm of signal cursors builds the page (components/swarm/SignalSwarm.tsx) */}
       <SwarmPrelude />
       <SignalSwarm />
       {/* Navigation — 3-column grid, links always centered between logo and Sign In */}
@@ -299,7 +300,7 @@ export default function LandingPage() {
           <span data-swarm-target="place" className="inline-block px-3.5 py-1.5 border border-phosphor/40 rounded text-[11px] tracking-[0.18em] text-phosphor uppercase mb-6">
             HDL Engineering Platform
           </span>
-          <h1 data-swarm-target="type" className="font-serif text-4xl md:text-5xl leading-[1.12] mb-6">
+          <h1 data-swarm-target="type" data-swarm-decrypt className="font-serif text-4xl md:text-5xl leading-[1.12] mb-6">
             Design. <span className="text-phosphor">Learn.</span>
             <br />
             Build.
@@ -342,7 +343,7 @@ export default function LandingPage() {
       {/* Why BitFlow */}
       <section className="max-w-[1400px] mx-auto px-6 md:px-10 py-20">
         <div data-swarm-target="place" className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Why BitFlow</div>
-        <h2 data-swarm-target="type" className="font-serif text-3xl md:text-4xl mb-10 leading-tight">
+        <h2 data-swarm-target="type" data-swarm-decrypt className="font-serif text-3xl md:text-4xl mb-10 leading-tight">
           The Ultimate
           <br />
           HDL Workbench.
@@ -368,12 +369,13 @@ export default function LandingPage() {
       {/* Categories — hover pop animation */}
       <section className="max-w-[1400px] mx-auto px-6 md:px-10 pb-20">
         <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Built for HDL learners</div>
-          <h2 className="font-serif text-2xl md:text-3xl text-pale">
+          <div data-swarm-target="place" className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Built for HDL learners</div>
+          <h2 data-swarm-target="type" className="font-serif text-2xl md:text-3xl text-pale">
             Everything you need to go from Verilog to verified design.
           </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-rim border border-rim rounded-xl overflow-hidden">
+        {/* built as one block: its 1px dividers are the grid's own background, which would show as a grey slab around hidden cells */}
+        <div data-swarm-target="place" className="grid grid-cols-2 md:grid-cols-4 gap-px bg-rim border border-rim rounded-xl overflow-hidden">
           {CATEGORIES.map((cat) => (
             <div
               key={cat.title}
@@ -394,16 +396,17 @@ export default function LandingPage() {
 
       {/* Final CTA */}
       <section className="max-w-xl mx-auto text-center px-6 pb-28 pt-10">
-        <h2 className="font-serif text-3xl md:text-4xl mb-4">
+        <h2 data-swarm-target="type" data-swarm-decrypt className="font-serif text-3xl md:text-4xl mb-4">
           Ready to compile
           <br />
           your first design?
         </h2>
-        <p className="text-sm text-ghost leading-relaxed mb-8">
+        <p data-swarm-target="type" className="text-sm text-ghost leading-relaxed mb-8">
           Join BitFlow and start writing Verilog in your browser — no installs, no waiting.
         </p>
         <Link
           href="/login?mode=register"
+          data-swarm-target="place"
           className="inline-block px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
         >
           Start learning free →
@@ -432,6 +435,14 @@ export default function LandingPage() {
           <SiteLinks />
 
           <div className="text-[11px] text-bright">© 2026 BitFlow. All rights reserved.</div>
+
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event(REPLAY_EVENT))}
+            className="text-[11px] font-mono text-dim hover:text-phosphor transition-colors"
+          >
+            <span className="text-phosphor">▸</span> Replay intro
+          </button>
 
           <div className="text-[11px] tracking-[0.14em] text-bright uppercase">
             Designed by <a href="https://www.linkedin.com/company/naviel-corporation/?viewAsMember=true" target="_blank" rel="noopener noreferrer" className="text-phosphor hover:underline font-bold transition-colors">NAVIEL Advanced Engineering & Technology</a>

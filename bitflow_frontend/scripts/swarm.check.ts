@@ -1,7 +1,8 @@
 /** scripts/swarm.check.ts — self-check for lib/swarm (npx tsx scripts/swarm.check.ts). */
 import assert from "node:assert/strict";
-import { LATCH_RING, SIGNALS, type Target, buildTimeline, orderTargets, routeWire, sample } from "../lib/swarm/plan";
-import { partialPath, pathLength, pointAt } from "../lib/swarm/motion";
+import { LATCH_RING, SIGNALS, type Target, buildTimeline, dissolveOrder, hashSeed, orderTargets, routeWire, sample } from "../lib/swarm/plan";
+import { partialPath, pathLength, pointAt, repel } from "../lib/swarm/motion";
+import { BOOT_LINES, BOOT_MS, bootFrame } from "../lib/swarm/boot";
 
 // a landing page above the fold at 1280×800: nav, badge, heading, paragraph, buttons, stats, chip, card row
 const targets: Target[] = [
@@ -90,5 +91,63 @@ assert.equal(buildTimeline([targets[1]], 400, 800, 4).cursors.length, 4);
 assert.equal(buildTimeline(targets, 400, 800, 3).jobs.length, targets.length, "fewer cursors than blocks still builds everything");
 const empty = buildTimeline([], 400, 800);
 assert.ok(sample(empty, empty.end).done);
+
+// options: start shifts everything, speed shortens, labelOffset rotates the labels
+const later = buildTimeline(targets, 1280, 800, { start: 1000 });
+assert.equal(later.end, tl.end + 1000);
+assert.deepEqual(later.jobs.map((j) => j.buildStart), tl.jobs.map((j) => j.buildStart + 1000));
+assert.ok(sample(later, 1000).targets.every((t) => t.reveal === 0), "nothing happens before start");
+const fast = buildTimeline(targets, 1280, 800, { speed: 2 });
+assert.ok(fast.builtAt < tl.builtAt * 0.75, "speed 2 is clearly faster");
+const rotated = buildTimeline(targets, 1280, 800, { cursors: 3, labelOffset: 9 });
+assert.deepEqual(rotated.cursors.map((c) => c.signal), [9, 0, 1]);
+assert.deepEqual(rotated.cursors.map((c) => c.label), [SIGNALS[9], SIGNALS[0], SIGNALS[1]]);
+
+// an "exit" batch further down the page: cursors come from around that view and leave it again
+const view = { x: 0, y: 1600, w: 1280, h: 800 };
+const below = targets.map((t) => ({ ...t, id: `b-${t.id}`, y: t.y + 1600 }));
+const batch = buildTimeline(below, 1280, 800, { cursors: 4, finale: "exit", view, start: 5000, speed: 1.4 });
+assert.equal(batch.finale, "exit");
+assert.equal(batch.jobs.length, below.length);
+const out = sample(batch, batch.end);
+assert.ok(out.done && out.latch === 0 && out.targets.every((t) => t.reveal === 1));
+const inView = (c: { x: number; y: number }) => c.x > view.x && c.x < view.x + view.w && c.y > view.y && c.y < view.y + view.h;
+assert.ok(out.cursors.every((c) => !inView(c)), "exit cursors end outside the view");
+assert.ok(sample(batch, 5000).cursors.every((c) => !inView(c)), "and start outside it");
+assert.ok(batch.end - 5000 < tl.end, "a scroll batch is shorter than the opening build");
+
+// pixel dissolve order: a deterministic permutation, drifting top to bottom
+const order = dissolveOrder(20, 6, 7);
+assert.deepEqual(order.slice().sort((a, b) => a - b), Array.from({ length: 120 }, (_, i) => i));
+assert.deepEqual(order, dissolveOrder(20, 6, 7));
+assert.notDeepEqual(order, dissolveOrder(20, 6, 8));
+const meanRow = (xs: number[]) => xs.reduce((s, i) => s + Math.floor(i / 20), 0) / xs.length;
+assert.ok(meanRow(order.slice(0, 40)) < meanRow(order.slice(80)), "earlier cells are higher up on average");
+assert.equal(dissolveOrder(1, 1, 1).length, 1);
+assert.equal(hashSeed("h1"), hashSeed("h1"));
+assert.notEqual(hashSeed("h1"), hashSeed("h2"));
+
+// repel: nothing outside the radius, a push straight away inside it
+assert.deepEqual(repel({ x: 300, y: 0 }, { x: 0, y: 0 }, 120, 0.7), { x: 0, y: 0 });
+const push = repel({ x: 60, y: 0 }, { x: 0, y: 0 }, 120, 0.7);
+assert.ok(push.x > 0 && push.y === 0);
+assert.ok(repel({ x: 10, y: 0 }, { x: 0, y: 0 }, 120, 0.7).x > push.x, "closer pushes harder");
+assert.ok(Math.hypot(...Object.values(repel({ x: 0, y: 0 }, { x: 0, y: 0 }, 120, 0.7))) > 0, "right on top still moves");
+
+// boot: lines appear in order, characters only ever grow, and it is all there by the end
+let prev = "";
+for (let t = 0; t <= BOOT_MS; t += 10) {
+  const f = bootFrame(t);
+  const joined = f.lines.join("\n");
+  assert.ok(joined.length >= prev.length, `boot text never shrinks (t=${t})`);
+  prev = joined;
+}
+const last = bootFrame(BOOT_MS);
+assert.ok(last.done && last.collapse === 1);
+assert.equal(last.lines.length, BOOT_LINES.length);
+assert.ok(last.lines[3].includes("[############] 100%"), last.lines[3]);
+assert.equal(last.lines[4], "> make page");
+assert.equal(bootFrame(0).lines.length, 1);
+assert.equal(bootFrame(0).collapse, 0);
 
 console.log("swarm: all checks passed");

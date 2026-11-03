@@ -55,3 +55,17 @@ export function partialPath(pts: Pt[], f: number): Pt[] {
 
 /** How long a cursor takes to fly a distance: quick for short hops, capped for long ones. */
 export const travelTime = (d: number) => clamp(120 + d * 0.35, 140, 480);
+
+/**
+ * How far to push a point away from `from` (e.g. the visitor's mouse): nothing outside `radius`,
+ * growing to `radius * strength` right on top of it.
+ */
+export function repel(p: Pt, from: Pt, radius: number, strength: number): Pt {
+  const dx = p.x - from.x;
+  const dy = p.y - from.y;
+  const d = Math.hypot(dx, dy);
+  if (d >= radius) return { x: 0, y: 0 };
+  const push = ((radius - d) / radius) * radius * strength;
+  if (d < 1e-6) return { x: push, y: 0 };
+  return { x: (dx / d) * push, y: (dy / d) * push };
+}

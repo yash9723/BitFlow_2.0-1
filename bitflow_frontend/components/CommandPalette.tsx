@@ -8,7 +8,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { replayIntro } from "@/lib/swarm/replay";
 import { type PaletteItem, rank } from "@/lib/palette";
 import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import { problemHref } from "@/lib/problem-href";
@@ -27,7 +28,11 @@ const PAGES: PaletteItem[] = [
 ].map(([href, title, keywords]) => ({ id: `page:${href}`, title, group: "Page", href, keywords }));
 
 const STUDIO: PaletteItem[] = STUDIO_TOOLS.map((t) => ({ id: `studio:${t.href}`, title: t.title, group: "Studio", href: t.href, keywords: t.blurb, hint: t.icon }));
-const ACTIONS: PaletteItem[] = [{ id: SHORTCUTS_ID, title: "Keyboard shortcuts", group: "Help", keywords: "keys hotkeys help" }];
+const REPLAY_ID = "action:replay-intro";
+const ACTIONS: PaletteItem[] = [
+  { id: SHORTCUTS_ID, title: "Keyboard shortcuts", group: "Help", keywords: "keys hotkeys help" },
+  { id: REPLAY_ID, title: "Replay the BitFlow intro", group: "Help", keywords: "intro swarm animation landing home replay cursors" },
+];
 
 const SHEET: { where: string; keys: [string, string][] }[] = [
   { where: "Everywhere", keys: [["Ctrl/⌘ + K", "command palette"], ["Esc", "close a dialog"]] },
@@ -47,6 +52,7 @@ function remember(id: string) {
 
 export default function CommandPalette() {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [query, setQuery] = useState("");
@@ -114,6 +120,7 @@ export default function CommandPalette() {
     remember(item.id);
     if (item.id === SHORTCUTS_ID) { setSheet(true); return; }
     close();
+    if (item.id === REPLAY_ID) { replayIntro(pathname, (href) => router.push(href)); return; }
     if (item.href) router.push(item.href);
   };
   const onKeyDown = (e: React.KeyboardEvent) => {

@@ -6,6 +6,10 @@
  * a place-and-route trace, then either drag out the block's bounding box ("place") or type it in
  * left to right ("type"). `buildTimeline` schedules everything once; `sample` turns any moment
  * into what to draw, so the renderer just samples it each animation frame.
+ *
+ * Coordinates are whatever the caller uses (the renderer uses page coordinates); `view` says
+ * which rectangle of that space is on screen, for where cursors fly in from and gather.
+ * One timeline is the opening build ("latch" finale); scrolling adds short "exit" batches.
  */
 import { type Pt, clamp, dist, easeInOutCubic, easeOutCubic, partialPath, pathLength, pointAt, travelTime } from "./motion";
 
@@ -61,7 +65,9 @@ export interface Job {
 
 export interface Timeline {
   jobs: Job[];
-  cursors: { label: string; segments: Segment[] }[];
+  /** `signal` is the index into SIGNALS (and the renderer's colours). */
+  cursors: { label: string; signal: number; segments: Segment[] }[];
+  finale: Finale;
   /** All blocks built; the swarm then converges on `latchAt`. */
   builtAt: number;
   latchPoint: Pt;
@@ -69,8 +75,32 @@ export interface Timeline {
   end: number;
 }
 
+export type Finale = "latch" | "exit";
+
+export interface View {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface TimelineOptions {
+  /** How many cursors (capped at SIGNALS.length). */
+  cursors?: number;
+  /** First SIGNALS index to use, so later batches get different labels. */
+  labelOffset?: number;
+  /** Every time in the timeline is shifted by this many ms. */
+  start?: number;
+  /** "latch": gather in the middle of the view and flash. "exit": fly back out after the last block. */
+  finale?: Finale;
+  /** > 1 is faster. */
+  speed?: number;
+  /** The on-screen rectangle in the targets' coordinates. Defaults to (0, 0, vw, vh). */
+  view?: View;
+}
+
 /** Small seeded PRNG so the swarm wanders the same way every run (and in tests). */
-function mulberry32(seed: number) {
+export function mulberry32(seed: number) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -118,22 +148,57 @@ export function orderTargets(targets: Target[]): Target[] {
   return targets.slice().sort((a, b) => (Math.abs(a.y - b.y) > 12 ? a.y - b.y : a.x - b.x));
 }
 
-/** Corner points just outside the viewport, spread around it, where the cursors fly in from. */
-function entryPoints(n: number, vw: number, vh: number): Pt[] {
-  const out: Pt[] = [{ x: -24, y: -24 }]; // clk comes in from the top-left, where the first block starts
+/** Points just outside the view, spread around it, where the cursors fly in from (and exit to). */
+export function entryPoints(n: number, v: View): Pt[] {
+  const out: Pt[] = [{ x: v.x - 24, y: v.y - 24 }]; // the lead comes in from the top-left, where the first block starts
   for (let i = 1; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + 0.4;
-    out.push({ x: Math.round(vw / 2 + Math.cos(a) * (vw / 2 + 40)), y: Math.round(vh / 2 + Math.sin(a) * (vh / 2 + 40)) });
+    // the direction, stretched until it reaches a rectangle 40px outside the view
+    const rx = v.w / 2 + 40;
+    const ry = v.h / 2 + 40;
+    const k = 1 / Math.max(Math.abs(Math.cos(a)) / rx, Math.abs(Math.sin(a)) / ry);
+    out.push({ x: Math.round(v.x + v.w / 2 + Math.cos(a) * k), y: Math.round(v.y + v.h / 2 + Math.sin(a) * k) });
   }
   return out;
 }
 
-export function buildTimeline(input: Target[], vw: number, vh: number, maxCursors = SIGNALS.length): Timeline {
+/**
+ * The order cells of a cols × rows grid clear in for the pixel-dissolve reveal: shuffled, with a
+ * `sweep` (0–1) bias so it also drifts top to bottom. Deterministic for a given seed.
+ */
+export function dissolveOrder(cols: number, rows: number, seed: number, sweep = 0.45): number[] {
+  const rand = mulberry32(seed);
+  const keyed = Array.from({ length: cols * rows }, (_, i) => {
+    const row = Math.floor(i / cols);
+    return { i, k: (rows > 1 ? row / (rows - 1) : 0) * sweep + rand() * (1 - sweep) };
+  });
+  return keyed.sort((a, b) => a.k - b.k).map((c) => c.i);
+}
+
+/** A stable small number from a string, for per-block seeds. */
+export function hashSeed(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+export function buildTimeline(input: Target[], vw: number, vh: number, options: TimelineOptions | number = {}): Timeline {
+  const opts: TimelineOptions = typeof options === "number" ? { cursors: options } : options;
+  const speed = opts.speed ?? 1;
+  const finale: Finale = opts.finale ?? "latch";
+  const view: View = opts.view ?? { x: 0, y: 0, w: vw, h: vh };
+  const offset = opts.labelOffset ?? 0;
+  const fly = (d: number) => travelTime(d) / speed;
+
   const targets = orderTargets(input);
-  const n = Math.max(1, Math.min(maxCursors, SIGNALS.length));
-  const pos = entryPoints(n, vw, vh);
+  const n = Math.max(1, Math.min(opts.cursors ?? SIGNALS.length, SIGNALS.length));
+  const entries = entryPoints(n, view);
+  const pos = entries.slice();
   const free = new Array(n).fill(0);
-  const cursors = Array.from({ length: n }, (_, i) => ({ label: SIGNALS[i], segments: [] as Segment[] }));
+  const cursors = Array.from({ length: n }, (_, i) => {
+    const signal = (i + offset) % SIGNALS.length;
+    return { label: SIGNALS[signal], signal, segments: [] as Segment[] };
+  });
   const jobs: Job[] = [];
 
   const push = (c: number, seg: Segment) => {
@@ -160,7 +225,7 @@ export function buildTimeline(input: Target[], vw: number, vh: number, maxCursor
     if (i > 0) {
       let soonest = Infinity;
       for (let k = 0; k < n; k++) {
-        const arrive = free[k] + travelTime(dist(pos[k], goal));
+        const arrive = free[k] + fly(dist(pos[k], goal));
         if (arrive < soonest) {
           soonest = arrive;
           c = k;
@@ -168,22 +233,22 @@ export function buildTimeline(input: Target[], vw: number, vh: number, maxCursor
       }
     }
 
-    const fly = travelTime(dist(pos[c], goal));
-    push(c, { t0: free[c], t1: free[c] + fly, mode: "move", path: [pos[c], goal] });
-    let now = free[c] + fly;
+    const flight = fly(dist(pos[c], goal));
+    push(c, { t0: free[c], t1: free[c] + flight, mode: "move", path: [pos[c], goal] });
+    let now = free[c] + flight;
 
     let wireStart = now;
     if (wire && src) {
       // wait at the pin until the source block is mostly drawn out
       wireStart = Math.max(now, src.buildStart + WIRE_AFTER * (src.buildEnd - src.buildStart));
       push(c, { t0: now, t1: wireStart, mode: "move", path: [goal, goal] });
-      const trace = clamp(pathLength(wire) / 1.8, 140, 420);
+      const trace = clamp(pathLength(wire) / 1.8, 140, 420) / speed;
       push(c, { t0: wireStart, t1: wireStart + trace, mode: "wire", path: wire });
       now = wireStart + trace;
     }
 
     const buildStart = now;
-    const buildEnd = buildStart + buildDuration(t);
+    const buildEnd = buildStart + buildDuration(t) / speed;
     const end: Pt = t.kind === "type" ? { x: t.x + t.w, y: start.y } : { x: t.x + t.w, y: t.y + t.h };
     push(c, { t0: buildStart, t1: buildEnd, mode: t.kind === "type" ? "type" : "drag", path: [start, end] });
 
@@ -201,7 +266,19 @@ export function buildTimeline(input: Target[], vw: number, vh: number, maxCursor
   });
 
   const builtAt = Math.max(0, ...jobs.map((j) => j.done));
-  const latchPoint = { x: Math.round(vw / 2), y: Math.round(vh / 2) };
+  const latchPoint = { x: Math.round(view.x + view.w / 2), y: Math.round(view.y + view.h / 2) };
+
+  if (finale === "exit") {
+    // each cursor leaves the way it came as soon as its last block is done
+    let end = builtAt;
+    for (let k = 0; k < n; k++) {
+      const out = fly(dist(pos[k], entries[k]));
+      push(k, { t0: free[k], t1: free[k] + out, mode: "move", path: [pos[k], entries[k]] });
+      end = Math.max(end, free[k] + out);
+    }
+    return shift({ jobs, cursors, finale, builtAt, latchPoint, latchAt: end, end }, opts.start ?? 0);
+  }
+
   const rand = mulberry32(0xb17f10);
   for (let k = 0; k < n; k++) {
     // between jobs and after its last one, a cursor hovers around whatever is being built right now
@@ -210,10 +287,10 @@ export function buildTimeline(input: Target[], vw: number, vh: number, maxCursor
       const busy = jobs.filter((j) => j.buildEnd > t).sort((a, b) => a.buildStart - b.buildStart)[0] ?? jobs[jobs.length - 1];
       const bt = busy.target;
       const to: Pt = {
-        x: Math.round(clamp(bt.x + rand() * bt.w + (rand() - 0.5) * 80, 8, vw - 8)),
-        y: Math.round(clamp(bt.y + rand() * bt.h + (rand() - 0.5) * 80, 8, vh - 40)),
+        x: Math.round(clamp(bt.x + rand() * bt.w + (rand() - 0.5) * 80, view.x + 8, view.x + view.w - 8)),
+        y: Math.round(clamp(bt.y + rand() * bt.h + (rand() - 0.5) * 80, view.y + 8, view.y + view.h - 40)),
       };
-      const hop = Math.min(travelTime(dist(pos[k], to)), builtAt - t);
+      const hop = Math.min(fly(dist(pos[k], to)), builtAt - t);
       push(k, { t0: t, t1: t + hop, mode: "move", path: [pos[k], to] });
       pos[k] = to;
       t += hop + 90 + rand() * 160;
@@ -225,7 +302,26 @@ export function buildTimeline(input: Target[], vw: number, vh: number, maxCursor
     push(k, { t0, t1: t0 + CONVERGE_MS, mode: "move", path: [pos[k], spot] });
   }
   const latchAt = builtAt + CONVERGE_MS;
-  return { jobs, cursors, builtAt, latchPoint, latchAt, end: latchAt + LATCH_MS };
+  return shift({ jobs, cursors, finale, builtAt, latchPoint, latchAt, end: latchAt + LATCH_MS }, opts.start ?? 0);
+}
+
+/** Moves a whole timeline `by` ms later. */
+function shift(tl: Timeline, by: number): Timeline {
+  if (!by) return tl;
+  for (const c of tl.cursors) for (const s of c.segments) {
+    s.t0 += by;
+    s.t1 += by;
+  }
+  for (const j of tl.jobs) {
+    j.wireStart += by;
+    j.buildStart += by;
+    j.buildEnd += by;
+    j.done += by;
+  }
+  tl.builtAt += by;
+  tl.latchAt += by;
+  tl.end += by;
+  return tl;
 }
 
 // ── Sampling ────────────────────────────────────────────────────────────
@@ -240,7 +336,7 @@ export interface CursorFrame {
 export interface TargetFrame {
   id: string;
   kind: Kind;
-  /** Dashed bounding box while being dragged (viewport coords), else null. */
+  /** Dashed bounding box while being dragged, else null. */
   box: { x: number; y: number; w: number; h: number } | null;
   /** 0 = hidden, 1 = fully visible. */
   reveal: number;
@@ -312,7 +408,7 @@ export function sample(tl: Timeline, t: number): Frame {
     cursors,
     targets,
     wires,
-    latch: clamp((t - tl.latchAt) / (tl.end - tl.latchAt), 0, 1),
+    latch: tl.finale === "latch" ? clamp((t - tl.latchAt) / (tl.end - tl.latchAt), 0, 1) : 0,
     done: t >= tl.end,
   };
 }
