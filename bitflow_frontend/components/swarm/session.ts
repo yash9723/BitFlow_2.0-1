@@ -6,7 +6,7 @@
  *   the cursors chase the visitor's mouse and leave.
  *
  * Everything below the fold stays hidden until it is scrolled into view; then a short "exit"
- * batch of 3–4 cursors flies in and builds it. The visitor's mouse is a `you@bitflow` cursor
+ * batch of 2–3 cursors flies in and builds it. The visitor's mouse is a `you@bitflow` cursor
  * the swarm dodges, and clicking a block that is still being built finishes it at once.
  *
  * All overlay content lives in page coordinates inside `.bf-swarm-world`, which is shifted by
@@ -137,8 +137,8 @@ export function startSession(layer: HTMLElement, opts: SessionOptions) {
   const addBatch = (targets: TargetState[], main: boolean, t: number) => {
     targets.forEach((s) => (s.state = "scheduled"));
     const tl = buildTimeline(targets.map(asTarget), vw, vh, main
-      ? { cursors: phone ? 6 : 10, start: BOOT_MS, view: viewNow() }
-      : { cursors: Math.min(4, targets.length + 1), labelOffset: nextLabel, start: t, finale: "exit", speed: 1.4, view: viewNow() });
+      ? { cursors: phone ? 5 : 8, start: BOOT_MS, view: viewNow() }
+      : { cursors: Math.min(3, targets.length + 1), labelOffset: nextLabel, start: t, finale: "exit", speed: 1.4, view: viewNow() });
     if (!main) nextLabel += tl.cursors.length;
     batches.push({
       tl,
