@@ -268,8 +268,8 @@ export default function LandingPage() {
       <SwarmPrelude />
       <SignalSwarm />
       {/* Navigation — 3-column grid, links always centered between logo and Sign In */}
-      <nav data-swarm-target="place" className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
-        <Link href="/" className="justify-self-start flex items-center gap-2 group">
+      <nav className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
+        <Link href="/" data-swarm-target="place" className="justify-self-start flex items-center gap-2 group">
           <img
             src="/bitflow_logo_64.png"
             alt="BitFlow"
@@ -278,7 +278,7 @@ export default function LandingPage() {
           <span className="font-display font-bold text-lg text-bright">BitFlow</span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-8 text-[13px] text-ghost justify-self-center">
+        <div data-swarm-target="type" className="hidden md:flex items-center gap-8 text-[13px] text-ghost justify-self-center">
           {NAV_LINKS.map((link) => (
             <Link key={link.label} href={link.href} className="hover:text-bright transition-colors">
               {link.label}
@@ -286,7 +286,7 @@ export default function LandingPage() {
           ))}
         </div>
 
-        <div className="flex items-center gap-5 justify-self-end">
+        <div data-swarm-target="place" className="flex items-center gap-5 justify-self-end">
           <Link href="/login" className="px-4 py-2 rounded-md border border-rim text-[13px] text-pale hover:text-bright hover:border-muted transition-colors">
             Sign in
           </Link>
@@ -308,23 +308,25 @@ export default function LandingPage() {
             The all-in-one platform for RTL design, verification, and digital electronics learning — write,
             simulate, and debug Verilog and SystemVerilog right in your browser.
           </p>
-          <div data-swarm-target="place" className="flex flex-wrap gap-3.5 mb-10">
+          <div className="flex flex-wrap gap-3.5 mb-10">
             <Link
               href="/login?mode=register"
+              data-swarm-target="place"
               className="px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors hover:-translate-y-0.5"
             >
               Start learning free →
             </Link>
             <Link
               href="/about"
+              data-swarm-target="type"
               className="px-7 py-3.5 rounded-lg text-pale text-[13px] font-semibold hover:text-bright transition-colors"
             >
               See how it works
             </Link>
           </div>
-          <div data-swarm-target="place" className="flex gap-14 border-t border-rim pt-6 max-w-md">
+          <div className="flex gap-14 border-t border-rim pt-6 max-w-md">
             {STATS.map((s) => (
-              <div key={s.label}>
+              <div key={s.label} data-swarm-target="place">
                 <div className="font-serif text-2xl text-bright">{s.value}</div>
                 <div className="text-[10px] text-dim uppercase tracking-wider mt-1">{s.label}</div>
               </div>

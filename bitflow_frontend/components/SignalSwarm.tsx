@@ -18,7 +18,8 @@ import { useEffect, useRef, useState } from "react";
 import { type Target, buildTimeline, sample } from "@/lib/swarm/plan";
 
 const SEEN_KEY = "bf-swarm-seen";
-const COLORS = ["#00e87a", "#4db8ff", "#ffb84d", "#ff6bcb", "#a78bfa", "#5eead4", "#f87171", "#facc15"];
+// terminal phosphors: green first, then cyan / amber / magenta / violet, repeated in lighter shades
+const COLORS = ["#00e87a", "#4db8ff", "#ffb84d", "#ff6bcb", "#a78bfa", "#5eead4", "#00ff88", "#facc15", "#38bdf8", "#f472b6", "#86efac", "#fb923c", "#c4b5fd", "#2dd4bf", "#e879f9", "#a3e635"];
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const PRELUDE = `(function(){try{
@@ -99,7 +100,7 @@ export default function SignalSwarm() {
         h: Math.round(r.height),
       });
     });
-    const tl = buildTimeline(targets, vw, vh, vw < 640 ? 5 : 8);
+    const tl = buildTimeline(targets, vw, vh, vw < 640 ? 8 : 16);
 
     // ── build the overlay once; each frame only updates attributes ──
     const stage = svg("svg", { width: vw, height: vh, viewBox: `0 0 ${vw} ${vh}`, class: "bf-swarm-svg" }, layer);
@@ -133,7 +134,7 @@ export default function SignalSwarm() {
         <svg class="i-arrow" width="18" height="18" viewBox="0 0 18 18"><path d="M2 1.5 L2 15 L5.6 11.6 L8.3 17 L10.6 16 L8 10.8 L13 10.8 Z" fill="${color}" stroke="#07080a" stroke-width="1.2" stroke-linejoin="round"/></svg>
         <svg class="i-cross" width="18" height="18" viewBox="-9 -9 18 18"><path d="M0 -8 V8 M-8 0 H8" stroke="${color}" stroke-width="1.5"/><circle r="2.5" fill="none" stroke="${color}"/></svg>
         <svg class="i-beam" width="12" height="20" viewBox="-6 -10 12 20"><path d="M-3.5 -9 H3.5 M0 -9 V9 M-3.5 9 H3.5" stroke="${color}" stroke-width="1.6" fill="none"/></svg>
-        <span style="background:${color}">${c.label}</span>`;
+        <span style="color:${color};border-color:${color}"><b>&gt;</b>${c.label}<i>_</i></span>`;
       layer.appendChild(el);
       return el;
     });
@@ -281,8 +282,12 @@ export default function SignalSwarm() {
         .bf-swarm-cursor[data-mode=drag] .i-arrow,.bf-swarm-cursor[data-mode=type] .i-arrow{display:none}
         .bf-swarm-cursor[data-mode=drag] .i-cross{display:block}
         .bf-swarm-cursor[data-mode=type] .i-beam{display:block}
-        .bf-swarm-cursor span{position:absolute;left:14px;top:16px;white-space:nowrap;border-radius:4px;padding:1px 6px;
-          font:600 10px/16px var(--font-mono),monospace;color:#07080a}
+        .bf-swarm-cursor span{position:absolute;left:14px;top:16px;white-space:nowrap;border:1px solid;border-radius:3px;padding:0 6px;
+          font:600 10px/16px var(--font-mono),monospace;background:rgba(7,8,10,.88);box-shadow:0 0 10px -2px currentColor;
+          text-shadow:0 0 6px currentColor}
+        .bf-swarm-cursor span b{opacity:.55;margin-right:4px;font-weight:600}
+        .bf-swarm-cursor span i{font-style:normal;animation:bf-swarm-blink 1s steps(1) infinite}
+        @keyframes bf-swarm-blink{50%{opacity:0}}
       `}</style>
       <div ref={layerRef} className="absolute inset-0" aria-hidden="true" />
       <button

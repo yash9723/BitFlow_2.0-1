@@ -1,6 +1,6 @@
 /** scripts/swarm.check.ts — self-check for lib/swarm (npx tsx scripts/swarm.check.ts). */
 import assert from "node:assert/strict";
-import { type Target, buildTimeline, orderTargets, routeWire, sample } from "../lib/swarm/plan";
+import { LATCH_RING, SIGNALS, type Target, buildTimeline, orderTargets, routeWire, sample } from "../lib/swarm/plan";
 import { partialPath, pathLength, pointAt } from "../lib/swarm/motion";
 
 // a landing page above the fold at 1280×800: nav, badge, heading, paragraph, buttons, stats, chip, card row
@@ -22,11 +22,19 @@ assert.deepEqual(orderTargets(targets).map((t) => t.id), ["nav", "badge", "chip"
 assert.equal(tl.jobs.length, targets.length);
 assert.deepEqual(new Set(tl.jobs.map((j) => j.target.id)), new Set(targets.map((t) => t.id)));
 
-// all 7 cursors get work, and clk leads
-assert.equal(tl.cursors.length, 7);
+// the whole swarm turns up, clk leads, and with more cursors than blocks every block still has its own cursor
+assert.equal(tl.cursors.length, SIGNALS.length);
+assert.equal(new Set(SIGNALS).size, SIGNALS.length, "labels are unique");
 assert.equal(tl.jobs[0].cursor, 0);
 assert.equal(tl.cursors[0].label, "clk");
-for (let c = 0; c < tl.cursors.length; c++) assert.ok(tl.jobs.some((j) => j.cursor === c), `cursor ${c} gets a block`);
+assert.equal(new Set(tl.jobs.map((j) => j.cursor)).size, tl.jobs.length);
+// cursors without a block don't just sit there: they wander while the page is built
+const idle = tl.cursors.filter((_, c) => !tl.jobs.some((j) => j.cursor === c));
+assert.ok(idle.length > 0);
+for (const c of idle) {
+  const hops = c.segments.filter((s) => s.t1 <= tl.builtAt && (s.path[0].x !== s.path[1].x || s.path[0].y !== s.path[1].y));
+  assert.ok(hops.length >= 3, `${c.label} wanders`);
+}
 
 // only the first block has no wire; each wire is traced before its block is built
 assert.equal(tl.jobs[0].wire, null);
@@ -55,7 +63,7 @@ assert.equal(f0.done, false);
 const fEnd = sample(tl, tl.end);
 assert.ok(fEnd.targets.every((t) => t.reveal === 1));
 assert.ok(fEnd.done && fEnd.latch === 1);
-for (const c of fEnd.cursors) assert.deepEqual({ x: c.x, y: c.y }, tl.latchPoint, "cursors converge");
+for (const c of fEnd.cursors) assert.ok(Math.hypot(c.x - tl.latchPoint.x, c.y - tl.latchPoint.y) <= LATCH_RING + 1, "cursors converge");
 
 // mid-drag: a dashed box growing from the block's corner; mid-type: a caret inside the line
 const place = tl.jobs.find((j) => j.target.id === "cta")!;
@@ -76,7 +84,8 @@ assert.deepEqual(pointAt(L, 0.75), { x: 10, y: 5 });
 assert.deepEqual(partialPath(L, 0.25), [{ x: 0, y: 0 }, { x: 5, y: 0 }]);
 
 // a single block and an empty page don't break anything
-assert.equal(buildTimeline([targets[1]], 400, 800).cursors.length, 1);
+assert.equal(buildTimeline([targets[1]], 400, 800, 4).cursors.length, 4);
+assert.equal(buildTimeline(targets, 400, 800, 3).jobs.length, targets.length, "fewer cursors than blocks still builds everything");
 const empty = buildTimeline([], 400, 800);
 assert.ok(sample(empty, empty.end).done);
 

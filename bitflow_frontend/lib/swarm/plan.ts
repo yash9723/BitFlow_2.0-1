@@ -20,7 +20,25 @@ export interface Target {
   h: number;
 }
 
-export const SIGNALS = ["clk", "rst_n", "data[7:0]", "valid", "ready", "en", "sel", "q"];
+/** Cursor labels: HDL signals, toolchain names and terminal-isms. The first one leads. */
+export const SIGNALS = [
+  "clk",
+  "root@bitflow",
+  "data[7:0]",
+  "0xDEADBEEF",
+  "rst_n",
+  "always @(posedge clk)",
+  "$display",
+  "sudo synth",
+  "iverilog",
+  "/dev/fpga0",
+  "yosys",
+  "0b1011_0110",
+  "nextpnr",
+  "xor_gate",
+  "git push --force",
+  "assign q = ~q;",
+];
 
 type Mode = "move" | "wire" | "drag" | "type";
 
@@ -54,10 +72,24 @@ export interface Timeline {
   end: number;
 }
 
+/** Small seeded PRNG so the swarm wanders the same way every run (and in tests). */
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export const REVEAL_MS = 260;
 /** A wire may leave a block once its box is this far through being dragged out. */
 export const WIRE_AFTER = 0.6;
 const CONVERGE_MS = 520;
+/** Radius of the ring the cursors gather on before the latch. */
+export const LATCH_RING = 30;
 const LATCH_MS = 380;
 
 /** A Manhattan wire from a to b: vertical-first when b is below a, otherwise horizontal-first. */
@@ -101,7 +133,7 @@ function entryPoints(n: number, vw: number, vh: number): Pt[] {
 
 export function buildTimeline(input: Target[], vw: number, vh: number, maxCursors = SIGNALS.length): Timeline {
   const targets = orderTargets(input);
-  const n = Math.max(1, Math.min(maxCursors, SIGNALS.length, targets.length));
+  const n = Math.max(1, Math.min(maxCursors, SIGNALS.length));
   const pos = entryPoints(n, vw, vh);
   const free = new Array(n).fill(0);
   const cursors = Array.from({ length: n }, (_, i) => ({ label: SIGNALS[i], segments: [] as Segment[] }));
@@ -173,10 +205,27 @@ export function buildTimeline(input: Target[], vw: number, vh: number, maxCursor
 
   const builtAt = Math.max(0, ...jobs.map((j) => j.done));
   const latchPoint = { x: Math.round(vw / 2), y: Math.round(vh / 2) };
+  const rand = mulberry32(0xb17f10);
   for (let k = 0; k < n; k++) {
-    push(k, { t0: free[k], t1: builtAt, mode: "move", path: [pos[k], pos[k]] });
-    const t0 = Math.max(free[k], builtAt);
-    push(k, { t0, t1: t0 + CONVERGE_MS, mode: "move", path: [pos[k], latchPoint] });
+    // between jobs and after its last one, a cursor hovers around whatever is being built right now
+    let t = free[k];
+    while (jobs.length && t < builtAt - 420) {
+      const busy = jobs.filter((j) => j.buildEnd > t).sort((a, b) => a.buildStart - b.buildStart)[0] ?? jobs[jobs.length - 1];
+      const bt = busy.target;
+      const to: Pt = {
+        x: Math.round(clamp(bt.x + rand() * bt.w + (rand() - 0.5) * 80, 8, vw - 8)),
+        y: Math.round(clamp(bt.y + rand() * bt.h + (rand() - 0.5) * 80, 8, vh - 40)),
+      };
+      const hop = Math.min(travelTime(dist(pos[k], to)), builtAt - t);
+      push(k, { t0: t, t1: t + hop, mode: "move", path: [pos[k], to] });
+      pos[k] = to;
+      t += hop + 90 + rand() * 160;
+    }
+    if (t < builtAt) push(k, { t0: t, t1: builtAt, mode: "move", path: [pos[k], pos[k]] });
+    const t0 = Math.max(t, builtAt);
+    const a = (k / n) * Math.PI * 2;
+    const spot = { x: Math.round(latchPoint.x + Math.cos(a) * LATCH_RING), y: Math.round(latchPoint.y + Math.sin(a) * LATCH_RING) };
+    push(k, { t0, t1: t0 + CONVERGE_MS, mode: "move", path: [pos[k], spot] });
   }
   const latchAt = builtAt + CONVERGE_MS;
   return { jobs, cursors, builtAt, latchPoint, latchAt, end: latchAt + LATCH_MS };
