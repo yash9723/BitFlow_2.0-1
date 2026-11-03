@@ -18,8 +18,21 @@ import { useEffect, useRef, useState } from "react";
 import { type Target, buildTimeline, sample } from "@/lib/swarm/plan";
 
 const SEEN_KEY = "bf-swarm-seen";
-// terminal phosphors: green first, then cyan / amber / magenta / violet, repeated in lighter shades
-const COLORS = ["#00e87a", "#4db8ff", "#ffb84d", "#ff6bcb", "#a78bfa", "#5eead4", "#00ff88", "#facc15", "#38bdf8", "#f472b6", "#86efac", "#fb923c", "#c4b5fd", "#2dd4bf", "#e879f9", "#a3e635"];
+// mostly phosphor greens, with cyan and amber like a terminal's other two colours
+const COLORS = ["#00e87a", "#4db8ff", "#00ff88", "#ffb84d", "#5eead4", "#a3e635", "#38bdf8", "#86efac", "#facc15", "#2dd4bf"];
+const SCRAMBLE = "0123456789ABCDEF#$%&*<>/\|";
+
+/** An 11×16 pixel-art arrow (o = outline, X = fill) — BitFlow's pixel look, drawn as crisp SVG rects. */
+const PIXEL_ARROW = ["o", "oo", "oXo", "oXXo", "oXXXo", "oXXXXo", "oXXXXXo", "oXXXXXXo", "oXXXXXXXo", "oXXXXXooooo", "oXXoXXo", "oXo oXXo", "oo  oXXo", "o    oXXo", "      oXXo", "       oo"];
+function pixelArrow(color: string): string {
+  let rects = "";
+  PIXEL_ARROW.forEach((row, y) =>
+    [...row].forEach((ch, x) => {
+      if (ch === "o" || ch === "X") rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${ch === "X" ? color : "#07080a"}"/>`;
+    }),
+  );
+  return `<svg class="i-arrow" width="14" height="20" viewBox="0 0 11 16" shape-rendering="crispEdges">${rects}</svg>`;
+}
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const PRELUDE = `(function(){try{
@@ -100,7 +113,7 @@ export default function SignalSwarm() {
         h: Math.round(r.height),
       });
     });
-    const tl = buildTimeline(targets, vw, vh, vw < 640 ? 8 : 16);
+    const tl = buildTimeline(targets, vw, vh, vw < 640 ? 6 : 10);
 
     // ── build the overlay once; each frame only updates attributes ──
     const stage = svg("svg", { width: vw, height: vh, viewBox: `0 0 ${vw} ${vh}`, class: "bf-swarm-svg" }, layer);
@@ -131,12 +144,12 @@ export default function SignalSwarm() {
       const el = document.createElement("div");
       el.className = "bf-swarm-cursor";
       el.innerHTML = `
-        <svg class="i-arrow" width="18" height="18" viewBox="0 0 18 18"><path d="M2 1.5 L2 15 L5.6 11.6 L8.3 17 L10.6 16 L8 10.8 L13 10.8 Z" fill="${color}" stroke="#07080a" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        ${pixelArrow(color)}
         <svg class="i-cross" width="18" height="18" viewBox="-9 -9 18 18"><path d="M0 -8 V8 M-8 0 H8" stroke="${color}" stroke-width="1.5"/><circle r="2.5" fill="none" stroke="${color}"/></svg>
         <svg class="i-beam" width="12" height="20" viewBox="-6 -10 12 20"><path d="M-3.5 -9 H3.5 M0 -9 V9 M-3.5 9 H3.5" stroke="${color}" stroke-width="1.6" fill="none"/></svg>
-        <span style="color:${color};border-color:${color}"><b>&gt;</b>${c.label}<i>_</i></span>`;
+        <span style="color:${color};border-color:${color}"><b>&gt;</b><em></em><i>_</i></span>`;
       layer.appendChild(el);
-      return el;
+      return { el, text: el.querySelector("em") as HTMLElement, label: c.label, resolved: false };
     });
 
     // ── run ──
@@ -230,8 +243,25 @@ export default function SignalSwarm() {
       clkPath.setAttribute("stroke-dashoffset", `${clkLen * (1 - Math.min(1, t / tl.builtAt || 1))}`);
       clock.setAttribute("opacity", `${1 - f.latch}`);
 
+      // labels decrypt out of random hex as their cursor flies in, a few at a time
+      cursorEls.forEach((ce, i) => {
+        if (ce.resolved) return;
+        const p = Math.min(1, Math.max(0, (t - 120 - i * 110) / 650));
+        if (p >= 1) {
+          ce.text.textContent = ce.label;
+          ce.resolved = true;
+          return;
+        }
+        if (Math.floor(t / 45) === Math.floor((t - 16) / 45) && ce.text.textContent) return; // ~22 updates/s
+        const keep = Math.floor(p * ce.label.length);
+        let out = ce.label.slice(0, keep);
+        for (let k = keep; k < ce.label.length; k++)
+          out += ce.label[k] === " " ? " " : SCRAMBLE[Math.floor(Math.random() * SCRAMBLE.length)];
+        ce.text.textContent = out;
+      });
+
       f.cursors.forEach((c, i) => {
-        const el = cursorEls[i];
+        const el = cursorEls[i].el;
         el.dataset.mode = c.mode;
         el.style.transform = `translate(${c.x}px, ${c.y}px)`;
         el.style.opacity = `${1 - f.latch}`;
@@ -277,12 +307,13 @@ export default function SignalSwarm() {
         .bf-swarm-cursor{position:absolute;left:0;top:0;will-change:transform}
         .bf-swarm-cursor svg{position:absolute;left:0;top:0}
         .bf-swarm-cursor .i-cross{left:-9px;top:-9px}
+        .bf-swarm-cursor span em{font-style:normal}
         .bf-swarm-cursor .i-beam{left:-6px;top:-10px}
         .bf-swarm-cursor .i-cross,.bf-swarm-cursor .i-beam{display:none}
         .bf-swarm-cursor[data-mode=drag] .i-arrow,.bf-swarm-cursor[data-mode=type] .i-arrow{display:none}
         .bf-swarm-cursor[data-mode=drag] .i-cross{display:block}
         .bf-swarm-cursor[data-mode=type] .i-beam{display:block}
-        .bf-swarm-cursor span{position:absolute;left:14px;top:16px;white-space:nowrap;border:1px solid;border-radius:3px;padding:0 6px;
+        .bf-swarm-cursor span{position:absolute;left:14px;top:19px;white-space:nowrap;border:1px solid;border-radius:3px;padding:0 6px;
           font:600 10px/16px var(--font-mono),monospace;background:rgba(7,8,10,.88);box-shadow:0 0 10px -2px currentColor;
           text-shadow:0 0 6px currentColor}
         .bf-swarm-cursor span b{opacity:.55;margin-right:4px;font-weight:600}

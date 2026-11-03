@@ -22,11 +22,13 @@ assert.deepEqual(orderTargets(targets).map((t) => t.id), ["nav", "badge", "chip"
 assert.equal(tl.jobs.length, targets.length);
 assert.deepEqual(new Set(tl.jobs.map((j) => j.target.id)), new Set(targets.map((t) => t.id)));
 
-// the whole swarm turns up, clk leads, and with more cursors than blocks every block still has its own cursor
+// the whole swarm turns up, the shell prompt leads, and with more cursors than blocks every block still has its own cursor
 assert.equal(tl.cursors.length, SIGNALS.length);
 assert.equal(new Set(SIGNALS).size, SIGNALS.length, "labels are unique");
 assert.equal(tl.jobs[0].cursor, 0);
-assert.equal(tl.cursors[0].label, "clk");
+assert.equal(tl.cursors[0].label, "root@bitflow:~#");
+assert.equal(SIGNALS.length, 10);
+assert.ok(SIGNALS.every((s) => !/[<>&"]/.test(s)), "labels are plain text");
 assert.equal(new Set(tl.jobs.map((j) => j.cursor)).size, tl.jobs.length);
 // cursors without a block don't just sit there: they wander while the page is built
 const idle = tl.cursors.filter((_, c) => !tl.jobs.some((j) => j.cursor === c));

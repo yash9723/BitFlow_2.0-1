@@ -20,24 +20,21 @@ export interface Target {
   h: number;
 }
 
-/** Cursor labels: HDL signals, toolchain names and terminal-isms. The first one leads. */
+/**
+ * Cursor labels: BitFlow's own toolchain and terminal, from the shell prompt to the bitstream.
+ * The first one leads. Plain text only (they are rendered with textContent).
+ */
 export const SIGNALS = [
-  "clk",
-  "root@bitflow",
-  "data[7:0]",
-  "0xDEADBEEF",
-  "rst_n",
+  "root@bitflow:~#",
+  "0xB17F10",
+  "bitzy.exe",
+  "iverilog -g2012",
   "always @(posedge clk)",
-  "$display",
-  "sudo synth",
-  "iverilog",
-  "/dev/fpga0",
-  "yosys",
-  "0b1011_0110",
-  "nextpnr",
-  "xor_gate",
-  "git push --force",
-  "assign q = ~q;",
+  "yosys synth_ice40",
+  "$dumpvars",
+  "sudo make bitstream",
+  "/dev/ttyUSB0",
+  "xp += 100",
 ];
 
 type Mode = "move" | "wire" | "drag" | "type";
