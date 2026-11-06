@@ -5,21 +5,21 @@
  * request to the FastAPI backend (lib/backend.ts), so JWT_SECRET never
  * reaches the browser and the backend can't be called directly.
  *
- * The Sandbox is open to guests, so instead of requiring a session this route
- * is rate-limited (per user when signed in, see lib/rate-limit.ts) to keep it
- * from being used as a free compute proxy.
+ * Running code needs a session (anyone can read the site and open the Sandbox; the run itself is an
+ * account action). It is also rate-limited per user (lib/rate-limit.ts).
  */
 
 import { NextResponse } from "next/server";
 import { simulateOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
-import { getSessionUser } from "@/lib/auth-utils";
+import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
+  if (!user) return signInRequired();
   const { success } = await rateLimit(request, {
     limit: 30, anonymousLimit: 120, windowMs: 60_000, prefix: "simulate",
     key: user ? `user:${user.id}` : undefined,

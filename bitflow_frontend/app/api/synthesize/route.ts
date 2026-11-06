@@ -12,7 +12,7 @@
 import { NextResponse } from "next/server";
 import { boardOnBackend, designAsVerilog, fpgaOnBackend, metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
-import { getSessionUser } from "@/lib/auth-utils";
+import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { fsmSvg, schematicSvg, type FsmInfo } from "@/lib/hardware-diagrams";
 import { reportError } from "@/lib/error-log";
 
@@ -22,6 +22,7 @@ const MAX_SOURCE_CHARS = 512 * 1024;
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
+  if (!user) return signInRequired();
   const { success } = await rateLimit(request, {
     limit: 15, anonymousLimit: 60, windowMs: 60_000, prefix: "synth",
     key: user ? `user:${user.id}` : undefined,

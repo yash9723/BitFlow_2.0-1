@@ -100,6 +100,13 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
     assert.ok(!/AuthGate/.test(hub), "the Academy hub is behind sign-in");
   });
 
+  await ok("every route that runs code on the simulators requires a session", () => {
+    for (const r of ["simulate", "formal", "synthesize", "style", "asic"]) {
+      const src = fs.readFileSync(path.join(__dirname, "..", "app", "api", r, "route.ts"), "utf8");
+      assert.ok(/if \(!user\) return signInRequired\(\)/.test(src), `/api/${r} accepts guests`);
+    }
+  });
+
   await ok("landing FAQ: complete answers, and the chapter count it states is the real one", () => {
     assert.ok(HOME_FAQ.length >= 5);
     for (const f of HOME_FAQ) assert.ok(f.q.endsWith("?") && f.a.length > 40, `weak FAQ entry: ${f.q}`);
