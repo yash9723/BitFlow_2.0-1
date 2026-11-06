@@ -1,5 +1,6 @@
 "use client";
 
+import { HOME_FAQ } from "@/lib/home-faq";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -301,8 +302,8 @@ export default function LandingPage() {
             Build.
           </h1>
           <p className="text-[15px] text-ghost leading-relaxed max-w-md mb-8">
-            The all-in-one platform for RTL design, verification, and digital electronics learning — write,
-            simulate, and debug Verilog and SystemVerilog right in your browser.
+            BitFlow is an online Verilog and SystemVerilog simulator and learning platform for RTL design,
+            verification and digital electronics: write, simulate and debug right in your browser, with nothing to install.
           </p>
           <div className="flex flex-wrap gap-3.5 mb-10">
             <Link
@@ -380,6 +381,22 @@ export default function LandingPage() {
               </div>
               <div className="text-[11px] text-dim group-hover:text-pale transition-colors">{cat.tags}</div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Questions people ask: the same list feeds the FAQPage data in app/page.tsx */}
+      <section aria-labelledby="faq-title" className="max-w-3xl mx-auto px-6 pb-20">
+        <h2 id="faq-title" className="font-serif text-2xl md:text-3xl text-pale mb-6">Questions</h2>
+        <div className="divide-y divide-rim/50 border-y border-rim/50">
+          {HOME_FAQ.map((f) => (
+            <details key={f.q} className="group py-4">
+              <summary className="cursor-pointer list-none flex items-center justify-between gap-4 text-[14px] text-bright">
+                {f.q}
+                <span aria-hidden className="text-phosphor group-open:rotate-45 transition-transform">+</span>
+              </summary>
+              <p className="mt-3 text-[13px] text-ghost leading-relaxed">{f.a}</p>
+            </details>
           ))}
         </div>
       </section>

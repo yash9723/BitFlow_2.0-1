@@ -13,6 +13,7 @@ import manifest from "../app/manifest";
 import { ACADEMY_TOPIC_META } from "../lib/academy-meta";
 import { LESSONS } from "../lib/lab/lessons";
 import { STUDIO_TOOLS } from "../lib/studio/tools";
+import { HOME_FAQ } from "../lib/home-faq";
 import { AI_CRAWLERS, PRIVATE_PATHS, SITE_URL, jsonLd, pageMeta } from "../lib/site";
 
 let n = 0;
@@ -96,6 +97,13 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
     }
     const hub = fs.readFileSync(path.join(__dirname, "..", "components", "academy", "AcademyHub.tsx"), "utf8");
     assert.ok(!/AuthGate/.test(hub), "the Academy hub is behind sign-in");
+  });
+
+  await ok("landing FAQ: complete answers, and the chapter count it states is the real one", () => {
+    assert.ok(HOME_FAQ.length >= 5);
+    for (const f of HOME_FAQ) assert.ok(f.q.endsWith("?") && f.a.length > 40, `weak FAQ entry: ${f.q}`);
+    assert.ok(HOME_FAQ.some((f) => f.a.includes(`${ACADEMY_TOPIC_META.length} chapters`)));
+    assert.equal(new Set(HOME_FAQ.map((f) => f.q)).size, HOME_FAQ.length);
   });
 
   console.log(`\n${n} checks passed`);
