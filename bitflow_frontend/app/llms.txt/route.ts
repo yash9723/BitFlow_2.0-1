@@ -4,6 +4,7 @@
  * Only public pages are listed; sign-in pages and the API are left out.
  */
 
+import { ACADEMY_TOPIC_META } from "@/lib/academy-meta";
 import { LESSONS } from "@/lib/lab/lessons";
 import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
@@ -18,7 +19,12 @@ export function GET() {
     "",
     `> ${SITE_TAGLINE}. ${SITE_DESCRIPTION}`,
     "",
-    `${SITE_NAME} is built by ${OPERATOR}. The pages below are public. The Academy, practice problems, classes and contests need a free account.`,
+    `${SITE_NAME} is built by ${OPERATOR}. Everything below is public and free to read; saving progress, graded problems, classes and contests need a free account.`,
+    "",
+    "## Learn digital electronics (Academy)",
+    link("/academy", "Academy", "digital electronics from the first bit to the university and GATE syllabus; every chapter has circuits you can click, worked examples and a quiz"),
+    ...ACADEMY_TOPIC_META.map((t) => link(`/academy/${t.slug}`, t.title, t.summary)),
+    link("/academy/roadmap", "VLSI roadmap", "skills from Verilog basics to verification, synthesis and FPGA flows"),
     "",
     "## Learn FPGAs hands-on (Board Lab)",
     link("/lab", "Board Lab", `${LESSONS.length} lessons: write Verilog and watch it run on a 3D FPGA board in the browser`),

@@ -10,10 +10,13 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
 import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import { LESSONS } from "@/lib/lab/lessons";
+import { ACADEMY_TOPIC_META } from "@/lib/academy-meta";
 
 const SITEMAP_PAGES: [path: string, priority: number][] = [
   ["/", 1], ["/announcements", 0.7], ["/about", 0.8], ["/studio", 0.8], ["/lab", 0.9], ["/lab/credits", 0.3],
   ...LESSONS.map((l): [string, number] => [`/lab/${l.slug}`, 0.7]),
+  ["/academy", 0.9], ["/academy/roadmap", 0.6],
+  ...ACADEMY_TOPIC_META.map((t): [string, number] => [`/academy/${t.slug}`, 0.8]),
   ["/leaderboard", 0.6], ["/problems", 0.8], ["/privacy", 0.3], ["/terms", 0.3], ["/contact", 0.4], ["/flash", 0.7],
   ...STUDIO_TOOLS.map((t): [string, number] => [t.href, 0.7]),
 ];
