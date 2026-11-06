@@ -23,12 +23,12 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
   const urls = sitemap().map((e) => e.url);
   const paths = urls.map((u) => u.slice(SITE_URL.length) || "/");
 
-  await ok("sitemap lists every Academy chapter, Lab lesson and Studio tool once", () => {
+  await ok("sitemap lists every Lab lesson and Studio tool once, and no signed-in Academy page", () => {
     assert.equal(new Set(urls).size, urls.length, "duplicate sitemap entries");
-    for (const t of ACADEMY_TOPIC_META) assert.ok(paths.includes(`/academy/${t.slug}`), `missing /academy/${t.slug}`);
+    assert.ok(!paths.some((p) => p.startsWith("/academy")), "Academy is behind sign-in; it must not be in the sitemap");
     for (const l of LESSONS) assert.ok(paths.includes(`/lab/${l.slug}`), `missing /lab/${l.slug}`);
     for (const t of STUDIO_TOOLS) assert.ok(paths.includes(t.href), `missing ${t.href}`);
-    assert.ok(paths.includes("/academy") && paths.includes("/"));
+    assert.ok(paths.includes("/"));
   });
 
   await ok("sitemap has no private, sign-in or duplicate-content pages", () => {
@@ -53,12 +53,12 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
     assert.equal(r.sitemap, `${SITE_URL}/sitemap.xml`);
   });
 
-  await ok("llms.txt lists the public sections and every Academy chapter, and no private page", async () => {
+  await ok("llms.txt lists the public sections and no signed-in or private page", async () => {
     const res = llms();
     assert.match(res.headers.get("content-type") ?? "", /text\/plain/);
     const text = await res.text();
     assert.ok(text.startsWith("# BitFlow"));
-    for (const t of ACADEMY_TOPIC_META) assert.ok(text.includes(`${SITE_URL}/academy/${t.slug})`), `llms.txt misses ${t.slug}`);
+    assert.ok(!text.includes("/academy/"), "llms.txt must not list signed-in Academy pages");
     for (const t of STUDIO_TOOLS) assert.ok(text.includes(`${SITE_URL}${t.href})`));
     for (const p of PRIVATE_PATHS) {   // "/s/" must not match "/studio": the path ends at a "/" or the closing ")"
       const re = new RegExp(`${(SITE_URL + p.replace(/\/$/, "")).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[/)]`);
@@ -85,18 +85,9 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
     assert.ok(m.icons?.length);
   });
 
-  await ok("the Academy chapter pages are public (not behind sign-in, not noindex)", () => {
-    const dir = path.join(__dirname, "..", "app", "academy");
-    const files: string[] = [];
-    const walk = (d: string) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) && files.push(path.join(d, e.name))));
-    walk(dir);
-    for (const f of files) {
-      const src = fs.readFileSync(f, "utf8");
-      assert.ok(!/AuthGate/.test(src), `${path.relative(dir, f)} is behind sign-in`);
-      assert.ok(!/\bGATED\b/.test(src), `${path.relative(dir, f)} is marked noindex`);
-    }
-    const hub = fs.readFileSync(path.join(__dirname, "..", "components", "academy", "AcademyHub.tsx"), "utf8");
-    assert.ok(!/AuthGate/.test(hub), "the Academy hub is behind sign-in");
+  await ok("the Academy is behind sign-in and kept out of search results", () => {
+    const layout = fs.readFileSync(path.join(__dirname, "..", "app", "academy", "layout.tsx"), "utf8");
+    assert.ok(/AuthGate/.test(layout) && /GATED/.test(layout), "the Academy layout must use AuthGate and GATED");
   });
 
   await ok("landing FAQ: complete answers, and the chapter count it states is the real one", () => {

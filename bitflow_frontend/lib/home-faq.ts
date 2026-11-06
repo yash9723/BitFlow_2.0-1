@@ -16,7 +16,7 @@ export const HOME_FAQ: Faq[] = [
   },
   {
     q: "Is BitFlow free?",
-    a: "Creating an account is free. The Academy chapters, the Board Lab lessons and the Design Studio tools can be opened without signing in; an account saves your progress and unlocks graded problems, classes and contests.",
+    a: "Creating an account is free. The Board Lab lessons and the Design Studio tools can be opened without signing in; a free account unlocks the Academy, graded problems, classes and contests, and saves your progress.",
   },
   {
     q: "Do I need to install a Verilog simulator?",
