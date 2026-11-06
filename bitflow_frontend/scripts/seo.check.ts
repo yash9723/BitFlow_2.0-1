@@ -20,7 +20,8 @@ let n = 0;
 const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn()).then(() => { n++; console.log("ok  ", name); });
 
 (async () => {
-  const urls = sitemap().map((e) => e.url);
+  const entries = await sitemap();
+  const urls = entries.map((e) => e.url);
   const paths = urls.map((u) => u.slice(SITE_URL.length) || "/");
 
   await ok("sitemap lists every Academy chapter, Lab lesson and Studio tool once", () => {
@@ -36,7 +37,7 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
       assert.ok(!PRIVATE_PATHS.some((x) => p === x.replace(/\/$/, "") || p.startsWith(x)), `private path in sitemap: ${p}`);
       assert.ok(p !== "/login", "sign-in page in sitemap");
     }
-    for (const e of sitemap()) assert.ok(!("lastModified" in e), "lastmod must be real or absent, never 'now'");
+    for (const e of entries) assert.ok(!("lastModified" in e), "lastmod must be real or absent, never 'now'");
   });
 
   await ok("robots.txt blocks private paths for everyone, including each AI crawler, and names the sitemap", () => {

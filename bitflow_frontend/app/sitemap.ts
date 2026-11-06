@@ -7,6 +7,7 @@
  */
 
 import type { MetadataRoute } from "next";
+import { prisma } from "@/lib/prisma";
 import { SITE_URL } from "@/lib/site";
 import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import { LESSONS } from "@/lib/lab/lessons";
@@ -21,6 +22,23 @@ const SITEMAP_PAGES: [path: string, priority: number][] = [
   ...STUDIO_TOOLS.map((t): [string, number] => [t.href, 0.7]),
 ];
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  return SITEMAP_PAGES.map(([path, priority]) => ({ url: `${SITE_URL}${path}`, priority }));
+// Read at request time so new problems appear without a deploy.
+export const dynamic = "force-dynamic";
+
+/** Problems a visitor can read: live, in the main path (Arena has its own pages), not a "find the bug" follow-up. */
+async function problemPaths(): Promise<[string, number][]> {
+  try {
+    const rows = await prisma.question.findMany({
+      where: { archived: false, unlockAfter: null, NOT: { learningLevel: "Arena" } },
+      orderBy: { orderIndex: "asc" }, select: { slug: true },
+    });
+    return rows.map((r): [string, number] => [`/problems/${r.slug}`, 0.6]);
+  } catch {
+    return [];   // no database (a build, a test): the rest of the sitemap still works
+  }
+}
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const pages = [...SITEMAP_PAGES, ...(await problemPaths())];
+  return pages.map(([path, priority]) => ({ url: `${SITE_URL}${path}`, priority }));
 }
