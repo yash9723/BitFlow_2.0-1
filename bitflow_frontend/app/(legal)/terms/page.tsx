@@ -3,13 +3,10 @@
  */
 
 import Link from "next/link";
-import { OPERATOR, SITE_NAME } from "@/lib/site";
+import { OPERATOR, SITE_NAME, pageMeta } from "@/lib/site";
 
-export const metadata = {
-  title: "Terms of use",
-  description: `The rules for using ${SITE_NAME}: your account, your code, fair use of the simulators and contests.`,
-  alternates: { canonical: "/terms" },
-};
+export const metadata = pageMeta("/terms", "Terms of use",
+  `The rules for using ${SITE_NAME}: your account, your code, fair use of the simulators and contests.`);
 
 export default function TermsPage() {
   return (

@@ -88,6 +88,7 @@ jobs:
       - run: npm run check-backend-pool
       - run: npm run check-sim-retry
       - run: npm run check-hedge
+      - run: npm run check-seo
       - run: npm run check-health-race
       - run: npm run check-numbers
       - run: npm run check-boolexpr

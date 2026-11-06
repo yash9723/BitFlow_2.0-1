@@ -2,12 +2,9 @@
 
 import StudioShell from "@/components/studio/StudioShell";
 import { TbGenTool } from "@/components/studio/loaders";
+import { pageMeta } from "@/lib/site";
 
-export const metadata = {
-  title: "Testbench generator",
-  description: "Paste a Verilog or SystemVerilog module and get a self-checking testbench: clock, reset, exhaustive or random stimulus, X/Z checks and a reference-model slot.",
-  alternates: { canonical: "/studio/testbench" },
-};
+export const metadata = pageMeta("/studio/testbench", "Testbench generator", "Paste a Verilog or SystemVerilog module and get a self-checking testbench: clock, reset, exhaustive or random stimulus, X/Z checks and a reference-model slot.");
 
 export default function Page() {
   return (

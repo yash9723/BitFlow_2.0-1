@@ -3,12 +3,9 @@
 import Link from "next/link";
 import StudioShell from "@/components/studio/StudioShell";
 import { STUDIO_TOOLS } from "@/lib/studio/tools";
+import { pageMeta } from "@/lib/site";
 
-export const metadata = {
-  title: "Design Studio",
-  description: "Visual digital-design tools: circuits, state machines, timing diagrams, truth tables and K-maps that turn into Verilog with a self-checking testbench, ready to run in the BitFlow Sandbox.",
-  alternates: { canonical: "/studio" },
-};
+export const metadata = pageMeta("/studio", "Design Studio", "Visual digital-design tools: circuits, state machines, timing diagrams, truth tables and K-maps that turn into Verilog with a self-checking testbench, ready to run in the BitFlow Sandbox.");
 
 export default function StudioPage() {
   return (

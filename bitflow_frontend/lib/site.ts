@@ -21,9 +21,28 @@ export const SITE_URL = (
 ).replace(/\/+$/, "");
 export const CONTACT_EMAIL = process.env.CONTACT_EMAIL || null;
 
-/** A public page's title, description and canonical URL (relative: the root layout's metadataBase makes it absolute). */
-export const pageMeta = (path: string, title: string, description: string) =>
-  ({ title, description, alternates: { canonical: path } });
+/**
+ * A public page's title, description and canonical URL (relative: the root layout's metadataBase makes it absolute),
+ * plus its own social preview text. Without the openGraph/twitter part a shared link would show the home page's
+ * title and "url: /" inherited from the root layout.
+ */
+export const pageMeta = (path: string, title: string, description: string) => {
+  const full = `${title} · ${SITE_NAME}`;   // openGraph and twitter titles don't go through the root title template
+  return {
+    title, description, alternates: { canonical: path },
+    openGraph: { type: "website" as const, siteName: SITE_NAME, title: full, description, url: path },
+    twitter: { card: "summary_large_image" as const, title: full, description },
+  };
+};
+
+/** Paths no crawler should fetch (app/robots.ts). */
+export const PRIVATE_PATHS = ["/api/", "/admin", "/dashboard", "/profile", "/classes", "/s/", "/reset-password", "/guardian/"];
+
+/** Crawlers that fetch pages for AI search and assistants (app/robots.ts names them so the policy is explicit). */
+export const AI_CRAWLERS = [
+  "GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "Claude-SearchBot", "Claude-User",
+  "PerplexityBot", "Perplexity-User", "Google-Extended", "Applebot-Extended", "CCBot",
+];
 
 /** Pages behind sign-in: crawlers only see the sign-in redirect, so keep them out of the index (links are still followed). */
 export const GATED = { robots: { index: false, follow: true } };

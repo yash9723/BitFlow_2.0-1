@@ -7,14 +7,11 @@
  */
 
 import Link from "next/link";
-import { OPERATOR, SITE_NAME } from "@/lib/site";
+import { OPERATOR, SITE_NAME, pageMeta } from "@/lib/site";
 import { CONSENT_VERSION, GRIEVANCE_DAYS } from "@/lib/privacy";
 
-export const metadata = {
-  title: "Privacy notice",
-  description: `What ${SITE_NAME} keeps about you, why, for how long, and your rights under India's DPDP Act.`,
-  alternates: { canonical: "/privacy" },
-};
+export const metadata = pageMeta("/privacy", "Privacy notice",
+  `What ${SITE_NAME} keeps about you, why, for how long, and your rights under India's DPDP Act.`);
 
 export default function PrivacyPage() {
   return (
