@@ -20,6 +20,7 @@ import {
   quizPassed,
 } from "@/lib/academy-progress-storage";
 import SiteHeader from "@/components/SiteHeader";
+import { useAuth } from "@/hooks/useAuth";
 import { LESSONS_SYNCED, reportLesson } from "@/lib/lesson-sync";
 
 type Tab = "learn" | "quiz" | "flashcards" | "videos";
@@ -33,8 +34,11 @@ interface Props {
 export default function TopicView({ topic, prev, next }: Props) {
   const [tab, setTab] = useState<Tab>("learn");
   const [completed, setCompleted] = useState(false);
+  // Reading is open to everyone; the quiz, flashcards and saved progress need an account.
+  const { user, loading } = useAuth();
 
   useEffect(() => {
+    if (!user) return;
     markTopicVisited(topic.slug);
     const p = loadAcademyProgress();
     setCompleted(p.completedTopics.includes(topic.slug));
@@ -42,7 +46,7 @@ export default function TopicView({ topic, prev, next }: Props) {
     const refresh = () => setCompleted(loadAcademyProgress().completedTopics.includes(topic.slug));
     window.addEventListener(LESSONS_SYNCED, refresh);
     return () => window.removeEventListener(LESSONS_SYNCED, refresh);
-  }, [topic.slug]);
+  }, [topic.slug, user]);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "learn",       label: "Article" },
@@ -129,7 +133,21 @@ export default function TopicView({ topic, prev, next }: Props) {
             ))}
           </div>
         )}
-        {tab === "quiz" && (
+        {(tab === "quiz" || tab === "flashcards") && !user && (
+          loading ? null : (
+            <div className="rounded-xl border border-rim/60 bg-surface/40 p-8 text-center space-y-4">
+              <p className="text-[14px] text-bright">Sign in to take the {tab === "quiz" ? "quiz" : "flashcards"}.</p>
+              <p className="text-[12px] text-ghost">The article is open to everyone. A free account lets you take quizzes and flashcards and saves your progress.</p>
+              <Link
+                href={`/login?mode=register&next=${encodeURIComponent(`/academy/${topic.slug}`)}`}
+                className="inline-block px-6 py-3 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
+              >
+                Sign in or create a free account →
+              </Link>
+            </div>
+          )
+        )}
+        {tab === "quiz" && !!user && (
           <QuizPanel
             questions={topic.quiz}
             onComplete={(score, total) => {
@@ -141,7 +159,7 @@ export default function TopicView({ topic, prev, next }: Props) {
             }}
           />
         )}
-        {tab === "flashcards" && <FlashcardDeck cards={topic.flashcards} />}
+        {tab === "flashcards" && !!user && <FlashcardDeck cards={topic.flashcards} />}
         {tab === "videos" && <VideoList videos={topic.videos} />}
       </main>
 
