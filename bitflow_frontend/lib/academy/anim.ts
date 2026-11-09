@@ -12,6 +12,7 @@ export const ANIM_IDS = [
   "setup-hold", "timing-budget", "metastable", "memory-grid", "dram-refresh", "pla-program", "lut-explorer",
   "sampling", "quantize", "sar-adc", "dac-bits", "blocking-nonblocking", "circuit-to-verilog",
   "walk-assign-gates", "walk-mux-always", "walk-register", "walk-counter", "walk-fsm-101",
+  "cmos-cutaway-3d", "fpga-fabric-3d", "memory-array-3d", "chip-layers-3d",
 ] as const;
 export type AnimId = (typeof ANIM_IDS)[number];
 

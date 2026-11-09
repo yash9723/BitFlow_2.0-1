@@ -50,6 +50,10 @@ const ANIMS: Record<AnimId, ComponentType> = {
   "walk-register": dynamic(() => import("./Walkthrough").then((m) => m.WalkRegister), { ssr: false, loading }),
   "walk-counter": dynamic(() => import("./Walkthrough").then((m) => m.WalkCounter), { ssr: false, loading }),
   "walk-fsm-101": dynamic(() => import("./Walkthrough").then((m) => m.WalkFsm101), { ssr: false, loading }),
+  "cmos-cutaway-3d": dynamic(() => import("./scene3d").then((m) => m.CmosCutaway3D), { ssr: false, loading }),
+  "fpga-fabric-3d": dynamic(() => import("./scene3d").then((m) => m.FpgaFabric3D), { ssr: false, loading }),
+  "memory-array-3d": dynamic(() => import("./scene3d").then((m) => m.MemoryArray3D), { ssr: false, loading }),
+  "chip-layers-3d": dynamic(() => import("./scene3d").then((m) => m.ChipLayers3D), { ssr: false, loading }),
 };
 
 export default function Animation({ id }: { id: AnimId }) {

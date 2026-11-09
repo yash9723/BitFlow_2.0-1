@@ -34,6 +34,7 @@ const chapter: AcademyTopic = {
       heading: "SRAM and DRAM",
       blocks: [
         p("**RAM** loses its contents without power, and comes in two kinds. **SRAM** stores each bit in the same kind of loop as a latch: two cross-coupled inverters, plus two access transistors. **DRAM** stores a bit as charge on a tiny capacitor, reached through a single transistor."),
+        { kind: "anim", id: "memory-array-3d" },
         { kind: "anim", id: "dram-refresh" },
         { kind: "table", headers: ["", "SRAM", "DRAM"], rows: [["Transistors per bit", "6", "1, plus a capacitor"], ["Refresh", "Not needed", "Needed, about every 64 ms"], ["Speed", "Fast", "Slower"], ["Density and cost", "Low density, expensive", "High density, cheap"], ["Reads", "Don't disturb the bit", "Destroy the bit, so it's written back"], ["Used for", "Caches, registers", "Main memory"]] },
         { kind: "callout", tone: "note", text: "That's why every computer uses both: a little fast SRAM cache close to the processor, and a lot of DRAM behind it." },
@@ -74,6 +75,8 @@ const chapter: AcademyTopic = {
         { kind: "anim", id: "pla-program" },
         p("A **CPLD** joins several PAL-like blocks with a switch matrix. An **FPGA** goes much further: thousands of small logic cells in a grid, and programmable wiring between them. Each cell holds a **look-up table** and a flip-flop."),
         { kind: "anim", id: "lut-explorer" },
+        p("A whole FPGA is a grid of these blocks with programmable wiring between them. Lift one block's table out in the 3D view and follow its result along the wiring."),
+        { kind: "anim", id: "fpga-fabric-3d" },
         p("An FPGA also has block RAM, multipliers and clock managers built in. Its configuration lives in SRAM, so it loads from flash at power-up, and you can reprogram it as often as you like."),
         { kind: "link", href: "/flash", label: "Flash a real FPGA board", text: "Build a design here and program it onto a board from your browser." },
         { kind: "practice", question: "How many bits of memory does a 4-input LUT hold?", options: ["4", "8", "16", "32"], correctIndex: 2, explanation: "2⁴ = **16**: one bit for each input combination." },

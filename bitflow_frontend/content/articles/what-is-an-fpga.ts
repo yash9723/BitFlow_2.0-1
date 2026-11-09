@@ -27,6 +27,8 @@ const article: Article = {
         ] },
         p("Try the look-up table below: change what it stores and see which function it becomes."),
         { kind: "anim", id: "lut-explorer" },
+        p("An FPGA is many of these look-up tables, each with a flip-flop, in a grid with programmable wiring. Lift one block out in the 3D view and follow its result along the wiring."),
+        { kind: "anim", id: "fpga-fabric-3d" },
       ],
     },
     {

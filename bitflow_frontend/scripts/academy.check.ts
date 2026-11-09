@@ -17,6 +17,7 @@ import { challengeById } from "../lib/studio/circuit-challenges";
 import { crossesPart, routeAll } from "../lib/studio/circuit-route";
 import { wireRoute } from "../lib/studio/circuit-edit";
 import { ANIM_IDS, LEVEL, addColumns, asSigned, MEALY_101, MOORE_101, REDUCIBLE, boothSteps, claCarryTime, claLevels, cmosState, compareSteps, divideSteps, encoderError, fromGray, inverterOut, inverterState, johnsonNext, latchFfTick, loadModel, mealyOut, neighbours, noiseChain, partitionSteps, qmSteps, rcWave, reads, ringNext, rippleCarryTime, rippleSteps, shiftAddSteps, shiftStep, srSteps, toGray, wheelMove, PLA_FULL_ADDER, aliasFreq, assignSteps, captureResult, chipsNeeded, dacOut, dramLeak, dramRefresh, lutRead, memoryBits, mtbfSeconds, plaEval, quantizeCode, resolveTime, sarSteps, snrDb, timingBudget } from "../lib/academy/anim";
+import { FABRIC, FABRIC_FROM, FABRIC_INPUTS, FABRIC_LUT, FABRIC_TO, LAYERS, MEM, MEM_DATA, MEM_ROW, cmosCutawaySteps, fabricRoute, fabricSteps, layerSteps, memorySteps } from "../lib/academy/scene3d";
 import { type Cell, type Implicant, minimizationSteps, primeImplicants } from "../lib/studio/logic-min";
 import { type Parsed, counterexample, parseBool } from "../lib/studio/boolexpr";
 import { draw } from "../lib/academy/draw";
@@ -448,6 +449,46 @@ function walk(dir: string, out: string[] = []): string[] {
 for (const f of ["app", "components", "hooks"].flatMap((d) => (fs.existsSync(path.join(ROOT, d)) ? walk(path.join(ROOT, d)) : []))) {
   const src = fs.readFileSync(f, "utf8");
   if (/^\s*["']use client["']/.test(src)) assert.ok(!src.includes("academy-content"), `${path.relative(ROOT, f)} is client code importing lib/academy-content`);
+}
+
+// ── The 3D animations' state (lib/academy/scene3d.ts) ──────────────────────
+{
+  const cm = cmosCutawaySteps();
+  assert.equal(cm[0].a, null);
+  for (const st of cm.slice(1)) {
+    assert.notEqual(st.pmosOn, st.nmosOn, "exactly one of the two transistors conducts");
+    assert.equal(st.pmosOn, st.a === 0, "the PMOS conducts for a low input");
+    assert.equal(st.nmosOn, st.a === 1, "the NMOS conducts for a high input");
+    assert.equal(st.y, st.a === 0 ? 1 : 0, "an inverter inverts");
+  }
+  assert.equal(cm.at(-1)!.a, 0);
+
+  const route = fabricRoute(FABRIC_FROM, FABRIC_TO);
+  route.forEach((n, k) => {
+    assert.ok(n.i >= 0 && n.i <= FABRIC.cols && n.j >= 0 && n.j <= FABRIC.rows, "switch boxes are on the grid");
+    if (k) assert.equal(Math.abs(n.i - route[k - 1].i) + Math.abs(n.j - route[k - 1].j), 1, "the route moves one switch box at a time");
+  });
+  const corner = (n: { i: number; j: number }, c: { i: number; j: number }) => n.i >= c.i && n.i <= c.i + 1 && n.j >= c.j && n.j <= c.j + 1;
+  assert.ok(corner(route[0], FABRIC_FROM) && corner(route.at(-1)!, FABRIC_TO), "the route starts at one block and ends at the other");
+  for (let m = 0; m < 8; m++) { const bits = [m >> 2 & 1, m >> 1 & 1, m & 1]; assert.equal(lutRead(FABRIC_LUT, bits), bits.reduce((a, b) => a + b, 0) >= 2 ? 1 : 0, "the LUT holds the majority function"); }
+  const fs3 = fabricSteps(), seen = fs3.find((x) => x.address !== null)!;
+  assert.equal(seen.address, 5); assert.equal(seen.bit, lutRead(FABRIC_LUT, FABRIC_INPUTS)); assert.equal(seen.bit, 1);
+  assert.ok(fs3.every((x, i) => !i || (x.lutUp || !fs3[i - 1].lutUp)), "the LUT stays up once lifted");
+  assert.ok(fs3.at(-1)!.routed && fs3.at(-1)!.ff);
+
+  const ms = memorySteps();
+  assert.equal(MEM_DATA.length, MEM.rows * MEM.cols);
+  assert.deepEqual(ms[2].senseRow, MEM_DATA.slice(MEM_ROW * MEM.cols, (MEM_ROW + 1) * MEM.cols), "the sense amplifiers read the selected row");
+  assert.equal(ms[3].lost, 0, "a little leakage loses nothing"); assert.equal(ms[4].lost, 0, "refresh restores everything");
+  assert.ok(ms[4].charge.every((v, i) => v === MEM_DATA[i]), "refresh rewrites full 0s and 1s");
+  assert.equal(ms[5].lost, MEM_DATA.filter((b) => b === 1).length, "without refresh every stored 1 is lost");
+  assert.ok(ms[3].charge.every((v, i) => (MEM_DATA[i] ? v < 1 && v >= 0.5 : v === 0)) && ms[5].charge.every((v, i) => (MEM_DATA[i] ? v < 0.5 : v === 0)));
+
+  assert.equal(new Set(LAYERS.map((l) => l.id)).size, LAYERS.length);
+  const ls = layerSteps();
+  assert.equal(ls.length, LAYERS.length + 1);
+  ls.slice(0, -1).forEach((st, i) => { assert.equal(st.visible, i + 1); assert.equal(st.focus, i); assert.ok(st.caption.includes(LAYERS[i].name)); });
+  assert.deepEqual([ls.at(-1)!.visible, ls.at(-1)!.gap], [LAYERS.length, 0]);
 }
 
 console.log(`academy: ${ACADEMY_TOPICS.length} chapters OK (${circuits} circuits, ${kmaps} K-maps, ${practice} practice questions, ${anims.size} animations tested)`);

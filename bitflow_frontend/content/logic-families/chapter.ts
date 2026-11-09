@@ -79,6 +79,15 @@ const chapter: AcademyTopic = {
       ],
     },
     {
+      id: "layers",
+      heading: "How a chip is built",
+      blocks: [
+        p("Every gate in this chapter ends up as transistors in silicon, joined by wires. A chip is made in **layers**: the transistors are formed in the bottom few, and everything above them is wiring and insulation. Step through the layers from the silicon up."),
+        { kind: "anim", id: "chip-layers-3d" },
+        p("Wires near the bottom are thin and short, and they join neighbouring transistors. Wires near the top are thicker and carry power, ground and the clock across the whole chip. Each layer is made by the same repeating steps: deposit a material, pattern it with light, and etch away what is not wanted."),
+      ],
+    },
+    {
       id: "gate-numbers",
       heading: "Exam figures",
       level: "gate",
