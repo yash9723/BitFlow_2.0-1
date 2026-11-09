@@ -5,6 +5,7 @@
  */
 
 import { ACADEMY_TOPIC_META } from "@/lib/academy-meta";
+import { ARTICLES } from "@/lib/articles";
 import { LESSONS } from "@/lib/lab/lessons";
 import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
@@ -33,6 +34,10 @@ export function GET() {
     "## Free design tools (Design Studio)",
     link("/studio", "Design Studio", "visual digital-design tools that produce Verilog and self-checking testbenches"),
     ...STUDIO_TOOLS.map((t) => link(t.href, t.title, t.blurb)),
+    "",
+    "## Articles",
+    link("/articles", "Articles", "plain-language explainers on Verilog, FPGAs and digital design"),
+    ...ARTICLES.map((a) => link(`/articles/${a.slug}`, a.title, a.description)),
     "",
     "## Other",
     link("/problems", "Practice problems", "graded Verilog problems (sign in to solve them)"),

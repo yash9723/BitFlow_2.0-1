@@ -13,7 +13,9 @@ import manifest from "../app/manifest";
 import { ACADEMY_TOPIC_META } from "../lib/academy-meta";
 import { LESSONS } from "../lib/lab/lessons";
 import { STUDIO_TOOLS } from "../lib/studio/tools";
+import { ARTICLES } from "../lib/articles";
 import { HOME_FAQ } from "../lib/home-faq";
+import { homePath } from "../lib/home-path";
 import { AI_CRAWLERS, PRIVATE_PATHS, SITE_URL, jsonLd, pageMeta } from "../lib/site";
 
 let n = 0;
@@ -105,6 +107,32 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
       const src = fs.readFileSync(path.join(__dirname, "..", "app", "api", r, "route.ts"), "utf8");
       assert.ok(/if \(!user\) return signInRequired\(\)/.test(src), `/api/${r} accepts guests`);
     }
+  });
+
+  await ok("every article is in the sitemap and llms.txt, with a unique title and description and links that resolve", async () => {
+    assert.ok(paths.includes("/articles"));
+    const text = await llms().text();
+    const known = new Set(paths);
+    assert.equal(new Set(ARTICLES.map((a) => a.slug)).size, ARTICLES.length, "duplicate slugs");
+    assert.equal(new Set(ARTICLES.map((a) => a.title)).size, ARTICLES.length, "duplicate titles");
+    assert.equal(new Set(ARTICLES.map((a) => a.description)).size, ARTICLES.length, "duplicate descriptions");
+    for (const a of ARTICLES) {
+      assert.ok(known.has(`/articles/${a.slug}`), `${a.slug} missing from the sitemap`);
+      assert.ok(text.includes(`${SITE_URL}/articles/${a.slug})`), `${a.slug} missing from llms.txt`);
+      assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(a.published) && !Number.isNaN(Date.parse(a.published)), `${a.slug}: published must be a real date`);
+      assert.ok(a.title.length <= 70 && a.description.length >= 60 && a.description.length <= 200, `${a.slug}: title/description length`);
+      assert.ok(a.sections.length >= 3, `${a.slug}: too thin`);
+      for (const f of a.faq ?? []) assert.ok(f.q.endsWith("?") && f.a.length > 30, `${a.slug}: weak FAQ entry`);
+      for (const r of a.related) assert.ok(known.has(r.href) || r.href.startsWith("/academy/") || r.href === "/flash", `${a.slug}: related link ${r.href} is not a public page`);
+    }
+  });
+
+  await ok("the learning path on the landing page points at public pages and uses real counts", () => {
+    const path = homePath({ chapters: ACADEMY_TOPIC_META.length, lessons: LESSONS.length, problems: 133 });
+    assert.equal(path.length, 5);
+    assert.ok(path[0].body.includes(`${ACADEMY_TOPIC_META.length} chapters`) && path[1].body.includes(`${LESSONS.length} hands-on lessons`) && path[2].body.includes("133 graded"));
+    assert.ok(!homePath({ chapters: 20, lessons: 30, problems: null })[2].body.match(/\d+ graded/), "an unknown problem count must not be shown");
+    for (const st of path) assert.ok(st.href.startsWith("/"));
   });
 
   await ok("landing FAQ: complete answers, and the chapter count it states is the real one", () => {
