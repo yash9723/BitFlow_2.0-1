@@ -25,8 +25,10 @@ const chapter: AcademyTopic = {
       blocks: [
         p("A **module** is one block with named inputs and outputs. Inside, `assign` describes combinational logic: the output continuously follows the expression, exactly like wires and gates."),
         { kind: "code", text: "module half_adder (\n  input  wire a,\n  input  wire b,\n  output wire sum,\n  output wire carry\n);\n  assign sum   = a ^ b;\n  assign carry = a & b;\nendmodule", caption: "The half adder from Chapter 10. The two `assign` lines happen at the same time, and their order doesn't matter." },
+        { kind: "anim", id: "walk-assign-gates" },
         p("For larger combinational logic, use `always @(*)`. Its contents read like a program, but the result is still logic with no memory, and that holds only if every output gets a value on every path."),
         { kind: "code", text: "module mux4 (input wire [3:0] d, input wire [1:0] s, output reg y);\n  always @(*) begin\n    case (s)\n      2'b00: y = d[0];\n      2'b01: y = d[1];\n      2'b10: y = d[2];\n      2'b11: y = d[3];\n    endcase\n  end\nendmodule", caption: "The 4:1 MUX from Chapter 11. `reg` here only means \"assigned inside an always block\". It doesn't mean a register exists." },
+        { kind: "anim", id: "walk-mux-always" },
         { kind: "link", href: "/problems/the-first-wire", label: "Write your first module", text: "The Learning Path starts here, with instant feedback from a real simulator." },
       ],
     },
@@ -36,6 +38,7 @@ const chapter: AcademyTopic = {
       blocks: [
         p("`always @(posedge clk)` describes flip-flops: everything assigned in it updates at the clock edge. This is where one rule matters more than any other."),
         { kind: "anim", id: "blocking-nonblocking" },
+        { kind: "anim", id: "walk-register" },
         { kind: "table", headers: ["Describing", "Use", "Written"], rows: [["Combinational logic", "Blocking", "`always @(*)` with `=`"], ["Flip-flops", "Nonblocking", "`always @(posedge clk)` with `<=`"]], caption: "Follow this one rule and a whole class of bugs goes away." },
         { kind: "code", text: "module counter4 (input wire clk, input wire rst, output reg [3:0] q);\n  always @(posedge clk) begin\n    if (rst) q <= 4'd0;\n    else     q <= q + 4'd1;\n  end\nendmodule", caption: "A 4-bit synchronous counter with reset, from Chapter 15. `q + 1` gets you an adder, and you don't have to design it." },
         { kind: "practice", question: "Which code describes a 3-bit shift register?", options: ["`a <= in; b <= a; c <= b;` in `always @(posedge clk)`", "`a = in; b = a; c = b;` in `always @(posedge clk)`", "`assign a = in; assign b = a; assign c = b;`", "`a <= in; b <= a; c <= b;` in `always @(*)`"], correctIndex: 0, explanation: "With nonblocking assignments, each flip-flop takes the **old** value of the one before. Blocking would copy `in` straight through all three." },

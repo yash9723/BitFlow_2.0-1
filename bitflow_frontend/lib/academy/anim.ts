@@ -11,6 +11,7 @@ export const ANIM_IDS = [
   "sr-latch", "latch-vs-ff", "shift-register", "ripple-vs-sync", "ring-johnson", "fsm-detector", "state-minimize",
   "setup-hold", "timing-budget", "metastable", "memory-grid", "dram-refresh", "pla-program", "lut-explorer",
   "sampling", "quantize", "sar-adc", "dac-bits", "blocking-nonblocking", "circuit-to-verilog",
+  "walk-assign-gates", "walk-mux-always", "walk-register", "walk-counter", "walk-fsm-101",
 ] as const;
 export type AnimId = (typeof ANIM_IDS)[number];
 

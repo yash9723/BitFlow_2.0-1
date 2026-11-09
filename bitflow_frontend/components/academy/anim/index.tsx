@@ -45,6 +45,11 @@ const ANIMS: Record<AnimId, ComponentType> = {
   "dac-bits": dynamic(() => import("./systems").then((m) => m.DacBits), { ssr: false, loading }),
   "blocking-nonblocking": dynamic(() => import("./systems").then((m) => m.BlockingNonblocking), { ssr: false, loading }),
   "circuit-to-verilog": dynamic(() => import("./systems").then((m) => m.CircuitToVerilog), { ssr: false, loading }),
+  "walk-assign-gates": dynamic(() => import("./Walkthrough").then((m) => m.WalkAssignGates), { ssr: false, loading }),
+  "walk-mux-always": dynamic(() => import("./Walkthrough").then((m) => m.WalkMuxAlways), { ssr: false, loading }),
+  "walk-register": dynamic(() => import("./Walkthrough").then((m) => m.WalkRegister), { ssr: false, loading }),
+  "walk-counter": dynamic(() => import("./Walkthrough").then((m) => m.WalkCounter), { ssr: false, loading }),
+  "walk-fsm-101": dynamic(() => import("./Walkthrough").then((m) => m.WalkFsm101), { ssr: false, loading }),
 };
 
 export default function Animation({ id }: { id: AnimId }) {
