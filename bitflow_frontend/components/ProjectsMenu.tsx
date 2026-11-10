@@ -54,8 +54,10 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export default function ProjectsMenu({ content, onLoad, disabled }: {
+export default function ProjectsMenu({ content, onLoad, disabled, onCurrent }: {
   content: EditorContent; onLoad: (p: SandboxProject) => void; disabled?: boolean;
+  /** The open project, as it changes (pair mode uses it: hooks/usePair.ts). */
+  onCurrent?: (p: { id: string; name: string } | null) => void;
 }) {
   const [current, setCurrent] = useState<{ id: string; name: string } | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -75,6 +77,8 @@ export default function ProjectsMenu({ content, onLoad, disabled }: {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, []);
+
+  useEffect(() => { onCurrent?.(current); }, [current, onCurrent]);
 
   const remember = (p: { id: string; name: string } | null) => {
     setCurrent(p);

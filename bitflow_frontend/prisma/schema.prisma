@@ -394,8 +394,22 @@ model Project {
 
   owner             User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   versions          ProjectVersion[]
+  pairInvite        PairInvite?
 
   @@index([ownerId, updatedAt])
+}
+
+// Pair mode (lib/pair.ts): a link that lets one other person edit this project with its owner, live. Only its hash is kept.
+model PairInvite {
+  id        String   @id @default(uuid())
+  projectId String   @unique   // one live link per project: a new one replaces it
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 // A saved state of a project; autosaves within a couple of minutes share one (lib/projects.ts).

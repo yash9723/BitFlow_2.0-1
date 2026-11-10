@@ -20,7 +20,7 @@ export default function PrivacyPage() {
   return (
     <>
       <h1>Privacy notice</h1>
-      <p className="text-ghost text-[12px]">Version {CONSENT_VERSION} · last updated 30 October 2026</p>
+      <p className="text-ghost text-[12px]">Version {CONSENT_VERSION} · last updated 10 November 2026</p>
 
       <p>
         {SITE_NAME} is run by {OPERATOR} (&quot;we&quot;), the Data Fiduciary for your personal data under India&apos;s Digital
@@ -60,7 +60,8 @@ export default function PrivacyPage() {
       <p>
         We use these service providers (Data Processors), only to run {SITE_NAME}: <strong>Vercel</strong> (website hosting),
         <strong> Render</strong> (the simulator that runs your code), <strong>Neon</strong> (the database), <strong>GitHub</strong>
-        (encrypted backups), and, only if you use the AI tutor, the configured AI provider (such as OpenAI, Google, Anthropic or
+        (encrypted backups), <strong>Liveblocks</strong> (only while you pair on a project: it keeps the two editors in step,
+        and the session&apos;s copy of the code is deleted when the session ends or its link expires), and, only if you use the AI tutor, the configured AI provider (such as OpenAI, Google, Anthropic or
         Groq). Some of them process data outside India, which the DPDP Act allows except to countries the Government restricts.
       </p>
 

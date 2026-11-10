@@ -30,6 +30,7 @@
     "check-tinytapeout": "tsx scripts/tinytapeout.check.ts",
     "check-chip-xray": "tsx scripts/chip-xray.check.ts",
     "check-live-lab": "tsx scripts/live-lab.check.ts",
+    "check-pair": "tsx scripts/pair.check.ts",
     "check-waveform-diff": "tsx scripts/waveform-diff.check.ts",
     "check-vhdl-starter": "tsx scripts/vhdl-starter.check.ts",
     "check-bitstream": "tsx scripts/bitstream.check.ts",
@@ -58,7 +59,6 @@
     "check-generators": "tsx scripts/generators.check.ts",
     "check-protocol": "tsx scripts/protocol-decode.check.ts",
     "check-tbgen": "tsx scripts/tbgen.check.ts",
-    "check-share": "tsx scripts/share.check.ts",
     "check-policy": "tsx scripts/policy.check.ts",
     "check-constraints": "tsx scripts/constraints.check.ts",
     "check-flash": "tsx scripts/flash.check.ts",
@@ -76,6 +76,9 @@
     "db:import": "tsx scripts/db-transfer.ts import"
   },
   "dependencies": {
+    "@liveblocks/client": "^3.25.0",
+    "@liveblocks/node": "^3.25.0",
+    "@liveblocks/yjs": "^3.25.0",
     "@monaco-editor/react": "^4.6.0",
     "@neondatabase/neon-js": "^0.6.2-beta",
     "@prisma/client": "^5.15.0",
@@ -100,7 +103,8 @@
     "three": "0.170.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.22.4",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yjs": "^13.6.33"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

@@ -67,6 +67,9 @@
 "use client";
 
 import LiveLabBanner from "@/components/LiveLabBanner";
+import PairBar, { PairButton } from "@/components/PairBar";
+import { usePair } from "@/hooks/usePair";
+import { PAIR_KEYS } from "@/lib/pair";
 import {
   useRef,
   useState,
@@ -384,6 +387,9 @@ function SandboxContent() {
   const [proveOpen, setProveOpen] = useState(false);
   const editorContent = useMemo(() => ({ designCode, testbenchCode, files: extraFiles, designLanguage, testbenchLanguage }),
     [designCode, testbenchCode, extraFiles, designLanguage, testbenchLanguage]);
+  // Pair mode (hooks/usePair.ts): the open project's owner can invite one person to type in it at the same time.
+  const [openProject, setOpenProject] = useState<{ id: string; name: string } | null>(null);
+  const pair = usePair(openProject?.id ?? null, editorContent, loadProject);
   const [designFile, designMonaco] = DESIGN_FILES[designLanguage];
   // The editor's completion and hover also know the files in other tabs (lib/verilog-monaco.ts).
   // Every Verilog file by name, so definitions, references and rename work across them; a rename's edits to
@@ -781,6 +787,7 @@ function SandboxContent() {
         isExporting={isExporting}
       />
       <LiveLabBanner designCode={designCode} testbenchCode={testbenchCode} files={extraFiles} result={result} />
+      <PairBar pair={pair} />
 
       {/*
        * ── Action bar — sits between toolbar and editors ────────────────────
@@ -799,7 +806,10 @@ function SandboxContent() {
             onLoad={loadProject}
             disabled={isRunning}
           />
-          <ProjectsMenu content={editorContent} onLoad={loadProject} disabled={isRunning} />
+          {pair.role === "guest" && !pair.invited
+            ? <span className="text-[11px] text-info whitespace-nowrap" title="You're editing someone else's project; its owner saves it">Pairing</span>
+            : <ProjectsMenu content={editorContent} onLoad={loadProject} disabled={isRunning} onCurrent={setOpenProject} />}
+          <PairButton pair={pair} />
           <LanguageSelect<DesignLanguage> label="Design" value={designLanguage} disabled={isRunning}
             options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"]]} onChange={setDesignLanguage} />
           <LanguageSelect<TestbenchLanguage> label="Testbench" value={testbenchLanguage} disabled={isRunning}
@@ -913,6 +923,8 @@ function SandboxContent() {
                 diagnostics={diagnostics.files[openFile?.name ?? "design.v"] ?? []}
                 lint={!liveCheck && designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name))}
                 path={designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name)) ? uriOf(openFile?.name ?? "design.v") : undefined}
+                collabText={pair.text(openFile ? PAIR_KEYS.file(openFile.name) : PAIR_KEYS.design)}
+                collabAwareness={pair.awareness}
               />
             </div>
           </div>
@@ -945,6 +957,8 @@ function SandboxContent() {
                 readOnly={isRunning}
                 diagnostics={diagnostics.tb}
                 path={testbenchLanguage === "verilog" ? uriOf("tb.v") : undefined}
+                collabText={pair.text(PAIR_KEYS.testbench)}
+                collabAwareness={pair.awareness}
               />
             </div>
           </div>

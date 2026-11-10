@@ -9,6 +9,7 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sweepExpiredPairs } from "@/lib/pair-server";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
     orderBy: { _count: { location: "desc" } }, take: 10,
   });
   const total = await prisma.errorLog.count({ where: { createdAt: { gte: since } } });
+  await sweepExpiredPairs().catch(() => 0);   // pair rooms whose link expired (lib/pair-server.ts): it runs often enough
   return NextResponse.json({
     window, total, threshold, alert: total >= threshold,
     byLocation: groups.map((g) => ({ source: g.source, location: g.location.slice(0, 80), count: g._count._all })),

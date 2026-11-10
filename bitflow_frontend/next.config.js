@@ -41,7 +41,7 @@ function securityHeaders(frameAncestors) {
         "img-src 'self' data: blob: https://www.googletagmanager.com https://*.google-analytics.com",
         // Simulation + AI calls go through our own /api routes (server-side);
         // jsDelivr serves the YoWASP WebAssembly files
-        "connect-src 'self' blob: https://cdn.jsdelivr.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
+        "connect-src 'self' blob: https://api.liveblocks.io wss://api.liveblocks.io https://cdn.jsdelivr.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
         "worker-src 'self' blob:",
         `frame-ancestors ${frameAncestors}`,
       ].join("; "),

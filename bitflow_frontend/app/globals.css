@@ -277,3 +277,7 @@
 /* "Trace the bug" (lib/trace.ts): the line it points at in the editor */
 .bf-trace-line { background: rgba(255, 92, 92, 0.13); }
 .bf-trace-gutter { border-left: 3px solid #ff5c5c; margin-left: 3px; }
+/* Pair mode: the partner's cursor and name (lib/pair-binding.ts); components/PairBar.tsx sets each one's colour. */
+.bf-pair-head { position: relative; border-left: 2px solid #9ca3af; margin-left: -1px; }
+.bf-pair-head::after { position: absolute; top: -1.2em; left: -2px; padding: 0 3px; border-radius: 2px; font-size: 10px; line-height: 1.2;
+  white-space: nowrap; color: #0b0f0c; pointer-events: none; z-index: 10; }

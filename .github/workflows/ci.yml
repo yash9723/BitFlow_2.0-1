@@ -72,6 +72,7 @@ jobs:
       - run: npm run check-tinytapeout
       - run: npm run check-chip-xray
       - run: npm run check-live-lab
+      - run: npm run check-pair
       - run: npm run check-waveform-diff
       - run: npm run check-vhdl-starter
       - run: npm run check-bitstream
