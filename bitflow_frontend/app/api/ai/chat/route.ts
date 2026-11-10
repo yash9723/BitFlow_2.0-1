@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
 
     // ── Dispatch to configured provider ─────────────────────────────────────
     const provider = getProvider();
-    const response = await provider.chat(messages, systemPrompt);
+    const response = await provider.chat(messages, systemPrompt, { userId: user.id, problemSlug: typeof slug === "string" && slug ? slug : undefined });
 
     return NextResponse.json(response);
 

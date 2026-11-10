@@ -40,12 +40,17 @@ export interface AIResponse {
   provider:      string;
 }
 
+import { signAgentToken } from "@/lib/agent-auth";
+
 /** Thrown when the selected provider has no API key configured (→ HTTP 503). */
 export class AINotConfiguredError extends Error {}
 
+/** Who is asking and about which problem. Only the tutor agent uses it (to mint its scoped token); direct providers ignore it. */
+export interface AIChatMeta { userId: string; problemSlug?: string }
+
 export interface AIProvider {
   name:    string;
-  chat(messages: AIMessage[], systemPrompt: string): Promise<AIResponse>;
+  chat(messages: AIMessage[], systemPrompt: string, meta?: AIChatMeta): Promise<AIResponse>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,7 +276,50 @@ function groqProvider(): AIProvider {
  */
 export function getProvider(): AIProvider {
   const name = (process.env.BITFLOW_AI_PROVIDER ?? "openai").toLowerCase();
+  return name === "agent" ? agentProvider(directProvider(process.env.BITFLOW_AI_FALLBACK_PROVIDER ?? "gemini")) : directProvider(name);
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tutor agent (agents/tutor/, Google ADK on Cloud Run): looks things up itself, then answers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AGENT_TIMEOUT_MS = 25_000;
+
+/**
+ * Sends a graded-problem conversation to the tutor agent with a short-lived token for this student and problem
+ * (lib/agent-auth.ts). The agent is an extra, never a single point of failure: with no problem (the Sandbox), no
+ * AGENT_URL, a timeout or any error, the plain provider answers instead, so the tutor keeps working.
+ */
+export function agentProvider(fallback: AIProvider): AIProvider {
+  return {
+    name: "agent",
+    async chat(messages, systemPrompt, meta) {
+      const url = process.env.AGENT_URL?.replace(/\/+$/, "");
+      if (!url || !meta?.problemSlug) return fallback.chat(messages, systemPrompt, meta);
+      try {
+        const token = signAgentToken({ sub: meta.userId, slug: meta.problemSlug });
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), AGENT_TIMEOUT_MS);
+        try {
+          const res = await fetch(`${url}/chat`, {
+            method: "POST", signal: ctl.signal,
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ system_prompt: systemPrompt, messages }),
+          });
+          if (!res.ok) throw new Error(`agent answered ${res.status}`);
+          const data = await res.json();
+          if (typeof data?.content !== "string" || !data.content.trim()) throw new Error("agent returned no text");
+          return { content: data.content, tokensUsed: typeof data.tokens_used === "number" ? data.tokens_used : null, provider: "agent" };
+        } finally { clearTimeout(timer); }
+      } catch (err) {
+        console.warn("[ai] tutor agent unavailable, using the plain provider:", err instanceof Error ? err.message : err);
+        return fallback.chat(messages, systemPrompt, meta);
+      }
+    },
+  };
+}
+
+function directProvider(name: string): AIProvider {
   switch (name) {
     case "openai":    return openaiProvider();
     case "gemini":    return geminiProvider();
@@ -288,7 +336,7 @@ export function getProvider(): AIProvider {
     default:
       throw new Error(
         `Unknown BITFLOW_AI_PROVIDER: "${name}". ` +
-        `Valid values: openai, gemini, anthropic, groq.`,
+        `Valid values: openai, gemini, anthropic, groq, agent.`,
       );
   }
 }

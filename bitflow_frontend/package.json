@@ -71,6 +71,7 @@
     "check-hedge": "tsx scripts/hedge.check.ts",
     "check-seo": "tsx scripts/seo.check.ts",
     "check-walkthrough": "tsx scripts/walkthrough.check.ts",
+    "check-tutor-agent": "tsx scripts/tutor-agent.check.ts",
     "check-health-race": "tsx scripts/health-race.check.ts",
     "check-lab": "tsx scripts/lab.check.ts",
     "check-hardware": "tsx scripts/hardware.check.ts",
