@@ -4,6 +4,9 @@
  * text model stands in for each person's editor.
  */
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import jwt from "jsonwebtoken";
+import { generateBackendJwt, generatePairJwt } from "../lib/jwt";
 import * as Y from "yjs";
 import { PAIR_KEYS, colorFor, cssString, inviteCode, parseInvite, safeColor, writeContent } from "../lib/pair";
 import { bindEditor } from "../lib/pair-binding";
@@ -151,6 +154,20 @@ const monaco = {
   writeContent(B, { ...base, files: [] }, null, true, new Map());   // force: exactly this content
   assert.deepEqual([...A.files.keys()].sort(), [PAIR_KEYS.design, PAIR_KEYS.testbench]);
   assert.equal(text(A, PAIR_KEYS.design), base.designCode);
+}
+
+// ── Room tokens, signed the way production signs (lib/jwt.ts) ──
+{
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const saved = process.env.JWT_PRIVATE_KEY;
+  process.env.JWT_PRIVATE_KEY = pem.replace(/\n/g, "\\n");   // as an env var holds it: newlines as a literal \n
+  try {
+    const room = roomFor(pid, hashInvite(token));
+    const claims = jwt.verify(generatePairJwt(room, new Date(Date.now() + 3600_000)), publicKey, { algorithms: ["ES256"], audience: "bitflow-pair" }) as jwt.JwtPayload;
+    assert.equal(claims.room, room, "an ES256 pair token for exactly this room");
+    assert.throws(() => jwt.verify(generateBackendJwt(), publicKey, { algorithms: ["ES256"], audience: "bitflow-pair" }), "a simulate token isn't a pair token");
+  } finally { if (saved === undefined) delete process.env.JWT_PRIVATE_KEY; else process.env.JWT_PRIVATE_KEY = saved; }
 }
 
 console.log("pair: all checks passed");
