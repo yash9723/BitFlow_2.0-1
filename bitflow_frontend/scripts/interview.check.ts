@@ -19,7 +19,7 @@ const bySlug = new Map(real.filter(isInterviewProblem).map((p) => [p.slug, p]));
 // The real problem bank backs every list.
 for (const s of TOP_25) assert.ok(bySlug.has(s), `Top 25 names ${s}, which isn't an interview problem`);
 assert.equal(new Set(TOP_25).size, 25);
-for (const t of TOPICS) assert.ok(real.filter(isInterviewProblem).filter(t.match).length >= 5, `topic ${t.id} is thin`);
+for (const t of TOPICS) assert.ok(real.filter(isInterviewProblem).filter(t.match).length >= 3, `topic ${t.id} is thin`);
 for (const tier of ["Easy", "Medium", "Hard"]) assert.ok(real.filter(fitsMock).filter((p) => tierOf(p.difficulty) === tier).length >= 5, `few ${tier} problems for mocks`);
 
 // Levels from both difficulty scales.

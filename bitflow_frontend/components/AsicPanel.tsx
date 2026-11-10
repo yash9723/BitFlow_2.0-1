@@ -5,11 +5,16 @@
  * Modal opened from the Sandbox toolbar. POST /api/asic maps the design to Sky130 standard
  * cells (Yosys) and times it (OpenSTA): area, Fmax, setup and hold slack, the critical path
  * stage by stage, and power. With the testbench it also runs a gate-level simulation and takes
- * the power estimate's input activity from the RTL run.
+ * the power estimate's input activity from the RTL run. The critical path is drawn as a chain of
+ * cells, and the same design is placed and routed on an iCE40 (POST /api/synthesize) to compare.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
+import TinyTapeoutSection from "@/components/TinyTapeoutSection";
+import ChipXray from "@/components/ChipXray";
+import type { SrcLoc, YosysNetlist } from "@/lib/hardware-diagrams";
+import { pathCells, slowestCell } from "@/lib/asic-path";
 
 interface Stage { pin: string; cell: string; edge: "rise" | "fall"; delay: number; arrival: number; net: string | null }
 interface Path {
@@ -37,6 +42,8 @@ interface AsicResult {
   };
   gls?: { error: string } | { rtl: SimRun; gates: SimRun; sameOutput: boolean } | null;
   netlist?: string | null;
+  /** Chip X-ray: the mapped gates (Yosys JSON), when small enough to draw. */
+  gates?: YosysNetlist | null;
 }
 
 interface Props {
@@ -45,6 +52,10 @@ interface Props {
   designCode:     string;
   testbenchCode?: string;
   language?:      "verilog" | "vhdl";
+  /** Chip X-ray cross-probing, as in the synthesis panel: the editor's line, open a line, name a line. */
+  cursor?:        { file: string; line: number } | null;
+  onOpenSource?:  (loc: SrcLoc) => void;
+  describe?:      (loc: SrcLoc) => string;
 }
 
 function watts(w: number): string {
@@ -91,17 +102,126 @@ function PathTable({ path }: { path: Path }) {
   );
 }
 
-export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode = "", language = "verilog" }: Props) {
+interface Ice40Result {
+  ok: boolean; error?: string;
+  resources?: { luts: number; ffs: number; carry: number; bram: number; dsp: number; io: number };
+  pnr?: { ok: boolean; error?: string; fmax?: { clock: string; mhz: number }[] } | null;
+}
+
+const short = (s: string, n = 12) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+
+/** The critical path as a schematic: one box per cell, shaded by the time it costs; the slowest in amber. */
+function PathSchematic({ path }: { path: Path }) {
+  const cells = pathCells(path.stages);
+  const slow = slowestCell(cells);
+  const max = Math.max(...cells.map((c) => c.delay), 0.001);
+  const W = 104, H = 46, GAP = 46, Y = 22;
+  const width = cells.length * W + (cells.length - 1) * GAP + 8;
+  return (
+    <div className="overflow-x-auto border border-rim rounded bg-void/60">
+      <svg width={width} height={H + 44} viewBox={`0 0 ${width} ${H + 44}`} role="img"
+           aria-label={`Critical path through ${cells.length} cells, ${path.arrival?.toFixed(3)} ns`} className="font-mono">
+        {cells.map((c, i) => {
+          const x = 4 + i * (W + GAP);
+          const reg = /^(df|dl|sdf|edf)/.test(c.cell);
+          const hot = i === slow && c.delay > 0;
+          const prevNet = i > 0 ? cells[i - 1].net : null;
+          return (
+            <g key={i}>
+              {i > 0 && (
+                <>
+                  <line x1={x - GAP} y1={Y + H / 2} x2={x} y2={Y + H / 2} className="stroke-phosphor/50" strokeWidth={1.5} />
+                  <polygon points={`${x - 6},${Y + H / 2 - 4} ${x},${Y + H / 2} ${x - 6},${Y + H / 2 + 4}`} className="fill-phosphor/50" />
+                  {prevNet && (
+                    <text x={x - GAP / 2} y={Y + H / 2 - 6} textAnchor="middle" fontSize={8} className="fill-ghost">
+                      <title>{prevNet}</title>{short(prevNet, 9)}
+                    </text>
+                  )}
+                </>
+              )}
+              <rect x={x} y={Y} width={W} height={H} rx={c.port ? 12 : 2}
+                    className={hot ? "fill-warn/20 stroke-warn" : "fill-phosphor stroke-phosphor/60"}
+                    style={hot ? undefined : { fillOpacity: 0.06 + 0.3 * (c.delay / max) }} strokeWidth={hot ? 2 : 1}>
+                <title>{`${c.instance} (${c.cell}) pins ${c.pins.join(", ")}: ${c.delay.toFixed(3)} ns, arrives at ${c.arrival.toFixed(3)} ns`}</title>
+              </rect>
+              {reg && <polyline points={`${x},${Y + H - 12} ${x + 7},${Y + H - 7} ${x},${Y + H - 2}`} fill="none" className="stroke-phosphor/70" />}
+              <text x={x + W / 2} y={Y + 14} textAnchor="middle" fontSize={8} className="fill-dim">{short(c.instance)}</text>
+              <text x={x + W / 2} y={Y + 28} textAnchor="middle" fontSize={11} fontWeight={700} className={hot ? "fill-warn" : "fill-bright"}>{short(c.cell, 13)}</text>
+              <text x={x + W / 2} y={Y + 40} textAnchor="middle" fontSize={9} className="fill-pale">{c.delay.toFixed(3)} ns</text>
+              <text x={x + W / 2} y={Y + H + 14} textAnchor="middle" fontSize={8} className="fill-ghost">@ {c.arrival.toFixed(3)}</text>
+            </g>
+          );
+        })}
+        <text x={4} y={12} fontSize={9} className="fill-dim">START {path.startpoint}</text>
+        <text x={width - 4} y={12} fontSize={9} textAnchor="end" className="fill-dim">END {path.endpoint}</text>
+      </svg>
+    </div>
+  );
+}
+
+function CompareRow({ k, a, b }: { k: string; a: string; b: string }) {
+  return (
+    <tr className="border-b border-rim/40 last:border-0">
+      <td className="py-0.5 pr-3 text-dim">{k}</td><td className="pr-3 text-pale">{a}</td><td className="text-pale">{b}</td>
+    </tr>
+  );
+}
+
+/** The same design on an FPGA and as a chip: what each target counts and how fast it runs. */
+function TargetCompare({ asic, ice40 }: { asic: AsicResult; ice40: Ice40Result | "loading" | null }) {
+  const t = asic.timing!;
+  const done = ice40 && ice40 !== "loading" ? ice40 : null;
+  const fmax = done?.pnr?.fmax?.[0]?.mhz ?? null;                 // the slowest clock's Fmax
+  const r = done?.ok ? done.resources : null;
+  return (
+    <section aria-label="FPGA and ASIC compared" className="space-y-1.5 font-mono text-[11px]">
+      <h3 className="text-[10px] uppercase tracking-widest text-dim">Same design, two targets</h3>
+      {ice40 === "loading" ? <PixelLoader size="sm" label="Placing and routing on an iCE40…" /> : (
+        <div className="overflow-auto border border-rim rounded px-3 py-2">
+          <table className="w-full">
+            <thead className="text-[9px] uppercase tracking-widest text-dim">
+              <tr><th className="pr-3" /><th className="text-left font-normal pr-3">FPGA · iCE40-HX8K</th><th className="text-left font-normal">ASIC · Sky130 HD</th></tr>
+            </thead>
+            <tbody>
+              <CompareRow k="Logic" a={r ? `${r.luts} LUT4s${r.carry ? ` · ${r.carry} carry` : ""}` : "—"} b={`${(asic.cells ?? 0) - (asic.registers ?? 0)} gate cells`} />
+              <CompareRow k="Registers" a={r ? `${r.ffs} flip-flops` : "—"} b={`${asic.registers ?? 0} flip-flops`} />
+              <CompareRow k="Size" a={r ? `${r.luts} of 7,680 LUTs (${((100 * r.luts) / 7680).toFixed(1)}%)` : "—"} b={`${asic.areaUm2?.toLocaleString()} µm²`} />
+              <CompareRow k={t.clock ? "Fmax" : "Delay"}
+                          a={t.clock && fmax ? `${fmax} MHz after routing` : "—"}
+                          b={t.clock ? (t.fmaxMhz ? `${t.fmaxMhz} MHz before layout` : "—") : t.delayNs !== null ? `${t.delayNs.toFixed(3)} ns` : "—"} />
+            </tbody>
+          </table>
+          {done && !done.ok && <p className="text-danger mt-1">iCE40: {done.error}</p>}
+          {done?.pnr && !done.pnr.ok && <p className="text-ghost mt-1">iCE40 place and route: {done.pnr.error}</p>}
+          <p className="text-[10px] text-ghost mt-1.5">
+            An FPGA builds logic from fixed look-up tables joined by programmable routing, so the same design runs slower than
+            custom cells. A chip is made once and can&apos;t change; an FPGA loads a new design in milliseconds.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode = "", language = "verilog", cursor, onOpenSource, describe }: Props) {
   const [periodNs, setPeriodNs] = useState(10);
   const [clock, setClock]       = useState("");
   const [useTb, setUseTb]       = useState(true);
   const [result, setResult]     = useState<AsicResult | null>(null);
   const [loading, setLoading]   = useState(false);
+  const [ice40, setIce40]       = useState<Ice40Result | "loading" | null>(null);
   const hasTb = testbenchCode.trim().length > 0;
 
   const run = useCallback(async () => {
     setLoading(true);
     setResult(null);
+    setIce40("loading");
+    fetch("/api/synthesize", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ designCode, fpga: "ice40", language }),
+    })
+      .then(async (res) => { const d = await res.json().catch(() => ({})); setIce40(res.ok ? d : { ok: false, error: d.error ?? `Request failed (${res.status})` }); })
+      .catch(() => setIce40({ ok: false, error: "Network error." }));
     try {
       const res = await fetch("/api/asic", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -204,12 +324,20 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
                       title={`From ${t.setup.startpoint}: ${t.setup.startKind}\nTo ${t.setup.endpoint}: ${t.setup.endKind}`}>
                     Critical path · {t.setup.startpoint} → {t.setup.endpoint} · {t.setup.arrival?.toFixed(3)} ns
                   </h3>
+                  <PathSchematic path={t.setup} />
                   <PathTable path={t.setup} />
                   <p className="font-mono text-[10px] text-ghost">
-                    The longest stages are where to look: shorten the logic between these registers, or add a pipeline register in the middle.
+                    The amber cell costs the most time. Shorten the logic between these registers, or add a pipeline register in the middle.
                   </p>
                 </section>
               )}
+
+              {result.gates && result.top && (
+                <ChipXray gates={result.gates} top={result.top} code={language === "verilog" ? designCode : null}
+                          stages={t.setup?.stages ?? []} cursor={cursor} onOpenSource={onOpenSource} describe={describe} />
+              )}
+
+              <TargetCompare asic={result} ice40={ice40} />
 
               {gls && (
                 <section aria-label="Gate-level simulation" className="space-y-1.5 font-mono text-[11px]">
@@ -274,6 +402,8 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
                   )}
                 </div>
               </section>
+              <TinyTapeoutSection design={designCode} testbench={testbenchCode} top={result.top} areaUm2={result.areaUm2}
+                                  fmaxMhz={t.fmaxMhz} language={language} />
             </>
           )}
         </div>

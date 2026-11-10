@@ -75,7 +75,7 @@ async function withDiagrams(r: any): Promise<any> {
     netlist ? safe(schematicSvg(netlist)) : Promise.resolve(null),
     Promise.all(rest.fsms.map((f: any) => safe(fsmSvg(f)))),
   ]);
-  return { ...rest, schematicSvg: schematic, fsms: rest.fsms.map((f: any, i: number) => ({ ...f, svg: fsmSvgs[i] })) };
+  return { ...rest, netlist, schematicSvg: schematic, fsms: rest.fsms.map((f: any, i: number) => ({ ...f, svg: fsmSvgs[i] })) };
 }
 
 const canRunHere = () => typeof Worker !== "undefined" && typeof WebAssembly !== "undefined";

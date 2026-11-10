@@ -57,11 +57,14 @@ import type { ParsedVcd, VcdSignal } from "@/lib/vcd-parser";
 import { binToHex, niceTimeStep } from "@/lib/vcd-parser";
 import { downloadBlob, downloadVcd } from "@/lib/api";
 import { series, toCsv, valueAt as getValueAtTime, xyPoints } from "@/lib/plot";
+import { diffRuns, inScope, matchRanges, nextAnyChange, nextChange, nextMatch, parseQuery, scopesOf, signalFor, splitBus } from "@/lib/wave-nav";
+import { parseVcd } from "@/lib/vcd-parser";
 import { FROM_SIM_KEY, fromVcd, nsPerUnit } from "@/lib/studio/wave";
 import { type DecoderKind, type DecoderSpec, type Frame, PRIMARY, ROLES, autoBitTime, guessDecoder, runDecoder } from "@/lib/protocol-decode";
 import { type Radix, defaultRadix, formatWithRadix, nextRadix, RADIX_LABEL } from "@/lib/radix";
 import { rowKeys, visibleRows } from "@/lib/waveform-svg";
 import type { SimulateResponse } from "@/lib/types";
+import { REVEAL_LINE, type TraceStep } from "@/lib/trace";
 import PixelSprite from "@/components/pixel/PixelSprite";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,6 +96,10 @@ interface WaveformPanelProps {
   highlights?: { from: number; to: number }[];
   /** Keep hidden rows, order, radix and markers across re-runs (which remount the panel) under this key. */
   viewKey?: string;
+  /** "Where is this driven?" on a signal: the page opens the line that assigns it (Sandbox). */
+  onReveal?: (name: string, scope: string) => void;
+  /** Put marker A at this time and scroll to it; a new object each time, so the same time can be sent twice. */
+  markAt?: { time: number };
 }
 
 interface SavedView {
@@ -105,6 +112,8 @@ interface SavedView {
 }
 // ponytail: in-memory only, so views reset on reload; move to sessionStorage if people ask.
 const savedViews = new Map<string, SavedView>();
+// The last dump each page showed, so the next run can be compared with it.
+const lastRuns = new Map<string, ParsedVcd>();
 /** The view a page's waveform panel last showed (row order, hidden rows, radix, markers): for the lab report. */
 export const getSavedView = (viewKey: string): SavedView | undefined => savedViews.get(viewKey);
 
@@ -527,6 +536,15 @@ interface SignalLabelProps {
   /** Bus drawn as a line plot (a taller row). */
   plotted      : boolean;
   onPlotToggle : (key: string) => void;
+  /** Bus shown with one row per bit below it. */
+  expanded     : boolean;
+  onExpandToggle: (sig: VcdSignal) => void;
+  /** The row [ and ] step through (edges of this signal). */
+  selected     : boolean;
+  onSelect     : (key: string) => void;
+  /** Different from the previous run somewhere. */
+  differs      : boolean;
+  onReveal?    : (sig: VcdSignal) => void;
 }
 
 const SignalLabel = React.memo(function SignalLabel({
@@ -540,6 +558,12 @@ const SignalLabel = React.memo(function SignalLabel({
   onMove,
   plotted,
   onPlotToggle,
+  expanded,
+  onExpandToggle,
+  selected,
+  onSelect,
+  differs,
+  onReveal,
 }: SignalLabelProps) {
   const isBus = sig.width > 1;
   const display = hoverValue !== undefined
@@ -560,7 +584,7 @@ const SignalLabel = React.memo(function SignalLabel({
 
   return (
     <div
-      className="group flex items-center justify-between px-2 border-b border-rim/30 shrink-0 select-none transition-opacity duration-100 cursor-grab"
+      className={`group flex items-center justify-between px-2 border-b border-rim/30 shrink-0 select-none transition-opacity duration-100 cursor-grab ${selected ? "bg-phosphor/10 shadow-[inset_2px_0_0_#00e87a]" : ""}`}
       style={{ height: plotted ? PLOT_H : ROW_H, opacity: dimmed ? 0.25 : 1 }}
       draggable
       title="Drag to reorder"
@@ -570,15 +594,38 @@ const SignalLabel = React.memo(function SignalLabel({
     >
       {/* Signal name — truncated with tooltip for long names */}
       <span
-        className="font-mono text-[11px] text-pale truncate flex-1 min-w-0 mr-1"
-        title={sig.name}
+        className={`font-mono text-[11px] truncate flex-1 min-w-0 mr-1 cursor-pointer ${differs ? "text-danger" : "text-pale"}`}
+        title={`${sig.scope ? sig.scope + "." : ""}${sig.name}${differs ? " (differs from the previous run)" : ""}: click to select, then [ and ] step through its edges`}
+        onClick={() => onSelect(rowKey)}
       >
-        {sig.name}
+        {differs && "≠ "}{sig.name}
       </span>
 
       {/* Right side: radix button + width badge + live value badge */}
       <div className="flex items-center gap-1 shrink-0">
         {/* Plot toggle and radix cycle button — only for buses */}
+        {onReveal && (
+          <button
+            onClick={() => onReveal(sig)}
+            title={`Where is ${sig.name} driven? Opens the line in the editor`}
+            aria-label={`Show where ${sig.name} is driven`}
+            className="font-mono text-[10px] w-4 h-4 rounded flex items-center justify-center text-dim hover:text-phosphor hover:bg-phosphor/10 opacity-0 group-hover:opacity-100 focus:opacity-100"
+          >
+            ↗
+          </button>
+        )}
+        {isBus && (
+          <button
+            onClick={() => onExpandToggle(sig)}
+            title={expanded ? "Collapse the bits" : "Show each bit as its own row"}
+            aria-label={expanded ? `Collapse ${sig.name}` : `Expand ${sig.name} into bits`}
+            aria-pressed={expanded}
+            className={`font-mono text-[10px] w-4 h-4 rounded flex items-center justify-center transition-colors duration-100 ${
+              expanded ? "text-info bg-info/10" : "text-dim hover:text-info hover:bg-info/10"}`}
+          >
+            {expanded ? "▾" : "▸"}
+          </button>
+        )}
         {isBus && (
           <button
             onClick={() => onPlotToggle(rowKey)}
@@ -633,9 +680,43 @@ const SignalLabel = React.memo(function SignalLabel({
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }: WaveformPanelProps) {
+export default function WaveformPanel({ parsedVcd, result, highlights, viewKey, onReveal, markAt }: WaveformPanelProps) {
   const saved = viewKey ? savedViews.get(viewKey) : undefined;
-  const { signals, maxTime, timescale } = parsedVcd;
+
+  // ── Debugging: an opened VCD file, the previous run, the scope shown, buses expanded into bits ──
+  const [imported, setImported] = useState<{ name: string; vcd: ParsedVcd } | null>(null);
+  const [prevRun, setPrevRun] = useState<ParsedVcd | null>(null);
+  const [compareOn, setCompareOn] = useState(false);
+  useEffect(() => {
+    if (!viewKey) return;
+    const last = lastRuns.get(viewKey);
+    if (last && last !== parsedVcd) setPrevRun(last);
+    lastRuns.set(viewKey, parsedVcd);
+  }, [viewKey, parsedVcd]);
+  const vcd = imported?.vcd ?? parsedVcd;
+  const [scopeSel, setScopeSel] = useState<string | null>(null);
+  const [expandMap, setExpandMap] = useState<Record<string, boolean>>({});
+  const scopes = useMemo(() => scopesOf(vcd.signals), [vcd]);
+  const sigKey = (sg: VcdSignal) => `${sg.scope ?? ""}.${sg.name}`;
+  const signals = useMemo<VcdSignal[]>(
+    () => inScope(vcd.signals, scopeSel).flatMap((sg) => (sg.width > 1 && expandMap[sigKey(sg)] ? [sg, ...splitBus(sg)] : [sg])),
+    [vcd, scopeSel, expandMap],
+  );
+  const { maxTime, timescale } = vcd;
+  const handleExpand = useCallback((sg: VcdSignal) => setExpandMap((m) => ({ ...m, [sigKey(sg)]: !m[sigKey(sg)] })), []);
+  const diff = useMemo(() => (compareOn && prevRun && !imported ? diffRuns(vcd, prevRun) : null), [compareOn, prevRun, imported, vcd]);
+  const differing = useMemo(() => new Set(diff?.signals ?? []), [diff]);
+  const shaded = diff ? [...(highlights ?? []), ...diff.ranges] : highlights;
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [findText, setFindText] = useState("");
+  const openVcd = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 32 * 1024 * 1024) { window.alert("That file is over 32 MB: dump fewer signals or a shorter time."); return; }
+    const parsed = parseVcd(await file.text());
+    if (!parsed.signals.length) { window.alert(`${file.name} has no signals: is it a VCD file?`); return; }
+    setImported({ name: file.name, vcd: parsed });
+    setScopeSel(null);
+  }, []);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
 
@@ -982,6 +1063,24 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
     if (viewKey) savedViews.set(viewKey, { hidden, order, radixMap, markers, plotMap, decoder });
   }, [viewKey, hidden, order, radixMap, markers, plotMap, decoder]);
 
+  /** Put marker A at t and scroll it into view. */
+  const goTo = useCallback((t: number | null) => {
+    if (t === null) return;
+    setMarkers((m) => ({ ...m, a: t }));
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = Math.max(0, t * pxPerUnitRef.current - el.clientWidth / 3);
+  }, []);
+  useEffect(() => { if (markAt) goTo(markAt.time); }, [markAt, goTo]);
+  const query = useMemo(() => (findText.trim() ? parseQuery(findText) : null), [findText]);
+  const findSig = query && typeof query !== "string" ? signalFor(signals, query.name) : undefined;
+  const findRanges = useMemo(() => (query && typeof query !== "string" && findSig ? matchRanges(findSig, query, maxTime) : []), [query, findSig, maxTime]);
+  const findError = !query ? null : typeof query === "string" ? query : !findSig ? `No signal called ${query.name}` : findRanges.length ? null : "No match";
+  const findStep = (dir: 1 | -1) => goTo(nextMatch(findRanges, markers.a ?? (dir === 1 ? -1 : maxTime + 1), dir));
+  const edgeStep = (dir: 1 | -1) => {
+    const t = markers.a ?? (dir === 1 ? -1 : maxTime + 1);
+    const sel = selectedKey ? byKey.get(selectedKey) : undefined;
+    goTo(sel ? nextChange(sel, t, dir) : nextAnyChange(visibleSignals, t, dir));
+  };
   const jumpTo = useCallback((f: Frame) => {
     setMarkers((m) => ({ ...m, a: Math.round(f.start) }));
     const el = scrollRef.current;
@@ -1161,8 +1260,15 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
   return (
     <div
       className={[
-        "flex flex-col bg-pit border-t border-rim overflow-hidden h-full",
+        "flex flex-col bg-pit border-t border-rim overflow-hidden h-full outline-none",
       ].join(" ")}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT") return;
+        if (e.key === "]" || e.key === "[") { e.preventDefault(); edgeStep(e.key === "]" ? 1 : -1); }
+      }}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+      onDrop={(e) => { if (e.dataTransfer.files[0]) { e.preventDefault(); openVcd(e.dataTransfer.files[0]); } }}
     >
       {/* ── Panel header ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-3 h-8 shrink-0 bg-surface border-b border-rim">
@@ -1292,6 +1398,52 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
         </div>
       </div>
 
+      {/* ── Debug bar: scope, value search, edges, open a VCD, compare runs ── */}
+      {isOpen && (vcd.signals.length > 0 || imported) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 shrink-0 bg-surface/60 border-b border-rim/60 font-mono text-[9px] text-dim">
+          {scopes.length > 1 && (
+            <label className="flex items-center gap-1" title="Show the signals of one module instance">Scope
+              <select value={scopeSel ?? ""} onChange={(e) => setScopeSel(e.target.value || null)}
+                      className="h-5 bg-void border border-rim rounded text-pale">
+                <option value="">all</option>
+                {scopes.map((sc) => <option key={sc} value={sc}>{"\u00a0".repeat(2 * (sc.split(".").length - 1))}{sc.split(".").pop()}</option>)}
+              </select>
+            </label>
+          )}
+          <span className="flex items-center gap-1">
+            <input value={findText} onChange={(e) => setFindText(e.target.value)} placeholder="find: count == 5"
+                   onKeyDown={(e) => { if (e.key === "Enter") findStep(e.shiftKey ? -1 : 1); }}
+                   aria-label="Find a value, e.g. count == 5" title="Find when a signal has a value: count == 5, state != 0x2, q == x, ready (high). Enter: next, Shift+Enter: previous"
+                   className="w-36 h-5 px-1 bg-void border border-rim rounded text-pale placeholder:text-dim/50" />
+            <button onClick={() => findStep(-1)} disabled={!findRanges.length} className={headerBtn} aria-label="Previous match">◀</button>
+            <button onClick={() => findStep(1)} disabled={!findRanges.length} className={headerBtn} aria-label="Next match">▶</button>
+            {findError ? <span className="text-warn">{findError}</span>
+              : findRanges.length > 0 && <span className="text-pale">{findRanges.length} match{findRanges.length === 1 ? "" : "es"}</span>}
+          </span>
+          <span className="flex items-center gap-1" title="Step marker A to the previous / next change of the selected signal (click a name to select it), or of any signal. Keys: [ and ]">
+            edge of {selectedKey ? <span className="text-phosphor">{byKey.get(selectedKey)?.name ?? selectedKey}</span> : "any signal"}
+            <button onClick={() => edgeStep(-1)} className={headerBtn} aria-label="Previous edge">◀ [</button>
+            <button onClick={() => edgeStep(1)} className={headerBtn} aria-label="Next edge">] ▶</button>
+          </span>
+          <span className="ml-auto flex items-center gap-2">
+            {prevRun && !imported && (
+              <button onClick={() => setCompareOn((v) => !v)} aria-pressed={compareOn} className={headerBtn}
+                      title="Shade where this run differs from the previous one, and mark the signals that changed">
+                {compareOn ? (diff && diff.signals.length ? `≠ ${diff.signals.length} signal${diff.signals.length === 1 ? "" : "s"} differ` : "= same as previous run") : "Compare with previous run"}
+              </button>
+            )}
+            {imported ? (
+              <span className="flex items-center gap-1"><span className="text-info">{imported.name}</span>
+                <button onClick={() => setImported(null)} className={headerBtn}>back to this run</button></span>
+            ) : (
+              <label className={`${headerBtn} cursor-pointer`} title="Open a .vcd file from your computer (or drop it on the waveform)">
+                Open VCD<input type="file" accept=".vcd,text/plain" className="hidden" onChange={(e) => { openVcd(e.target.files?.[0]); e.target.value = ""; }} />
+              </label>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* ── Empty state ────────────────────────────────────────────────────── */}
       {isOpen && signals.length === 0 && <EmptyState />}
 
@@ -1373,6 +1525,12 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
                 onMove={handleMove}
                 plotted={sig.width > 1 && !!plotMap[rowKey.get(sig.id)!]}
                 onPlotToggle={handlePlotToggle}
+                expanded={!!expandMap[sigKey(sig)]}
+                onExpandToggle={handleExpand}
+                selected={selectedKey === rowKey.get(sig.id)}
+                onSelect={(k) => setSelectedKey((cur) => (cur === k ? null : k))}
+                differs={differing.has(sig.name)}
+                onReveal={onReveal && !imported ? (sg) => onReveal(sg.name.replace(/\[\d+\]$/, ""), sg.scope ?? "") : undefined}
               />
             ))}
           </div>
@@ -1415,20 +1573,26 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
                 <rect x={0} y={0} width={chartW} height={AXIS_H} fill="#13141a" />
 
                 {/* ── Mismatch bands (yours ≠ expected) ─────────────────── */}
-                {highlights?.map((h, i) => (
+                {shaded?.map((h, i) => (
                   <rect key={`hl-${i}`} x={h.from * pxPerUnit} y={AXIS_H}
                         width={Math.max((h.to - h.from) * pxPerUnit, 2)} height={svgH - AXIS_H}
                         fill="#ff4f4f" opacity={0.14} />
                 ))}
-                {highlights?.[0] && (
+                {shaded?.[0] && (
                   <g>
-                    <line x1={highlights[0].from * pxPerUnit} x2={highlights[0].from * pxPerUnit} y1={AXIS_H} y2={svgH}
+                    <line x1={shaded[0].from * pxPerUnit} x2={shaded[0].from * pxPerUnit} y1={AXIS_H} y2={svgH}
                           stroke="#ff4f4f" strokeWidth={1.5} strokeDasharray="3 3" />
-                    <text x={highlights[0].from * pxPerUnit + 4} y={AXIS_H - 6} fontSize={9} fill="#ff4f4f" fontFamily="monospace">
+                    <text x={shaded[0].from * pxPerUnit + 4} y={AXIS_H - 6} fontSize={9} fill="#ff4f4f" fontFamily="monospace">
                       first difference
                     </text>
                   </g>
                 )}
+
+                {/* ── Value-search matches: amber ticks along the axis ─── */}
+                {findRanges.slice(0, 500).map((r, i) => (
+                  <rect key={`fm-${i}`} x={r.from * pxPerUnit} y={AXIS_H - 5} width={Math.max((r.to - r.from) * pxPerUnit, 2)} height={4}
+                        fill="#ffb547" opacity={0.85} pointerEvents="none" />
+                ))}
 
                 {/* ── Grid infrastructure ───────────────────────────────── */}
                 {gridElements.tickLines}
@@ -1502,12 +1666,39 @@ export default function WaveformPanel({ parsedVcd, result, highlights, viewKey }
 }
 /** The learner's own signals on the first failing hidden test (from the submit response). */
 export function FailingWaveformView({ data }: {
-  data: { testcaseId: string | null; waveform: ParsedVcd; mismatches?: { from: number; to: number }[] };
+  data: { testcaseId: string | null; waveform: ParsedVcd; mismatches?: { from: number; to: number }[]; trace?: TraceStep[] };
 }) {
   const test = data.testcaseId ? `failing test ${data.testcaseId}` : "the failing test";
   const diff = data.mismatches;
+  const [markAt, setMarkAt] = useState<{ time: number } | undefined>();
+  const [active, setActive] = useState<number | null>(null);
+  const goStep = (i: number, step: TraceStep) => {
+    setActive(i);
+    setMarkAt({ time: step.time });
+    if (step.line) window.dispatchEvent(new CustomEvent(REVEAL_LINE, { detail: step.line }));
+  };
   return (
     <div className="space-y-1">
+      {data.trace && data.trace.length > 0 && (
+        <div className="rounded border border-danger/40 bg-danger/5 p-2 space-y-1.5" aria-label="Trace the bug">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-danger">Trace the bug</span>
+            <span className="font-mono text-[9px] text-dim">Click a step: the line lights up in your code and the waveform jumps there.</span>
+          </div>
+          <ol className="space-y-1">
+            {data.trace.map((step, i) => (
+              <li key={i}>
+                <button type="button" onClick={() => goStep(i, step)}
+                        className={`w-full text-left rounded px-2 py-1.5 font-mono text-[11px] border transition-colors ${active === i ? "border-danger/60 bg-danger/10" : "border-transparent hover:border-rim hover:bg-void/40"}`}>
+                  <span className="text-danger font-bold mr-1.5">{i + 1}.</span>
+                  <span className="text-pale">{step.title}</span>
+                  {step.detail && <span className="block whitespace-pre-wrap text-ghost mt-0.5 pl-4">{step.detail}</span>}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       <p className="font-mono text-[9px] text-dim">
         {diff
           ? <>Your design on {test}. Each output is shown twice: &ldquo;yours&rdquo; and &ldquo;expected&rdquo; (a correct design on the same test).{" "}
@@ -1517,7 +1708,7 @@ export function FailingWaveformView({ data }: {
           : <>Your design on {test}: only signals inside your module are shown.</>}
       </p>
       <div className={`h-64 border rounded overflow-hidden ${diff?.length ? "border-danger/40" : "border-rim/60"}`}>
-        <WaveformPanel parsedVcd={data.waveform} highlights={diff} />
+        <WaveformPanel parsedVcd={data.waveform} highlights={diff} markAt={markAt} />
       </div>
     </div>
   );

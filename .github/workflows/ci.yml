@@ -62,6 +62,17 @@ jobs:
       - run: npm run check-mutants
       - run: npm run check-verification
       - run: npm run check-pixel
+      - run: npm run check-asic-path
+      - run: npm run check-icarus
+      - run: npm run check-wave-nav
+      - run: npm run check-schematic
+      - run: npm run check-share
+      - run: npm run check-engagement
+      - run: npm run check-trace
+      - run: npm run check-tinytapeout
+      - run: npm run check-chip-xray
+      - run: npm run check-live-lab
+      - run: npm run check-pair
       - run: npm run check-waveform-diff
       - run: npm run check-vhdl-starter
       - run: npm run check-bitstream

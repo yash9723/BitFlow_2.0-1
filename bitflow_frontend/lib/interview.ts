@@ -43,17 +43,16 @@ export const TOPICS: { id: string; title: string; blurb: string; match: (p: Inte
     match: (p) => /^memory$/i.test(p.category) || hasTag(p, /^(fifo|sram|register-file)$/i) },
   { id: "protocols", title: "Protocols", blurb: "Valid/ready, UART, SPI, I2C, APB.",
     match: (p) => p.category === "Protocol" || p.category === "interface" || hasTag(p, /^(uart|spi|i2c|apb|protocol|valid-ready)$/i) },
-  { id: "verification", title: "Verification", blurb: "Write the testbench or the proof that catches the bugs.",
-    match: (p) => p.category === "Verification" || p.category === "Formal" },
+  // "Verification" (Verification and Formal Arena sets) returns when those problems are back from revision.
 ];
 
 /** A starting set across the topics, chosen by BitFlow. Not a claim about what any employer asks. */
 export const TOP_25 = [
   "gray-code-converter", "priority-encoder", "barrel-shifter-4bit", "population-count", "magnitude-comparator",
   "spot-the-latch", "dff-sync-reset", "blocking-vs-nonblocking", "edge-detector", "mod-n-counter",
-  "universal-shift-register", "divide-by-3-50-duty", "serial-adder", "register-file-8x8", "fifo-sync",
+  "universal-shift-register", "sram-simple-dual-port", "adder-subtractor", "register-file-8x8", "fifo-sync",
   "async-fifo-cdc", "seq-detect-1011-moore", "seq-detect-1011-mealy", "one-hot-fsm-1011", "traffic-light-controller",
-  "binary-divisibility-by-3", "uart-receiver-8n1", "spi-master-controller", "round-robin-arbiter", "valid-ready-skid-buffer",
+  "binary-divisibility-by-3", "uart-receiver-8n1", "spi-master-controller", "round-robin-arbiter", "i2c-start-stop-detector",
 ];
 
 /** One problem per tier, preferring ones this learner hasn't solved. */

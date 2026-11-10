@@ -235,6 +235,7 @@ export function ArenaSolverClient({ problem }: Props) {
                   diagnostics={diagnostics.design}
                   readOnly={writesTb}
                   lint={!writesTb}
+                  revealLines={!writesTb}
                 />
               </div>
             </div>

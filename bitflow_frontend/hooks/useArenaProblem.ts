@@ -16,7 +16,8 @@
 import { useState, useCallback, useEffect } from "react";
 import type { ArenaProblem, ArenaSubmissionResult } from "@/lib/arena/types";
 import type { SimulateResponse } from "@/lib/types";
-import { runSimulation, submitSolution, checkHealth } from "@/lib/api";
+import { submitSolution, checkHealth } from "@/lib/api";
+import { runPreferBrowser } from "@/lib/sim/browser-sim";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
 import { useCelebrate } from "@/components/pixel/CelebrationProvider";
@@ -149,13 +150,13 @@ export function useArenaProblem(problem: ArenaProblem): UseArenaProblemReturn {
     try {
       const result = isFormal
         ? await runFormalCheck(problem.starterCode, testbenchCode, problem.formalDepth ?? 20)
-        : await runSimulation({
+        : await runPreferBrowser({
             design_v:    designCode,
             testbench_v: testbenchCode,
             timeout:     30,
             lint:        true,
             testbench_language: testbenchLanguage,
-          });
+          }, true);
       setRunResult(result);
       setRunState("run_done");
 

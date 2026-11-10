@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/synthesize", tags=["Synthesis"])
 
 SYNTH_TIMEOUT_SECONDS = 20
-MAX_SCHEMATIC_CELLS   = 300     # bigger netlists aren't readable as a drawing anyway
+MAX_SCHEMATIC_CELLS   = 3000    # the interactive schematic lays out one module at a time (lib/synth/yosys.ts keeps the same)
 MAX_WARNINGS          = 30
 
 # The netlist is written before FSM extraction so the schematic shows the
@@ -326,7 +326,8 @@ def _run_script(design_v: str, script: str, finish) -> dict:
 def _metrics_sync(design_v: str) -> dict:
     def finish(tmpdir: str) -> dict:
         stat = json.loads(_read(os.path.join(tmpdir, "stat.json")) or "{}")
-        return {"ok": True, **gate_metrics(stat, _read(os.path.join(tmpdir, "ltp.txt")))}
+        from api.routes.asic import sky130_area   # lazy: asic.py is the heavier module
+        return {"ok": True, **gate_metrics(stat, _read(os.path.join(tmpdir, "ltp.txt"))), "areaUm2": sky130_area(tmpdir)}
     return _run_script(design_v, METRICS_SCRIPT, finish)
 
 

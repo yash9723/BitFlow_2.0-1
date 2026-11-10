@@ -25,6 +25,7 @@ import { inter, mono, pixel } from "@/lib/fonts";
 import CelebrationProvider from "@/components/pixel/CelebrationProvider";
 import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL, jsonLd } from "@/lib/site";
 import LessonSync from "@/components/LessonSync";
+import SiteChrome from "@/components/SiteChrome";
 import "./globals.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +39,9 @@ export const metadata: Metadata = {
   title:        { default: `${SITE_NAME} — ${SITE_TAGLINE}`, template: `%s · ${SITE_NAME}` },
   description:  SITE_DESCRIPTION,
   applicationName: SITE_NAME,
+  // Every page names itself (its path, no query string) as canonical unless it sets its own, so
+  // ?tab=, ?next= and similar variants don't show up in Search Console as duplicates.
+  alternates:   { canonical: "./" },
   openGraph: {
     type:        "website",
     siteName:    SITE_NAME,
@@ -97,15 +101,17 @@ export default function RootLayout({
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(SITE_SCHEMA) }} />
         <AuthProvider>
           <CelebrationProvider>{children}</CelebrationProvider>
-          <PageViewTracker />
-          <SimulatorWakeNotice />
-          <CommandPalette />
-          <Analytics />
-          <SiteNotice />
-          <NavDrawer />
-          <MockBanner />
-          <LessonSync />
-          <ConsentGate />
+          <SiteChrome>
+            <PageViewTracker />
+            <SimulatorWakeNotice />
+            <CommandPalette />
+            <Analytics />
+            <SiteNotice />
+            <NavDrawer />
+            <MockBanner />
+            <LessonSync />
+            <ConsentGate />
+          </SiteChrome>
         </AuthProvider>
       </body>
     </html>

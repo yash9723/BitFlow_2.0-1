@@ -16,7 +16,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { runSimulation, checkHealth } from "@/lib/api";
+import { checkHealth } from "@/lib/api";
+import { runPreferBrowser } from "@/lib/sim/browser-sim";
 import { parseVcd } from "@/lib/vcd-parser";
 import type { DesignLanguage, RunState, SimulateResponse, ParsedVcd, Simulator, TestbenchLanguage } from "@/lib/types";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
@@ -253,7 +254,7 @@ export function useSimulation(): UseSimulationReturn {
   // Key names are stable strings; changing them clears stored values.
   const [designLanguage,    setDesignLang] = useLocalStorage<DesignLanguage>(DESIGN_LANGUAGE_KEY, "verilog");
   const [testbenchLanguage, setTbLang]     = useLocalStorage<TestbenchLanguage>(TESTBENCH_LANGUAGE_KEY, "verilog");
-  const [simulator,         setSimulator]  = useLocalStorage<Simulator>("bitflow_simulator", "icarus");
+  const [simulator,         setSimulator]  = useLocalStorage<Simulator>("bitflow_sim_engine", "browser");
   const design = {
     verilog: useLocalStorage<string>(DESIGN_STORAGE_KEY, DEFAULT_DESIGN),
     vhdl:    useLocalStorage<string>("bitflow_design_vhdl", DEFAULT_DESIGN_VHDL),
@@ -319,7 +320,7 @@ export function useSimulation(): UseSimulationReturn {
 
     try {
       const files = dataFiles(extraFiles);
-      const raw = await runSimulation({
+      const raw = await runPreferBrowser({
         design_v:    projectDesign,
         ...(files ? { files } : {}),
         testbench_v: testbenchCode,
@@ -328,7 +329,7 @@ export function useSimulation(): UseSimulationReturn {
         design_language:    designLanguage,
         testbench_language: testbenchLanguage,
         ...(testbenchLanguage === "verilog" && simulator === "verilator" ? { simulator } : {}),
-      });
+      }, simulator === "browser");
 
       // Messages about the combined design.v point at the file they came from.
       const response = project.multi

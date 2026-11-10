@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import ClassAnalytics from "@/components/ClassAnalytics";
+import LiveLabPanel from "@/components/LiveLabPanel";
 import PixelLoader from "@/components/pixel/PixelLoader";
 import PixelEmpty from "@/components/pixel/PixelEmpty";
 
@@ -167,6 +168,8 @@ export default function ClassPage() {
       </div>
 
       {error && <p role="alert" className="text-[12px] text-danger">{error}</p>}
+
+      <LiveLabPanel classId={id} teacher={teacher} />
 
       {teacher && data.catalog && (
         <NewAssignment catalog={data.catalog} onCreate={(body) => call("POST", `/api/classes/${id}/assignments`, body)} />

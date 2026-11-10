@@ -98,6 +98,7 @@ export async function POST(request: Request) {
     gates:          (await metrics)?.gates ?? null,
     depth:          (await metrics)?.depth ?? null,
     schematicSvg:   schematic,
+    netlist:        netlist ?? null,          // the interactive schematic (components/SchematicView.tsx)
     schematicLimit: netlist ? null : "This design is too large to draw as a schematic.",
     fsms:           fsms.map((f, i) => ({ ...f, svg: fsmDrawings[i] })),
   });

@@ -70,9 +70,32 @@ setundef -zero
 hilomap -singleton -hicell sky130_fd_sc_hd__conb_1 HI -locell sky130_fd_sc_hd__conb_1 LO
 splitnets
 opt_clean -purge
+rename -enumerate
 tee -q -o stat.json stat -json -liberty {lib}
 write_verilog -noattr -noexpr -nohex -nodec netlist.v
+write_json gates.json
 """
+
+def sky130_area(tmpdir: str) -> Optional[float]:
+    """
+    Standard-cell area in µm² of tmpdir/design.v on Sky130 HD, mapped as /asic maps it
+    (no timing). For the area leaderboard (POST /metrics); None when the library or yosys is
+    missing or synthesis fails, so a missing score never fails a submission.
+    """
+    if not os.path.exists(LIB):
+        return None
+    _write(tmpdir, "latch_map.v", LATCH_MAP)
+    script = SYNTH_SCRIPT.format(elaborate="synth -auto-top -flatten", lib=LIB, dont_use=DONT_USE, period_ps=10000)
+    _write(tmpdir, "area.ys", script.replace("write_verilog -noattr -noexpr -nohex -nodec netlist.v\n", "")
+                                    .replace("write_json gates.json\n", "").replace("stat.json", "area.json"))
+    try:
+        rc, _ = _run_limited(["yosys", "-q", "-s", "area.ys"], cwd=tmpdir, timeout=SYNTH_TIMEOUT_SECONDS)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if rc != 0:
+        return None
+    return summarize_cells(json.loads(_read(os.path.join(tmpdir, "area.json")) or "{}"))["areaUm2"]
+
 
 _CLOCK_NAMES = re.compile(r"^(clk|clock|clk_i|i_clk|clk_in|sys_clk|clock_i)$", re.I)
 _SAFE_NAME   = re.compile(r"^[A-Za-z_]\w*$")
@@ -88,6 +111,21 @@ class AsicRequest(BaseModel):
 # =============================================================================
 # Parsing helpers (pure — unit-tested)
 # =============================================================================
+
+MAX_GATES_CELLS = 3000          # the schematic's limit (bitflow_frontend/lib/synth/yosys.ts)
+MAX_GATES_BYTES = 2_000_000
+
+
+def gates_module(gates_json: str, top: str, cells: int) -> Optional[dict]:
+    """The top module of the mapped netlist (Yosys JSON), or None when too large to draw or unreadable."""
+    if not gates_json or cells > MAX_GATES_CELLS or len(gates_json) > MAX_GATES_BYTES:
+        return None
+    try:
+        module = json.loads(gates_json).get("modules", {}).get(top)
+    except ValueError:
+        return None
+    return {"modules": {top: module}} if module else None
+
 
 def netlist_ports(netlist_v: str) -> tuple[Optional[str], dict[str, dict]]:
     """Top module name and {port: {dir, width}} from Yosys write_verilog output."""
@@ -448,6 +486,9 @@ def _asic_sync(body: AsicRequest) -> dict:
             },
             "gls": gls,
             "netlist": netlist if len(netlist) <= MAX_NETLIST_BYTES else None,
+            # Chip X-ray: the mapped gates as Yosys JSON, cell names matching the netlist and the timing paths
+            # (rename -enumerate), with each net's source location where Yosys kept it.
+            "gates": gates_module(_read(os.path.join(tmpdir, "gates.json")), top, cells["cells"]),
         }
         logger.info(json.dumps({
             "event": "asic", "workspace_id": workspace_id, "cells": cells["cells"], "area": cells["areaUm2"],

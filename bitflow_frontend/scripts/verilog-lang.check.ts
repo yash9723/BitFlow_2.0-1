@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { TEMPLATES } from "@/lib/templates";
 import { getAllProblems } from "@/lib/problems";
-import { definitionOf, formatVerilog, hoverFor, indexVerilog, instanceSnippet, moduleAt, parseYosysMessages } from "@/lib/verilog-lang";
+import { definitionOf, driverOf, formatVerilog, hoverFor, indexVerilog, instanceAt, instanceSnippet, moduleAt, parseYosysMessages, referencesOf, renameProblem } from "@/lib/verilog-lang";
 
 const alu = `module alu #(parameter W = 8) (
     input  wire [W-1:0] a, b,
@@ -125,4 +125,43 @@ for (const [label, code] of corpus) {
   assert.equal(formatVerilog(once), once, `${label}: a second pass changes nothing`);
 }
 console.log(`formatter: ok (${corpus.length} real files)`);
+
+// ── References, rename, instance signature help (across files) ──
+{
+  const alu = { name: "alu.v", text: "module alu (\n  input  [3:0] a, b,\n  output [3:0] y\n);\n  // a comment about y\n  assign y = a + b;\nendmodule\n" };
+  const top = { name: "design.v", text: "module top (input [3:0] a, output [3:0] y);\n  wire [3:0] b = 4'd1;\n  alu u_alu (.a(a), .b(b), .y(y));\nendmodule\n" };
+  const tb = { name: "tb.v", text: "module tb;\n  reg [3:0] a; wire [3:0] y;\n  top dut (.a(a), .y(y));\n  initial $display(\"y=%d\", y);\nendmodule\n" };
+  const files = [alu, top, tb];
+  const at = (l: { file: string; line: number; column: number }) => `${l.file}:${l.line}:${l.column}`;
+
+  // A port of alu: its uses inside alu, plus `.y(` at alu's instance in design.v, not the comment, not top's own y.
+  assert.deepEqual(referencesOf(files, "y", "alu.v", 3).map(at), ["alu.v:3:16", "alu.v:6:10", "design.v:3:29"]);
+  // top's y: inside top, plus `.y(` on top's instance in tb.v; not alu's y, not the string in tb.
+  assert.deepEqual(referencesOf(files, "y", "design.v", 1).map(at), ["design.v:1:41", "design.v:3:31", "tb.v:3:20"]);
+  // A module name: everywhere.
+  assert.deepEqual(referencesOf(files, "alu", "design.v", 3).map(at), ["alu.v:1:8", "design.v:3:3"]);
+  // A local wire is not a port: only inside its module.
+  assert.deepEqual(referencesOf(files, "b", "design.v", 2).map(at), ["design.v:2:14", "design.v:3:24"]);
+  assert.deepEqual(referencesOf(files, "not an id", "design.v", 1), []);
+
+  assert.equal(renameProblem("sum_q"), null);
+  assert.match(renameProblem("2x") ?? "", /starts with a letter/);
+  assert.match(renameProblem("always") ?? "", /keyword/);
+
+  const index = indexVerilog(files);
+  assert.deepEqual(instanceAt(index, "module t;\n  alu u (.a(x), ")?.active, 1, "second port by position");
+  assert.deepEqual(instanceAt(index, "module t;\n  alu u (.y(")?.active, 2, "a named port wins");
+  assert.equal(instanceAt(index, "module t;\n  alu u (.a(x));\n  assign q = (")?.module ?? null, null, "closed list: not inside");
+  assert.equal(instanceAt(index, "module t;\n  alu u (\n    .a (x),\n    ")?.module.name, "alu");
+  assert.equal(instanceAt(index, "module t;\n  nope u (")?.module ?? null, null, "unknown module");
+  // Where a signal is driven (the waveform's "Where is this driven?").
+  const loc = (l: ReturnType<typeof driverOf>) => (l ? `${l.file}:${l.line}` : null);
+  assert.equal(loc(driverOf(files, "y", "tb.dut.u_alu")), "alu.v:6", "assign in the instance's module (u_alu is an alu)");
+  assert.equal(loc(driverOf(files, "y", "tb")), "tb.v:3", "tb's y comes from top's output port");
+  assert.equal(loc(driverOf(files, "b", "tb.dut")), "design.v:2", "a declaration's initialiser");
+  const counter = [{ name: "design.v", text: "module counter(input clk, rst, output reg [3:0] q);\n  always @(posedge clk)\n    if (rst) q <= 0;\n    else q <= q + 1;\nendmodule\n" }];
+  assert.equal(loc(driverOf(counter, "q", "tb.dut")), "design.v:3", "the first assignment in the block");
+  assert.equal(driverOf(counter, "nope", "tb"), null);
+  console.log("references: ok");
+}
 console.log("verilog-lang: all checks passed");

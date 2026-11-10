@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { levelFromXp } from "@/lib/levels";
 import { unseenBadges } from "@/lib/pixel/rewards";
 import { useCelebrate } from "@/components/pixel/CelebrationProvider";
-import PixelSprite from "@/components/pixel/PixelSprite";
 import { LevelChip, PixelIcon } from "@/components/pixel/PixelIcon";
 import Link from "next/link";
 import AuthGate from "@/components/AuthGate";
@@ -303,8 +302,10 @@ function GlassCard({ children, className = "" }: { children: React.ReactNode; cl
   );
 }
 
-/* ── Bitzy, in pixels (lib/pixel/bitzy.ts): idles, cheers while you hover, focus or tap it,
-   and thinks aloud, one line at a time. ── */
+/* ── Bitzy — the BitFlow chip mascot, reused from the login page.
+   Same idle wiggle / cursor tracking / petting-glow / blink / click-jump
+   behavior. The password-only states (shy, wrong-password shake) don't
+   apply here and are intentionally left out. ── */
 const BITZY_THOUGHTS = [
   "Let's rock today 🚀",
   "Why wait? Let's bang — start now.",
@@ -314,9 +315,17 @@ const BITZY_THOUGHTS = [
 ];
 
 function BitzyMascot({ username }: { username: string }) {
-  const [cheer, setCheer] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const glowRef = useRef<HTMLDivElement>(null);
+  const mascotRef = useRef<SVGGElement>(null);
+  const eyesRef = useRef<SVGGElement>(null);
+  const [jumping, setJumping] = useState(false);
+  const [petted, setPetted] = useState(false);
+  const pettedRef = useRef(false);
+  const [blinking, setBlinking] = useState(false);
   const [thoughtIdx, setThoughtIdx] = useState(0);
   const [thoughtVisible, setThoughtVisible] = useState(true);
+
   useEffect(() => {
     const id = setInterval(() => {
       setThoughtVisible(false);
@@ -327,36 +336,160 @@ function BitzyMascot({ username }: { username: string }) {
     }, 4800);
     return () => clearInterval(id);
   }, []);
-  const tap = () => {
-    setCheer(true);
-    setTimeout(() => setCheer(false), 1200);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setBlinking(true);
+      setTimeout(() => setBlinking(false), 160);
+    }, 4200);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      const panel = panelRef.current;
+      const mascot = mascotRef.current;
+      const eyes = eyesRef.current;
+      const glow = glowRef.current;
+      if (!panel) return;
+      const rect = panel.getBoundingClientRect();
+
+      if (glow) {
+        const px = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+        const py = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+        const pctX = (px / rect.width) * 100;
+        const pctY = (py / rect.height) * 100;
+        glow.style.background = `radial-gradient(circle 220px at ${pctX.toFixed(1)}% ${pctY.toFixed(1)}%, rgba(0,232,122,.16), transparent 70%)`;
+      }
+
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height * 0.42;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      const dist = Math.hypot(dx, dy) || 1;
+
+      const isPetted = dist < 95;
+      if (isPetted !== pettedRef.current) {
+        pettedRef.current = isPetted;
+        setPetted(isPetted);
+      }
+
+      const clamped = Math.min(dist, 260);
+      const ratio = clamped / 260;
+
+      if (mascot) {
+        const bx = (dx / dist) * ratio * 13;
+        const by = (dy / dist) * ratio * 11;
+        const rot = (dx / dist) * ratio * 6;
+        mascot.setAttribute("transform", `translate(${bx.toFixed(1)},${by.toFixed(1)}) rotate(${rot.toFixed(1)} 100 100)`);
+      }
+      if (eyes) {
+        const nx = (dx / dist) * ratio * 11;
+        const ny = (dy / dist) * ratio * 9;
+        eyes.setAttribute("transform", `translate(${nx.toFixed(1)},${ny.toFixed(1)})`);
+      }
+    }
+    document.addEventListener("mousemove", onMove);
+    return () => document.removeEventListener("mousemove", onMove);
+  }, []);
+
+  const triggerJump = () => {
+    setJumping(true);
+    setTimeout(() => setJumping(false), 550);
   };
+
+  const eyesClosed = petted || blinking;
+
   return (
-    <div className="relative flex flex-col items-center justify-center select-none pt-6 pb-4">
-      {/* pedestal glow: a halo the mascot stands on */}
+    <div
+      ref={panelRef}
+      onClick={triggerJump}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        triggerJump();
+      }}
+      className="relative flex flex-col items-center justify-center cursor-pointer select-none pt-16 pb-4"
+    >
+      <style>{`
+        @keyframes bf_float  { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        @keyframes bf_jump   { 0% { transform: translateY(0); } 35% { transform: translateY(-30px); } 55% { transform: translateY(-30px); } 100% { transform: translateY(0); } }
+        @keyframes bf_wiggle { 0%,100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
+        @keyframes bf_wag    { 0%,100% { transform: rotate(-26deg); } 50% { transform: rotate(26deg); } }
+      `}</style>
+
+      <div
+        ref={glowRef}
+        className="absolute inset-0 pointer-events-none [mask-image:radial-gradient(closest-side,black_55%,transparent)]"
+        style={{ background: "radial-gradient(circle 200px at 50% 42%, rgba(0,232,122,.14), transparent 70%)" }}
+      />
+      {/* pedestal glow — a grounded halo the mascot appears to stand on */}
       <div
         className="absolute left-1/2 top-[62%] -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-        style={{ width: "220px", height: "90px", background: "radial-gradient(ellipse 50% 50% at 50% 50%, rgba(0,232,122,.3), rgba(0,232,122,.06) 60%, transparent 80%)", filter: "blur(6px)" }}
+        style={{
+          width: "220px",
+          height: "90px",
+          background: "radial-gradient(ellipse 50% 50% at 50% 50%, rgba(0,232,122,.35), rgba(0,232,122,.08) 60%, transparent 80%)",
+          filter: "blur(6px)",
+        }}
       />
-      <div className={`relative mb-2 transition-opacity duration-300 ${thoughtVisible ? "opacity-100" : "opacity-0"}`}>
-        <div className="relative bg-pit/70 backdrop-blur-sm border-2 border-phosphor/25 px-3 py-2 whitespace-nowrap">
-          <span className="text-[11px] text-pale">{BITZY_THOUGHTS[thoughtIdx]}</span>
+
+      <div className="relative" style={{ animation: "bf_float 4s ease-in-out infinite" }}>
+        {/* thought bubble — subtle, cycling; centred above the head so it fits any column */}
+        <div
+          className="absolute -top-14 left-1/2 -translate-x-1/2 z-10 pointer-events-none transition-opacity duration-400"
+          style={{ opacity: thoughtVisible ? 1 : 0 }}
+        >
+          <div className="relative bg-pit/70 backdrop-blur-sm border border-phosphor/20 rounded-xl px-3 py-2 whitespace-nowrap">
+            <span className="text-[11px] text-pale">{BITZY_THOUGHTS[thoughtIdx]}</span>
+          </div>
+          <span className="absolute -bottom-2 left-[calc(50%-2px)] w-2.5 h-2.5 rounded-full bg-pit/70 border border-phosphor/20" />
+          <span className="absolute -bottom-4 left-[calc(50%+6px)] w-1.5 h-1.5 rounded-full bg-pit/60 border border-phosphor/15" />
         </div>
-        <span className="absolute -bottom-2 left-[calc(50%-2px)] w-2 h-2 bg-pit/70 border border-phosphor/25" />
-        <span className="absolute -bottom-4 left-[calc(50%+6px)] w-1 h-1 bg-pit/60 border border-phosphor/20" />
+
+        <svg
+          viewBox="0 0 200 200"
+          style={{ animation: jumping ? "bf_jump 0.5s cubic-bezier(0.34,1.56,0.64,1)" : "none" }}
+          className={`relative w-[140px] h-[140px] transition-[filter] duration-300 ${
+            petted ? "drop-shadow-[0_0_36px_rgba(0,255,136,0.9)] scale-105" : "drop-shadow-[0_0_10px_rgba(0,232,122,0.25)]"
+          }`}
+        >
+          <g ref={mascotRef} style={{ transition: "transform .15s ease-out" }}>
+            <g
+              style={{
+                transformOrigin: "130px 66px",
+                transformBox: "view-box",
+                animation: jumping ? "bf_wag 0.14s ease-in-out infinite" : "bf_wiggle 2.6s ease-in-out infinite",
+              }}
+            >
+              <path d="M128,66 L124,50 L131,40" fill="none" stroke="#00e87a" strokeWidth={4} strokeLinecap="round" />
+              <circle cx={131} cy={38} r={5} fill="#00e87a" />
+            </g>
+
+            <rect x={34} y={80} width={14} height={8} rx={1} fill="#00e87a" opacity={0.55} />
+            <rect x={34} y={112} width={14} height={8} rx={1} fill="#00e87a" opacity={0.55} />
+            <rect x={152} y={80} width={14} height={8} rx={1} fill="#00e87a" opacity={0.55} />
+            <rect x={152} y={112} width={14} height={8} rx={1} fill="#00e87a" opacity={0.55} />
+
+            <path d="M78,64 H122 L152,80 V132 L122,148 H78 L48,132 V80 Z" fill="#0d0e11" stroke="#00e87a" strokeWidth={3} />
+            <path d="M92,90 H108 L120,98 V114 L108,122 H92 L80,114 V98 Z" fill="rgba(0,232,122,.06)" stroke="rgba(0,232,122,.35)" strokeWidth={1.5} />
+
+            <g ref={eyesRef}>
+              <g style={{ opacity: eyesClosed ? 0 : 1, transition: "opacity .25s" }}>
+                <line x1={82} y1={96} x2={98} y2={112} stroke="#00e87a" strokeWidth={5} strokeLinecap="round" />
+                <line x1={82} y1={112} x2={98} y2={96} stroke="#00e87a" strokeWidth={5} strokeLinecap="round" />
+                <rect x={107} y={93} width={15} height={22} rx={3} fill="#00e87a" />
+              </g>
+              <g style={{ opacity: eyesClosed ? 1 : 0, transition: "opacity .25s" }}>
+                <line x1={80} y1={104} x2={100} y2={104} stroke="#00e87a" strokeWidth={7} strokeLinecap="round" />
+                <line x1={106} y1={104} x2={124} y2={104} stroke="#00e87a" strokeWidth={7} strokeLinecap="round" />
+              </g>
+            </g>
+          </g>
+        </svg>
       </div>
-      <button
-        type="button"
-        onClick={tap}
-        onMouseEnter={() => setCheer(true)}
-        onMouseLeave={() => setCheer(false)}
-        onFocus={() => setCheer(true)}
-        onBlur={() => setCheer(false)}
-        aria-label="Bitzy, the BitFlow chip"
-        className="relative rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-phosphor"
-      >
-        <PixelSprite anim={cheer ? "cheer" : "idle"} size={120} />
-      </button>
+
+      <div className="w-[130px] h-[20px] rounded-full bg-phosphor/35 blur-[16px] -mt-1 pointer-events-none" />
+
       <div className="relative mt-2 text-center">
         <div className="text-[13px] text-bright font-semibold">Hey {username}!! 👋</div>
         <div className="text-xs text-phosphor tracking-wide mt-0.5">Greetings from Bitzy</div>
@@ -364,6 +497,7 @@ function BitzyMascot({ username }: { username: string }) {
     </div>
   );
 }
+
 /* ── Activity heatmap: the last `weeks` weeks, one column per week ──── */
 function buildCompactWeeks(activity: Record<string, number>, span = 39) {
   const today = new Date();
@@ -458,7 +592,51 @@ function DashboardFooter() {
 
 /* ── Types for fetched data ──────────────────────────────────────── */
 type ProfileStats = Pick<ProfileData, "totalXp" | "activity" | "totalActiveDays" | "maxStreak" | "totalSolved" | "totalProblems" | "recentAC" | "tracks" | "badges">;
-type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean; streak: number };
+type Daily = { title: string; href: string; level: string; bonusXp: number; claimedToday: boolean; streak: number; freezes: number };
+type QuestRow = { id: string; title: string; xp: number; target: number; progress: number; done: boolean; claimed: boolean };
+
+/** Today's three quests (/api/quests): progress bars, and a Claim button once one is finished. */
+function QuestsCard({ onXp }: { onXp: (xp: number) => void }) {
+  const [quests, setQuests] = useState<QuestRow[] | null | undefined>(undefined);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/quests").then((r) => (r.ok ? r.json() : null)).then((j) => setQuests(j?.quests ?? null)).catch(() => setQuests(null));
+  }, []);
+  const claim = async (id: string) => {
+    setBusy(id);
+    try {
+      const j = await fetch("/api/quests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).then((r) => r.json());
+      if (Array.isArray(j?.quests)) setQuests(j.quests);
+      if (j?.xp > 0) onXp(j.xp);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <GlassCard className="flex flex-col">
+      <div className={`${TITLE} mb-3`}>Daily quests</div>
+      {quests ? (
+        <ul className="space-y-3">
+          {quests.map((q) => (
+            <li key={q.id}>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className={`text-xs min-w-0 ${q.claimed ? "text-dim" : "text-pale"}`}>{q.title}</span>
+                {q.claimed ? <span className="text-[11px] text-phosphor shrink-0">✓ +{q.xp} XP</span>
+                  : q.done ? <button onClick={() => claim(q.id)} disabled={busy === q.id}
+                                     className="shrink-0 px-2 py-0.5 rounded-md border border-phosphor/60 text-phosphor text-[11px] font-semibold hover:bg-phosphor/10 disabled:opacity-50">Claim +{q.xp} XP</button>
+                  : <span className="text-[11px] text-dim shrink-0">+{q.xp} XP</span>}
+              </div>
+              <Bar pct={(100 * q.progress) / q.target} label={`${q.title}: ${q.progress} of ${q.target}`} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="text-xs text-dim">{quests === undefined ? <PixelLoader size="sm" /> : "Quests couldn't load. Try refreshing."}</div>
+      )}
+      <div className="text-[11px] text-dim mt-auto pt-3">New quests every day at 00:00 UTC.</div>
+    </GlassCard>
+  );
+}
 
 const TITLE = "text-sm font-bold uppercase tracking-wider text-bright [text-shadow:0_0_10px_rgba(0,232,122,0.3)]";
 
@@ -561,6 +739,7 @@ function DashboardContent() {
           bonusXp:      json.bonusXp,
           claimedToday: json.claimedToday,
           streak:       json.streak ?? 0,
+          freezes:      json.freezes ?? 0,
         } : null);
       })
       .catch(() => setDaily(null));
@@ -602,7 +781,7 @@ function DashboardContent() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Stat label="XP" value={stats ? <LevelValue xp={stats.totalXp} /> : dash} tone="text-phosphor" />
               <Stat label="Problems solved" value={stats ? stats.totalSolved : dash} sub={stats ? `of ${stats.totalProblems}` : undefined} />
-              <Stat label="Daily streak" value={daily ? <span className="inline-flex items-center gap-1.5">{daily.streak > 0 && <PixelIcon name="flame" size={24} label="on fire" />}{daily.streak}</span> : dash} sub="days in a row" tone="text-warn" />
+              <Stat label="Daily streak" value={daily ? <span className="inline-flex items-center gap-1.5">{daily.streak > 0 && <PixelIcon name="flame" size={24} label="on fire" />}{daily.streak}</span> : dash} sub={daily?.freezes ? `days in a row · ${daily.freezes} streak ${daily.freezes === 1 ? "freeze" : "freezes"}` : "days in a row"} tone="text-warn" />
               <Stat label="Active days" value={stats ? stats.totalActiveDays : dash} sub={stats ? `best streak ${stats.maxStreak}d` : undefined} />
             </div>
           </div>
@@ -640,6 +819,8 @@ function DashboardContent() {
                 <div className="text-xs text-dim">{daily === undefined ? <PixelLoader size="sm" /> : "No challenge today."}</div>
               )}
             </GlassCard>
+
+            <QuestsCard onXp={(xp) => setStats((s) => (s ? { ...s, totalXp: s.totalXp + xp } : s))} />
 
             <GlassCard>
               <div className={`${TITLE} mb-3`}>Continue where you left off</div>

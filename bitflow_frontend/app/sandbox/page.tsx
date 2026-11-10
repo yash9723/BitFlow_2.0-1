@@ -66,6 +66,10 @@
 
 "use client";
 
+import LiveLabBanner from "@/components/LiveLabBanner";
+import PairBar, { PairButton } from "@/components/PairBar";
+import { usePair } from "@/hooks/usePair";
+import { PAIR_KEYS } from "@/lib/pair";
 import {
   useRef,
   useState,
@@ -79,8 +83,11 @@ import Terminal                       from "@/components/Terminal";
 import WaveformPanel                  from "@/components/WaveformPanel";
 import TemplateMenu                   from "@/components/TemplateMenu";
 import PixelLoader from "@/components/pixel/PixelLoader";
-import ProjectsMenu                   from "@/components/ProjectsMenu";
-import { setVerilogContext }          from "@/lib/verilog-monaco";
+import ProjectsMenu, { CURRENT_KEY }  from "@/components/ProjectsMenu";
+import { cursorLine, revealInProject, setVerilogContext, uriOf } from "@/lib/verilog-monaco";
+import { driverOf }                   from "@/lib/verilog-lang";
+import { compileInBrowser }           from "@/lib/sim/browser-sim";
+import { generateTestbench, parseModule } from "@/lib/studio/tbgen";
 import { parseDiagnostics }           from "@/lib/diagnostics";
 import { TEMPLATES }                  from "@/lib/templates";
 import type { Coverage, DesignLanguage, Simulator, TestbenchLanguage } from "@/lib/types";
@@ -90,7 +97,7 @@ import { useSimulation }              from "@/hooks/useSimulation";
 import { useSplitter }                from "@/hooks/useSplitter";
 import { useLocalStorage }            from "@/hooks/useLocalStorage";
 import { exportProjectZip }           from "@/lib/export-zip";
-import { CODE_FILE, fileNameProblem }  from "@/lib/project-files";
+import { CODE_FILE, combineDesign, fileNameProblem, relabelOutput } from "@/lib/project-files";
 import { exportSnapshotPng }          from "@/lib/export-image";
 import { saveSubmission, loadSubmission, submissionAge } from "@/lib/submission-storage";
 
@@ -257,9 +264,11 @@ function HSplitter({
 function EditorTab({
   filename,
   sublabel,
+  action,
 }: {
   filename:  string;
   sublabel:  string;
+  action?:   JSX.Element | false;
 }) {
   return (
     <div
@@ -277,7 +286,8 @@ function EditorTab({
         </svg>
         <span className="font-mono text-[12px] text-pale">{filename}</span>
       </div>
-      <span className="font-mono text-[10px] text-dim tracking-wider">
+      <span className="flex items-center gap-3 font-mono text-[10px] text-dim tracking-wider">
+        {action}
         {sublabel}
       </span>
     </div>
@@ -377,13 +387,29 @@ function SandboxContent() {
   const [proveOpen, setProveOpen] = useState(false);
   const editorContent = useMemo(() => ({ designCode, testbenchCode, files: extraFiles, designLanguage, testbenchLanguage }),
     [designCode, testbenchCode, extraFiles, designLanguage, testbenchLanguage]);
+  // Pair mode (hooks/usePair.ts): the open project's owner can invite one person to type in it at the same time.
+  const [openProject, setOpenProject] = useState<{ id: string; name: string } | null>(null);
+  const pair = usePair(openProject?.id ?? null, editorContent, loadProject);
   const [designFile, designMonaco] = DESIGN_FILES[designLanguage];
   // The editor's completion and hover also know the files in other tabs (lib/verilog-monaco.ts).
+  // Every Verilog file by name, so definitions, references and rename work across them; a rename's edits to
+  // files not on screen come back through `edit`, and a definition in another tab switches to it.
   useEffect(() => {
-    setVerilogContext(designLanguage === "verilog"
-      ? [{ name: "design.v", text: designCode }, ...extraFiles.filter((f) => CODE_FILE.test(f.name)).map((f) => ({ name: f.name, text: f.content }))]
-      : []);
-  }, [designLanguage, designCode, extraFiles]);
+    setVerilogContext([
+      ...(designLanguage === "verilog"
+        ? [{ name: "design.v", text: designCode }, ...extraFiles.filter((f) => CODE_FILE.test(f.name)).map((f) => ({ name: f.name, text: f.content }))]
+        : []),
+      ...(testbenchLanguage === "verilog" ? [{ name: "tb.v", text: testbenchCode }] : []),
+    ], {
+      open: (name) => { if (name !== "tb.v") setActiveFile(name); },
+      edit: (name, text) => {
+        if (name === "design.v") setDesignCode(text);
+        else if (name === "tb.v") setTestbenchCode(text);
+        else setExtraFiles(extraFiles.map((f) => (f.name === name ? { ...f, content: text } : f)));
+      },
+    });
+  }, [designLanguage, testbenchLanguage, designCode, testbenchCode, extraFiles]);  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => setVerilogContext([]), []);
   const [tbFile, tbMonaco] = TESTBENCH_FILES[testbenchLanguage];
 
   // ── Design files: design.v plus extra tabs (Verilog projects, lib/project-files.ts) ──
@@ -416,28 +442,63 @@ function SandboxContent() {
    */
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [synthOpen, setSynthOpen] = useState(false);
-  const [coverageOpen, setCoverageOpen] = useState(false);
   const [asicOpen, setAsicOpen] = useState(false);
+  // Cross-probing with the schematic: Yosys sees one combined design.v; map its lines to and from the files.
+  const synthProject = useMemo(() => combineDesign(designCode, extraFiles), [designCode, extraFiles]);
+  const [synthCursor, setSynthCursor] = useState<{ file: string; line: number } | null>(null);
+  useEffect(() => {
+    if (!synthOpen && !asicOpen) return;
+    const name = activeFile;
+    const line = cursorLine(name);
+    const at = line === null ? null : synthProject.place(name, line);
+    setSynthCursor(at === null ? null : { file: "design.v", line: at });
+  }, [synthOpen, asicOpen]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const [coverageOpen, setCoverageOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
-  const diagnostics = useMemo(() => parseDiagnostics(result?.stdout), [result]);
+  // Live check: with the in-browser engine, the whole project (every design file + the testbench) is compiled a
+  // moment after typing stops; its errors replace the last run's until the next run.
+  const [liveOutput, setLiveOutput] = useState<string | null>(null);
+  const liveCheck = simulator === "browser" && designLanguage === "verilog" && testbenchLanguage === "verilog";
+  useEffect(() => { setLiveOutput(null); }, [result]);
+  useEffect(() => {
+    if (!liveCheck || isRunning) return;
+    let stale = false;
+    const t = setTimeout(async () => {
+      const project = combineDesign(designCode, extraFiles);
+      const out = await compileInBrowser(project.multi ? project.code : designCode, testbenchCode);
+      if (!stale && out !== null) setLiveOutput(project.multi ? relabelOutput(out, project.locate) ?? out : out);
+    }, 1200);
+    return () => { stale = true; clearTimeout(t); };
+  }, [liveCheck, isRunning, designCode, testbenchCode, extraFiles]);
+  const diagnostics = useMemo(() => parseDiagnostics(liveOutput ?? result?.stdout), [liveOutput, result]);
 
-  /** Save the editors as a read-only link, copy it, and show it (clipboard access can be blocked). */
+  /** tb.v from the top module's ports (lib/studio/tbgen.ts): self-checking stimulus, clock and reset found by name. */
+  const generateTb = useCallback(() => {
+    const info = parseModule(designCode);
+    if (typeof info === "string") { window.alert(info); return; }
+    if (testbenchCode.trim() && !window.confirm(`Replace tb.v with a generated testbench for ${info.name}?`)) return;
+    setTestbenchCode(generateTestbench(info));   // Verilog style: its X checks need no $isunknown, so it runs in the browser too
+  }, [designCode, testbenchCode, setTestbenchCode]);
+
+  /**
+   * Save the editors as a read-only link, copy it, and show it (clipboard access can be blocked).
+   * With a saved project open, sharing it again updates that project's link instead of making a new one.
+   */
   const handleShare = useCallback(async () => {
-    if (designLanguage !== "verilog" || testbenchLanguage !== "verilog") {
-      window.alert("Share links support Verilog / SystemVerilog projects for now. Switch both editors to Verilog to share.");
-      return;
-    }
+    let projectId: string | undefined;
+    try { projectId = JSON.parse(localStorage.getItem(CURRENT_KEY) ?? "null")?.id; } catch { /* no project open */ }
     try {
       const res = await fetch("/api/share", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ designCode, testbenchCode, files: extraFiles }),
+        body: JSON.stringify({ designCode, testbenchCode, files: extraFiles, designLanguage, testbenchLanguage, projectId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Sharing failed (${res.status}).`);
       const url = `${window.location.origin}${data.url}`;
       const copied = await navigator.clipboard?.writeText(url).then(() => true, () => false);
-      window.prompt(copied ? "Link copied. Anyone with it can view and fork this design:" : "Copy this link. Anyone with it can view and fork this design:", url);
+      const what = data.updated ? "Updated this project's link, which stays the same." : "Anyone with this link can view and fork this design.";
+      window.prompt(`${what} ${copied ? "Link copied:" : "Copy it:"}`, url);
     } catch (err) {
       window.alert((err as Error).message || "Sharing failed.");
     }
@@ -725,6 +786,8 @@ function SandboxContent() {
         onExportImage={result ? handleExportImage : undefined}
         isExporting={isExporting}
       />
+      <LiveLabBanner designCode={designCode} testbenchCode={testbenchCode} files={extraFiles} result={result} />
+      <PairBar pair={pair} />
 
       {/*
        * ── Action bar — sits between toolbar and editors ────────────────────
@@ -743,14 +806,17 @@ function SandboxContent() {
             onLoad={loadProject}
             disabled={isRunning}
           />
-          <ProjectsMenu content={editorContent} onLoad={loadProject} disabled={isRunning} />
+          {pair.role === "guest" && !pair.invited
+            ? <span className="text-[11px] text-info whitespace-nowrap" title="You're editing someone else's project; its owner saves it">Pairing</span>
+            : <ProjectsMenu content={editorContent} onLoad={loadProject} disabled={isRunning} onCurrent={setOpenProject} />}
+          <PairButton pair={pair} />
           <LanguageSelect<DesignLanguage> label="Design" value={designLanguage} disabled={isRunning}
             options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"]]} onChange={setDesignLanguage} />
           <LanguageSelect<TestbenchLanguage> label="Testbench" value={testbenchLanguage} disabled={isRunning}
             options={[["verilog", "Verilog / SV"], ["vhdl", "VHDL"], ["python", "Python (cocotb)"]]} onChange={setTestbenchLanguage} />
           {testbenchLanguage === "verilog" && (
             <LanguageSelect<Simulator> label="Simulator" value={simulator} disabled={isRunning}
-              options={[["icarus", "Icarus (fast)"], ["verilator", "Verilator: assertions + coverage"]]} onChange={setSimulator} />
+              options={[["browser", "Icarus · in your browser"], ["icarus", "Icarus · server"], ["verilator", "Verilator: assertions + coverage"]]} onChange={setSimulator} />
           )}
           {(result?.coverage || (result?.assertions?.length ?? 0) > 0) && (
             <button onClick={() => setCoverageOpen(true)} title="Coverage and assertion results of the last Verilator run"
@@ -855,7 +921,10 @@ function SandboxContent() {
                 language={openFile ? (CODE_FILE.test(openFile.name) ? "systemverilog" : "plaintext") : designMonaco}
                 readOnly={isRunning}
                 diagnostics={diagnostics.files[openFile?.name ?? "design.v"] ?? []}
-                lint={designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name))}
+                lint={!liveCheck && designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name))}
+                path={designLanguage === "verilog" && (!openFile || CODE_FILE.test(openFile.name)) ? uriOf(openFile?.name ?? "design.v") : undefined}
+                collabText={pair.text(openFile ? PAIR_KEYS.file(openFile.name) : PAIR_KEYS.design)}
+                collabAwareness={pair.awareness}
               />
             </div>
           </div>
@@ -873,7 +942,13 @@ function SandboxContent() {
            * min-w-0: same as left panel — prevents Monaco overflow.
            */}
           <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-            <EditorTab filename={tbFile} sublabel={testbenchLanguage === "python" ? "cocotb testbench" : "Testbench"} />
+            <EditorTab filename={tbFile} sublabel={testbenchLanguage === "python" ? "cocotb testbench" : "Testbench"}
+              action={testbenchLanguage === "verilog" && designLanguage === "verilog" && (
+                <button onClick={generateTb} disabled={isRunning} title="Write a self-checking testbench for the top module of design.v"
+                        className="px-2 py-0.5 rounded border border-rim text-ghost hover:text-phosphor hover:border-phosphor/50 disabled:opacity-40 normal-case tracking-normal">
+                  Generate testbench
+                </button>
+              )} />
             <div className="flex-1 min-h-0">
               <Editor
                 value={testbenchCode}
@@ -881,6 +956,9 @@ function SandboxContent() {
                 language={tbMonaco}
                 readOnly={isRunning}
                 diagnostics={diagnostics.tb}
+                path={testbenchLanguage === "verilog" ? uriOf("tb.v") : undefined}
+                collabText={pair.text(PAIR_KEYS.testbench)}
+                collabAwareness={pair.awareness}
               />
             </div>
           </div>
@@ -941,7 +1019,13 @@ function SandboxContent() {
                 className="flex-none overflow-hidden"
                 style={{ height: waveformH }}
               >
-                <WaveformPanel parsedVcd={parsedVcd} result={result} viewKey="/sandbox" />
+                <WaveformPanel parsedVcd={parsedVcd} result={result} viewKey="/sandbox"
+                  onReveal={designLanguage === "verilog" && testbenchLanguage === "verilog" ? (name, scope) => {
+                    const files = [{ name: "design.v", text: designCode }, ...extraFiles.filter((f) => CODE_FILE.test(f.name)).map((f) => ({ name: f.name, text: f.content })),
+                                   { name: "tb.v", text: testbenchCode }];
+                    const at = driverOf(files, name, scope);
+                    if (!at || !revealInProject(at.file, at.line, at.column)) window.alert(`Couldn't find where ${name} is driven in your files.`);
+                  } : undefined} />
               </div>
             </>
           )}
@@ -956,10 +1040,24 @@ function SandboxContent() {
        * State (chat history) lives in useAI inside AIAssistantPanel so it
        * survives open/close cycles.
        */}
-      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={projectDesign} language={designLanguage} />
+      <SynthesisPanel isOpen={synthOpen} onClose={() => setSynthOpen(false)} designCode={projectDesign} language={designLanguage}
+        cursor={designLanguage === "verilog" ? synthCursor : null}
+        describe={(loc) => { const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line }; return `${at.file}:${at.line}`; }}
+        onOpenSource={designLanguage === "verilog" ? (loc) => {
+          const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line };
+          setSynthOpen(false);
+          setTimeout(() => revealInProject(at.file, at.line), 0);
+        } : undefined} />
       <CoveragePanel isOpen={coverageOpen} onClose={() => setCoverageOpen(false)} result={result} designCode={projectDesign} />
       <AsicPanel isOpen={asicOpen} onClose={() => setAsicOpen(false)} designCode={projectDesign} language={designLanguage}
-                 testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""} />
+                 testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""}
+                 cursor={designLanguage === "verilog" ? synthCursor : null}
+                 describe={(loc) => { const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line }; return `${at.file}:${at.line}`; }}
+                 onOpenSource={designLanguage === "verilog" ? (loc) => {
+                   const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line };
+                   setAsicOpen(false);
+                   setTimeout(() => revealInProject(at.file, at.line), 0);
+                 } : undefined} />
       {reportOpen && (
         <LabReport onClose={() => setReportOpen(false)} result={result} parsedVcd={parsedVcd} viewKey="/sandbox" synthDesign={projectDesign}
                    files={[{ name: DESIGN_FILES[designLanguage][0], content: designCode }, { name: TESTBENCH_FILES[testbenchLanguage][0], content: testbenchCode }, ...extraFiles]} />

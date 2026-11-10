@@ -3,6 +3,7 @@
  * mark the problem solved and award XP exactly once. Server-side only.
  */
 
+import { logXp } from "@/lib/xp";
 import { prisma } from "@/lib/prisma";
 
 export interface RecordSubmissionInput {
@@ -117,6 +118,7 @@ async function markSolved(userId: string, question: { id: string; moduleId: stri
     },
     update: { totalXp: { increment: xp } },
   });
+  await logXp(userId, xp, `problem:${question.id}`);
 
   const modules: string[] = JSON.parse(userXp.unlockedModules || "[]");
   if (question.moduleId && !modules.includes(question.moduleId)) {

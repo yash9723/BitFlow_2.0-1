@@ -21,13 +21,15 @@ export async function GET() {
     const user = await getSessionUser();
     let claimedToday = false;
     let streak = 0;
+    let freezes = 0;
     if (user) {
       const xp = await prisma.userXp.findUnique({
         where:  { userId: user.id },
-        select: { lastDailyBonus: true, dailyStreak: true },
+        select: { lastDailyBonus: true, dailyStreak: true, streakFreezes: true },
       });
       claimedToday = xp?.lastDailyBonus === day;
       streak = currentStreak(xp, day);
+      freezes = xp?.streakFreezes ?? 0;
     }
 
     return NextResponse.json({
@@ -35,6 +37,7 @@ export async function GET() {
       bonusXp: DAILY_BONUS_XP,
       claimedToday,
       streak,      // consecutive days the daily challenge was solved (0 if lapsed)
+      freezes,     // missed days the streak can survive (lib/daily.ts)
       problem: {
         slug:          q.slug,
         title:         q.title,

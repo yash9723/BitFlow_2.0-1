@@ -322,6 +322,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
                   readOnly={isRunning || isSubmitting}
                   diagnostics={diagnostics.design}
                   lint={language !== "vhdl"}
+                  revealLines
                 />
               </div>
             </div>

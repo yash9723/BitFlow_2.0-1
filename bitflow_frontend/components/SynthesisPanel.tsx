@@ -14,6 +14,10 @@ import BitstreamTab from "./BitstreamTab";
 import Floorplan from "./Floorplan";
 import type { CriticalPath, PnrSummary } from "@/lib/synth/pnr";
 import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
+import dynamic from "next/dynamic";
+import type { SrcLoc, YosysNetlist } from "@/lib/hardware-diagrams";
+// Loaded with the schematic tab: it brings the ELK layout engine.
+const SchematicView = dynamic(() => import("./SchematicView"), { ssr: false, loading: () => <PixelLoader label="Loading the schematic…" /> });
 
 export interface Fsm {
   module:      string;
@@ -38,6 +42,8 @@ export interface SynthResult {
   fsms?:           Fsm[];
   schematicSvg?:   string | null;
   schematicLimit?: string | null;
+  /** Yosys JSON, for the interactive schematic (absent from older or VHDL results). */
+  netlist?:        YosysNetlist | null;
 }
 
 interface Props {
@@ -46,6 +52,12 @@ interface Props {
   designCode: string;
   /** VHDL is synthesized from its GHDL Verilog netlist (server-side). */
   language?:  "verilog" | "vhdl";
+  /** The editor's line when the panel opened (netlist file names): its cells are outlined on the schematic. */
+  cursor?:    { file: string; line: number } | null;
+  /** Open a schematic cell's source line in the editor. */
+  onOpenSource?: (loc: SrcLoc) => void;
+  /** Name a source location (multi-file projects). */
+  describe?:  (loc: SrcLoc) => string;
 }
 
 type Tab = "summary" | "schematic" | "fsm" | "fpga" | "bitstream";
@@ -94,7 +106,7 @@ function Diagram({ svg, alt }: { svg: string; alt: string }) {
   );
 }
 
-export default function SynthesisPanel({ isOpen, onClose, designCode, language = "verilog" }: Props) {
+export default function SynthesisPanel({ isOpen, onClose, designCode, language = "verilog", cursor, onOpenSource, describe }: Props) {
   const [result,  setResult]  = useState<SynthResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab,     setTab]     = useState<Tab>("summary");
@@ -313,7 +325,9 @@ export default function SynthesisPanel({ isOpen, onClose, designCode, language =
           {tab === "bitstream" && <BitstreamTab designCode={designCode} language={language ?? "verilog"} />}
 
           {result?.ok && tab === "schematic" && (
-            result.schematicSvg
+            result.netlist
+              ? <SchematicView netlist={result.netlist} cursor={cursor} onOpenSource={onOpenSource} describe={describe} />
+              : result.schematicSvg
               ? <Diagram svg={result.schematicSvg} alt={`Schematic of ${result.top ?? "the design"}`} />
               : <p className="font-mono text-[11px] text-dim">{result.schematicLimit ?? "No schematic available."}</p>
           )}

@@ -3,9 +3,9 @@
  * (lib/grading.ts coverageShortfall / runFlagged, lib/arena/verification-sv.ts).
  */
 import assert from "node:assert/strict";
-import { coverageShortfall, runFlagged, verificationSettings } from "../lib/grading";
+import { coverageShortfall, runFlagged } from "../lib/grading";
+// Parked (not in the Arena registry) while problems are revised; still checked for correctness.
 import { SV_VERIFICATION_PROBLEMS } from "../lib/arena/verification-sv";
-import { getArenaProblemBySlug } from "../lib/arena";
 
 const pct = (line: number | null, branch: number | null, toggle: number | null = null) =>
   ({ line: { percent: line }, branch: { percent: branch }, toggle: { percent: toggle } });
@@ -28,8 +28,6 @@ for (const p of SV_VERIFICATION_PROBLEMS) {
   assert.equal(p.problemType, "testbench", p.slug);
   assert.equal(p.verification?.simulator, "verilator", p.slug);
   assert.ok(p.verification?.minCoverage, `${p.slug} has a coverage bar`);
-  assert.deepEqual(verificationSettings(p.slug), p.verification, `${p.slug} is registered in the arena`);
-  assert.ok(getArenaProblemBySlug(p.slug), p.slug);
   const dut = /^\s*module\s+(\w+)/m.exec(p.starterCode)?.[1];
   assert.ok(dut && p.testbenchSkeleton.split("\n").some((l) => l.trim().startsWith(dut + " ") && / dut \(/.test(l)),`${p.slug} skeleton instantiates ${dut} as dut`);
   assert.ok(!/##\d/.test(p.testbenchSkeleton), `${p.slug}: Verilator 5.032 rejects ## in cover/assert sequences`);

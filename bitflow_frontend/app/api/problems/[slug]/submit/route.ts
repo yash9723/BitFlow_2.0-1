@@ -132,12 +132,13 @@ export async function POST(
   }
 
   // Started now, awaited below: runs alongside the DB writes.
-  const failingWaveform = writesTb ? Promise.resolve(null) : failingTestWaveform(question, gradedCode, grade);
+  const failingWaveform = writesTb ? Promise.resolve(null) : failingTestWaveform(question, gradedCode, grade, language === "verilog");
   const counterexample  = grade.accepted || writesTb || tooSlow ? Promise.resolve(null) : findCounterexample(question, gradedCode);
   // Optimization scores for the leaderboard (accepted designs only; never affects the verdict)
   const metrics = grade.accepted && !writesTb
     ? metricsOnBackend(gradedCode)
-        .then(({ status, data }) => (status === 200 && data?.ok ? { gates: data.gates as number, depth: data.depth as number, ffBits: data.ffBits as number } : null))
+        .then(({ status, data }) => (status === 200 && data?.ok ? { gates: data.gates as number, depth: data.depth as number, ffBits: data.ffBits as number,
+                                                        areaUm2: typeof data.areaUm2 === "number" ? data.areaUm2 : null } : null))
         .catch(() => null)
     : Promise.resolve(null);
 
@@ -175,7 +176,7 @@ export async function POST(
   if (saved && scores) {
     await prisma.submission.update({
       where: { id: saved.id },
-      data:  { gateCount: scores.gates, logicDepth: scores.depth, ffBits: scores.ffBits },
+      data:  { gateCount: scores.gates, logicDepth: scores.depth, ffBits: scores.ffBits, areaUm2: scores.areaUm2 },
     }).catch((err) => reportError("[submit] failed to store metrics:", err));
   }
   if (saved && fmaxMhz !== null) {

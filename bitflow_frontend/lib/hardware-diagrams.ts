@@ -44,33 +44,69 @@ function edgePaths(edges: ElkExtendedEdge[], width: (e: ElkExtendedEdge) => numb
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Bit = number | string;   // net number, or a constant "0" / "1" / "x" / "z"
-interface YosysModule {
+export interface YosysModule {
   attributes?: Record<string, unknown>;
   ports?:      Record<string, { direction: string; bits: Bit[] }>;
-  cells?:      Record<string, { type: string; port_directions?: Record<string, string>; connections: Record<string, Bit[]> }>;
+  cells?:      Record<string, { type: string; attributes?: Record<string, unknown>; port_directions?: Record<string, string>; connections: Record<string, Bit[]> }>;
+  netnames?:   Record<string, { bits: Bit[]; attributes?: Record<string, unknown> }>;
 }
 export interface YosysNetlist { modules?: Record<string, YosysModule> }
 
+/** A source range from Yosys' src attribute ("design.v:12.3-14.9"; several joined by "|"). */
+export interface SrcLoc { file: string; line: number; endLine: number }
+export function parseSrc(src: unknown): SrcLoc[] {
+  if (typeof src !== "string") return [];
+  return src.split("|").flatMap((part) => {
+    const m = /^(.*):(\d+)(?:\.\d+)?(?:-(\d+)(?:\.\d+)?)?$/.exec(part.trim());
+    return m ? [{ file: m[1], line: Number(m[2]), endLine: Number(m[3] ?? m[2]) }] : [];
+  });
+}
+
+export interface SchPort { name: string; x: number; y: number; west: boolean }
+export interface SchNode {
+  id: string;
+  kind: "in" | "out" | "cell" | "reg" | "const" | "inst";
+  label: string;
+  /** For an instance: the module it is (drill into it). For a cell: its Yosys name. */
+  module?: string;
+  name?: string;
+  x: number; y: number; w: number; h: number;
+  ports: SchPort[];
+  src: SrcLoc[];
+}
+export interface SchEdge { id: string; sections: [number, number][][]; wide: boolean; net: string }
+export interface SchLayout { module: string; width: number; height: number; nodes: SchNode[]; edges: SchEdge[]; cells: number }
+
 const isRegister = (type: string) => /dff|dlatch|\$sr\b/.test(type);
 
-/** Schematic of the top module: ports, cells ($add, $mux, $dff, …) and nets. */
-export async function schematicSvg(netlist: YosysNetlist): Promise<string | null> {
-  const modules = Object.values(netlist.modules ?? {});
-  const mod = modules.find((m) => m.attributes?.top) ?? modules[0];
-  if (!mod) return null;
+/** The modules of a netlist, top first, and which one is the top. */
+export function schematicModules(netlist: YosysNetlist): { top: string | null; names: string[] } {
+  const entries = Object.entries(netlist.modules ?? {});
+  const top = entries.find(([, m]) => m.attributes?.top)?.[0] ?? entries[0]?.[0] ?? null;
+  return { top, names: entries.map(([n]) => n).sort((a, b) => (a === top ? -1 : b === top ? 1 : a.localeCompare(b))) };
+}
+
+/**
+ * One module of the netlist laid out with ELK (the top by default): its ports, cells ($add, $mux, $dff, …),
+ * instances of the netlist's other modules (drawn double-edged, to drill into), constants and nets, each
+ * with its source range for cross-probing. Edges carry the driver they come from, so a net can be lit whole.
+ */
+export async function schematicLayout(netlist: YosysNetlist, moduleName?: string): Promise<SchLayout | null> {
+  const name = moduleName ?? schematicModules(netlist).top;
+  const mod = name ? netlist.modules?.[name] : undefined;
+  if (!name || !mod) return null;
 
   const children: ElkNode[] = [];
-  const kind    = new Map<string, "in" | "out" | "cell" | "reg" | "const">();
-  const label   = new Map<string, string>();
+  const meta = new Map<string, Omit<SchNode, "x" | "y" | "w" | "h" | "ports">>();
   const portTxt = new Map<string, string>();
   const drivers = new Map<Bit, string>();               // net bit -> driving ELK port
   const sinks: { port: string; bits: Bit[] }[] = [];
   const fixed = { "elk.portConstraints": "FIXED_SIDE" };
 
-  for (const [name, p] of Object.entries(mod.ports ?? {})) {
+  for (const [pname, p] of Object.entries(mod.ports ?? {})) {
     const id = `p${children.length}`, out = p.direction !== "input";
-    const text = p.bits.length > 1 ? `${name}[${p.bits.length}]` : name;
-    kind.set(id, out ? "out" : "in"); label.set(id, text);
+    const text = p.bits.length > 1 ? `${pname}[${p.bits.length}]` : pname;
+    meta.set(id, { id, kind: out ? "out" : "in", label: text, name: pname, src: parseSrc(mod.netnames?.[pname]?.attributes?.src) });
     children.push({
       id, width: text.length * CHAR_W + 18, height: 22,
       ports: [{ id: `${id}.x`, width: 1, height: 1, layoutOptions: { "elk.port.side": out ? "WEST" : "EAST" } }],
@@ -80,14 +116,18 @@ export async function schematicSvg(netlist: YosysNetlist): Promise<string | null
     else p.bits.forEach((b) => drivers.set(b, `${id}.x`));
   }
 
-  for (const cell of Object.values(mod.cells ?? {})) {
+  let cells = 0;
+  for (const [cname, cell] of Object.entries(mod.cells ?? {})) {
+    cells++;
     const id = `c${children.length}`;
     const conns = Object.entries(cell.connections ?? {});
-    const isOut = (pn: string) => cell.port_directions?.[pn] === "output";
+    const sub = netlist.modules?.[cell.type] ? cell.type : undefined;
+    const subPorts = sub ? netlist.modules![sub].ports ?? {} : {};
+    const isOut = (pn: string) => (cell.port_directions?.[pn] ?? (subPorts[pn]?.direction === "output" ? "output" : "input")) === "output";
     const ins = conns.filter(([pn]) => !isOut(pn)), outs = conns.filter(([pn]) => isOut(pn));
-    const text = cell.type.startsWith("$") ? cell.type.slice(1) : cell.type;   // "$add" -> "add"
+    const text = sub ? `${cname.replace(/^\\/, "")} : ${sub}` : cell.type.startsWith("$") ? cell.type.slice(1) : cell.type;
     const longest = Math.max(0, ...conns.map(([pn]) => pn.length));
-    kind.set(id, isRegister(cell.type) ? "reg" : "cell"); label.set(id, text);
+    meta.set(id, { id, kind: sub ? "inst" : isRegister(cell.type) ? "reg" : "cell", label: text, module: sub, name: cname, src: parseSrc(cell.attributes?.src) });
     children.push({
       id,
       width:  Math.max(60, text.length * CHAR_W + 2 * longest * 6 + 28),
@@ -104,7 +144,7 @@ export async function schematicSvg(netlist: YosysNetlist): Promise<string | null
   }
 
   const edges: ElkExtendedEdge[] = [];
-  const bus  = new Set<string>();
+  const bus = new Set<string>();
   const seen = new Set<string>();
   const addEdge = (src: string, dst: string, wide: boolean) => {
     if (seen.has(`${src}>${dst}`)) return;
@@ -118,7 +158,7 @@ export async function schematicSvg(netlist: YosysNetlist): Promise<string | null
     if (bits.length && bits.every((b) => typeof b === "string")) {       // tied to a constant
       const id = `k${children.length}`;
       const text = bits.length === 1 ? String(bits[0]) : `${bits.length}'b${[...bits].reverse().join("")}`;
-      kind.set(id, "const"); label.set(id, text);
+      meta.set(id, { id, kind: "const", label: text, src: [] });
       children.push({
         id, width: text.length * CHAR_W + 12, height: 18, layoutOptions: fixed,
         ports: [{ id: `${id}.x`, width: 1, height: 1, layoutOptions: { "elk.port.side": "EAST" } }],
@@ -143,35 +183,65 @@ export async function schematicSvg(netlist: YosysNetlist): Promise<string | null
     },
   });
 
+  const nodes: SchNode[] = (g.children ?? []).map((n) => {
+    const x = n.x ?? 0, y = n.y ?? 0, w = n.width ?? 0;
+    return {
+      ...meta.get(n.id)!, x, y, w, h: n.height ?? 0,
+      ports: (n.ports ?? []).map((p) => ({ name: portTxt.get(p.id) ?? "", x: x + (p.x ?? 0), y: y + (p.y ?? 0), west: (p.x ?? 0) < w / 2 })),
+    };
+  });
+  const schEdges: SchEdge[] = (g.edges ?? []).map((e) => ({
+    id: e.id,
+    sections: (e.sections ?? []).map((sec) => [sec.startPoint, ...(sec.bendPoints ?? []), sec.endPoint].map((pt) => [pt.x, pt.y] as [number, number])),
+    wide: bus.has(e.id),
+    net: (e as ElkExtendedEdge).sources[0],
+  }));
+  return { module: name, width: Math.ceil(g.width ?? 0), height: Math.ceil(g.height ?? 0), nodes, edges: schEdges, cells };
+}
+
+/** The ids of the nodes made from source line `line` of `file` (the editor's cursor, lit on the schematic). */
+export function nodesAtLine(layout: SchLayout, file: string, line: number): string[] {
+  return layout.nodes.filter((n) => n.src.some((s) => s.file === file && line >= s.line && line <= s.endLine)).map((n) => n.id);
+}
+
+/** A layout as a static SVG document (shown through <img>; text is escaped). */
+export function layoutSvg(L: SchLayout): string {
   const out: string[] = [];
-  for (const n of g.children ?? []) {
-    const x = n.x ?? 0, y = n.y ?? 0, w = n.width ?? 0, h = n.height ?? 0;
-    const k = kind.get(n.id), t = esc(label.get(n.id) ?? "");
-    if (k === "in" || k === "out") {
+  for (const n of L.nodes) {
+    const { x, y, w, h } = n, t = esc(n.label);
+    if (n.kind === "in" || n.kind === "out") {
       out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="11" fill="${C.box}" stroke="${C.port}"/>`,
                `<text x="${x + w / 2}" y="${y + h / 2 + 4}" text-anchor="middle" fill="${C.port}">${t}</text>`);
       continue;
     }
-    if (k === "const") {
+    if (n.kind === "const") {
       out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="none" stroke="${C.dim}" stroke-dasharray="3 2"/>`,
                `<text x="${x + w / 2}" y="${y + h / 2 + 4}" text-anchor="middle" fill="${C.dim}">${t}</text>`);
       continue;
     }
-    const stroke = k === "reg" ? C.ff : C.line;
-    out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${C.box}" stroke="${stroke}" stroke-width="${k === "reg" ? 1.6 : 1}"/>`,
-             `<text x="${x + w / 2}" y="${y + h / 2 + 4}" text-anchor="middle" font-weight="bold" fill="${k === "reg" ? C.ff : C.text}">${t}</text>`);
-    for (const p of n.ports ?? []) {
-      const px = x + (p.x ?? 0), py = y + (p.y ?? 0), west = (p.x ?? 0) < w / 2;
-      const name = portTxt.get(p.id) ?? "";
-      if (k === "reg" && name === "CLK") {          // clock-input wedge
-        out.push(`<path d="M${px},${py - 5} L${px + 7},${py} L${px},${py + 5}" fill="none" stroke="${C.ff}"/>`);
+    const reg = n.kind === "reg";
+    out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="${C.box}" stroke="${reg ? C.ff : C.line}" stroke-width="${reg ? 1.6 : 1}"/>`);
+    if (n.kind === "inst") out.push(`<rect x="${x + 3}" y="${y + 3}" width="${w - 6}" height="${h - 6}" rx="3" fill="none" stroke="${C.port}" stroke-width="0.8"/>`);
+    out.push(`<text x="${x + w / 2}" y="${y + h / 2 + 4}" text-anchor="middle" font-weight="bold" fill="${reg ? C.ff : n.kind === "inst" ? C.port : C.text}">${t}</text>`);
+    for (const p of n.ports) {
+      if (reg && p.name === "CLK") {          // clock-input wedge
+        out.push(`<path d="M${p.x},${p.y - 5} L${p.x + 7},${p.y} L${p.x},${p.y + 5}" fill="none" stroke="${C.ff}"/>`);
         continue;
       }
-      out.push(`<text x="${west ? px + 4 : px - 4}" y="${py + 3}" text-anchor="${west ? "start" : "end"}" font-size="9" fill="${C.dim}">${esc(name)}</text>`);
+      out.push(`<text x="${p.west ? p.x + 4 : p.x - 4}" y="${p.y + 3}" text-anchor="${p.west ? "start" : "end"}" font-size="9" fill="${C.dim}">${esc(p.name)}</text>`);
     }
   }
-  out.push(...edgePaths(g.edges ?? [], (e) => (bus.has(e.id) ? 2.2 : 1.1)));
-  return svgDoc(Math.ceil(g.width ?? 0), Math.ceil(g.height ?? 0), out);
+  for (const e of L.edges) for (const sec of e.sections) {
+    out.push(`<polyline points="${sec.map(([px, py]) => `${px},${py}`).join(" ")}" fill="none" stroke="${C.line}" stroke-width="${e.wide ? 2.2 : 1.1}" marker-end="url(#a)"/>`);
+  }
+  return svgDoc(L.width, L.height, out);
+}
+
+/** The static drawing (lab report, server route): the top module, when it's small enough to read as a picture. */
+export const STATIC_SCHEMATIC_CELLS = 300;
+export async function schematicSvg(netlist: YosysNetlist): Promise<string | null> {
+  const L = await schematicLayout(netlist);
+  return L && L.cells <= STATIC_SCHEMATIC_CELLS ? layoutSvg(L) : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

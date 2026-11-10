@@ -71,7 +71,6 @@ const chapter: AcademyTopic = {
         { kind: "table", headers: ["Coverage", "Counts", "A gap means"], rows: [["Line", "Each statement that ran", "Code no test reached"], ["Branch", "Each side of every `if` and `case`", "A decision only ever went one way"], ["Toggle", "Each signal bit going 0 to 1 and 1 to 0", "A bit that never changed, so a stuck bit would go unnoticed"], ["Cover point", "Each `cover property` that matched", "A scenario you meant to test never happened"]] },
         { kind: "callout", tone: "warning", text: "100% coverage doesn't mean the design is right: it means every part was exercised. You still need checks that notice a wrong answer. Coverage shows you where your checks never looked." },
         { kind: "practice", question: "A 4-bit counter's testbench passes, but toggle coverage shows `q[3]` never changed. What does that tell you?", options: ["The test never counted to 8, so a stuck top bit would go unnoticed", "The counter has a bug", "An assertion failed", "Nothing: line coverage is enough"], correctIndex: 0, explanation: "`q[3]` first goes high at 8. The test stopped early, so it **never checked the top bit**. Run it longer." },
-        { kind: "link", href: "/arena/verification/sv-verify-alu8-random", label: "Try a coverage-graded problem", text: "Write a SystemVerilog testbench on Verilator. It must reach the coverage bar and catch every hidden bug." },
       ],
     },
     {

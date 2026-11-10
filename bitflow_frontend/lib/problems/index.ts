@@ -28,9 +28,8 @@ import { BEGINNER_PROBLEMS }      from "@/lib/problems/beginner";
 import { INTERMEDIATE_PROBLEMS }  from "@/lib/problems/intermediate";
 import { ADVANCED_PROBLEMS } from "@/lib/problems/advanced";
 import { RISCV_PROBLEMS }    from "@/lib/problems/riscv";
+// Parked while the problem set is revised (2026-11): systemverilog.ts, practice-pack.ts. prisma/seed.ts archives them.
 import { groupIntoModules, BEGINNER_MODULE_DEFS, INTERMEDIATE_MODULE_DEFS, ADVANCED_MODULE_DEFS } from "@/lib/problems/modules";
-import { SV_PROBLEMS }       from "@/lib/problems/systemverilog";
-import { PRACTICE_BEGINNER, PRACTICE_INTERMEDIATE, PRACTICE_ADVANCED } from "@/lib/problems/practice-pack";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // All problems flat list — used for O(1) slug/id lookups
@@ -41,10 +40,6 @@ const ALL_PROBLEMS: Problem[] = [
   ...INTERMEDIATE_PROBLEMS,
   ...ADVANCED_PROBLEMS,
   ...RISCV_PROBLEMS,
-  ...SV_PROBLEMS,
-  ...PRACTICE_BEGINNER,
-  ...PRACTICE_INTERMEDIATE,
-  ...PRACTICE_ADVANCED,
   // TODO: ...ARENA_PROBLEMS,
 ];
 
@@ -83,7 +78,7 @@ export const LEARNING_PATH: LearningPath = {
       difficulty:  "beginner",
       accentColor: "#00e87a",   // phosphor green
       xpToUnlock:  0,
-      modules:     groupIntoModules([...BEGINNER_PROBLEMS, ...PRACTICE_BEGINNER], BEGINNER_MODULE_DEFS),
+      modules:     groupIntoModules(BEGINNER_PROBLEMS, BEGINNER_MODULE_DEFS),
     },
     {
       id:          "lvl_intermediate",
@@ -92,7 +87,7 @@ export const LEARNING_PATH: LearningPath = {
       difficulty:  "intermediate",
       accentColor: "#4db8ff",   // info blue
       xpToUnlock:  200,         // need 200 XP from Beginner to unlock
-      modules:     groupIntoModules([...INTERMEDIATE_PROBLEMS, ...SV_PROBLEMS, ...PRACTICE_INTERMEDIATE], INTERMEDIATE_MODULE_DEFS),
+      modules:     groupIntoModules(INTERMEDIATE_PROBLEMS, INTERMEDIATE_MODULE_DEFS),
     },
     {
       id:          "lvl_advanced",
@@ -101,7 +96,7 @@ export const LEARNING_PATH: LearningPath = {
       difficulty:  "advanced",
       accentColor: "#ffb84d",   // amber
       xpToUnlock:  500,
-      modules:     groupIntoModules([...ADVANCED_PROBLEMS, ...RISCV_PROBLEMS, ...PRACTICE_ADVANCED], ADVANCED_MODULE_DEFS),
+      modules:     groupIntoModules([...ADVANCED_PROBLEMS, ...RISCV_PROBLEMS], ADVANCED_MODULE_DEFS),
     },
     {
       id:          "lvl_arena",

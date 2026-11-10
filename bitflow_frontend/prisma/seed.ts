@@ -63,6 +63,15 @@ async function main() {
   }
   console.log("✅ Arena FSM seeded\n");
 
+  // Only the problems in code are live: anything else (parked sets, admin-made debug problems) is
+  // archived. Archiving hides it from learners but keeps its submissions; it is never deleted.
+  const live = [...LEARNING_PATH.levels.flatMap((l) => l.modules.flatMap((m) => m.problems)), ...ALL_ARENA_PROBLEMS].map((p) => p.slug);
+  const { count: archived } = await prisma.question.updateMany({
+    where: { slug: { notIn: live }, archived: false },
+    data: { archived: true },
+  });
+  if (archived) console.log(`📦 Archived ${archived} problems that are no longer in code\n`);
+
   const total = await prisma.question.count();
   console.log(`✅ Total: ${total} problems`);
 

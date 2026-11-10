@@ -38,6 +38,7 @@ export const NAV_LINKS: { href: string; label: string; wide?: boolean }[] = [
 ];
 const MORE_LINKS: { href: string; label: string }[] = [
   { href: "/announcements", label: "Announcements" },
+  { href: "/explore", label: "Explore shared designs" },
   { href: "/flash", label: "Flash a board" },
   { href: "/academy/roadmap", label: "VLSI roadmap" },
   { href: "/articles", label: "Articles" },

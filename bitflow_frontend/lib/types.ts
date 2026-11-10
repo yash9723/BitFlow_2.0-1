@@ -48,7 +48,8 @@ export interface SimulateRequest {
   simulator?: Simulator;
 }
 
-export type Simulator = "icarus" | "verilator";
+/** "browser": Icarus as WebAssembly in the page (lib/sim/browser-sim.ts); the others run on the server. */
+export type Simulator = "browser" | "icarus" | "verilator";
 
 /** A failed SystemVerilog assertion (Verilator flow). time is in the testbench's time units. */
 export interface AssertionFailure {

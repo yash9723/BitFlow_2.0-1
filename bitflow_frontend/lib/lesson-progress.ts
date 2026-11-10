@@ -7,10 +7,11 @@
  * lesson certificates say they are self-checked; re-run the goals on the server if that matters.
  */
 import { prisma } from "@/lib/prisma";
+import { logXp } from "@/lib/xp";
 import { LESSON_XP, MAX_DRAFT_CHARS, counts, type LessonItem } from "@/lib/lessons";
 
 /** Only the request that flips done from false gets the XP, however many arrive at once. */
-async function awardOnce(rowId: string, userId: string, xp: number): Promise<number> {
+async function awardOnce(rowId: string, userId: string, xp: number, source: string): Promise<number> {
   const { count } = await prisma.lessonProgress.updateMany({
     where: { id: rowId, done: false },
     data:  { done: true, completedAt: new Date(), xpAwarded: xp },
@@ -21,6 +22,7 @@ async function awardOnce(rowId: string, userId: string, xp: number): Promise<num
     create: { userId, totalXp: xp, unlockedModules: JSON.stringify(["mod_logic_gates", "mod_arithmetic"]) },
     update: { totalXp: { increment: xp } },
   });
+  await logXp(userId, xp, source);
   return xp;
 }
 
@@ -34,7 +36,7 @@ export async function recordChallenge(userId: string, slug: string, xp: number, 
     update: { draft },
     select: { id: true },
   });
-  return awardOnce(row.id, userId, xp);
+  return awardOnce(row.id, userId, xp, `lesson:challenge:${slug}`);
 }
 
 /** Upsert the items; returns the XP this call awarded. Items must have passed lessonProblem(). */
@@ -52,7 +54,7 @@ export async function recordLessons(userId: string, items: LessonItem[]): Promis
     });
     if (!done || !counts(kind, slug, best)) continue;
 
-    awarded += await awardOnce(row.id, userId, LESSON_XP[kind]);
+    awarded += await awardOnce(row.id, userId, LESSON_XP[kind], `lesson:${kind}:${slug}`);
   }
   return awarded;
 }

@@ -22,7 +22,8 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import type { Problem, SubmissionResult } from "@/lib/problem-types";
 import type { DesignLanguage, SimulateResponse } from "@/lib/types";
-import { runSimulation, checkHealth, submitSolution } from "@/lib/api";
+import { checkHealth, submitSolution } from "@/lib/api";
+import { runPreferBrowser } from "@/lib/sim/browser-sim";
 import { saveSubmission } from "@/lib/save-submission";
 import { useAuth } from "@/hooks/useAuth";
 import { useCelebrate } from "@/components/pixel/CelebrationProvider";
@@ -115,14 +116,14 @@ export function useProblem(problem: Problem): UseProblemReturn {
     setErrorMsg(null);
     setRunResult(null);
     try {
-      const result = await runSimulation({
+      const result = await runPreferBrowser({
         design_v:    designCode,
         testbench_v: testbenchCode,
         timeout:     30,
         lint:        true,
         design_language: language,
         ...(problem.dataFiles ? { files: problem.dataFiles } : {}),
-      });
+      }, true);
       setRunResult(result);
       setRunState("run_done");
 

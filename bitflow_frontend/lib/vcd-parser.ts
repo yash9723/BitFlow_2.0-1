@@ -45,6 +45,8 @@ export interface VcdSignal {
   type: string;
   /** Chronologically ordered list of value changes. */
   changes: VcdChange[];
+  /** Where it was declared: the dotted $scope path, e.g. "tb.dut". */
+  scope?: string;
 }
 
 /** Complete parsed result returned by parseVcd(). */
@@ -149,7 +151,7 @@ export function parseVcd(text: string, scope?: string): ParsedVcd {
         if (rel) name = `${rel}.${name}`;
       }
       if (id && name) {
-        signals.set(id, { id, name, width: isNaN(width) ? 1 : width, type, changes: [] });
+        signals.set(id, { id, name, width: isNaN(width) ? 1 : width, type, changes: [], scope: path });
       }
       continue;
     }

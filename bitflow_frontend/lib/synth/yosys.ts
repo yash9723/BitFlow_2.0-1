@@ -5,7 +5,7 @@
  * Keep the two in step; scripts/synth-parity.check.ts compares them.
  */
 
-export const MAX_SCHEMATIC_CELLS = 300;
+export const MAX_SCHEMATIC_CELLS = 3000;   // netlists up to this size are sent for the interactive schematic (one module laid out at a time)
 const MAX_WARNINGS = 30;
 const MAX_BOARD_CELLS = 20_000;
 

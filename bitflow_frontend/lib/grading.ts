@@ -6,6 +6,7 @@
  * leave the server; the client only sees the resulting verdicts.
  */
 
+import { traceBug, type TraceStep } from "@/lib/trace";
 import type { Testcase, TestcaseVerdict } from "@/lib/problem-types";
 import type { SimulateResponse, TestbenchLanguage } from "@/lib/types";
 import { createHash } from "node:crypto";
@@ -506,6 +507,8 @@ export interface FailingWaveform {
    * and "<out> (expected)", and these are the time ranges where they differ.
    */
   mismatches?: { from: number; to: number }[];
+  /** "Trace the bug" (lib/trace.ts): where it first goes wrong and the lines of the learner's code behind it. */
+  trace?: TraceStep[];
 }
 
 /** Waveform of `design`'s DUT instance on `testbench`, or null. */
@@ -591,6 +594,8 @@ async function referenceWaveform(reference: string, testbench: string, files: Re
  */
 export async function failingTestWaveform(
   q: GradableQuestion & { referenceSolution?: string | null }, designCode: string, grade: GradeResult,
+  /** False when designCode was converted from VHDL: its line numbers aren't the learner's. */
+  linesAreLearners = true,
 ): Promise<FailingWaveform | null> {
   if (grade.accepted) return null;
   const cases  = parseTestcases(q.hiddenTestcases);
@@ -624,7 +629,8 @@ export async function failingTestWaveform(
     }
     if (!pairs.length) return { testcaseId, waveform };
     const maxTime = Math.max(waveform.maxTime, reference.maxTime);
-    return { testcaseId, waveform: { ...waveform, signals, maxTime }, mismatches: mismatchRanges(pairs, maxTime) };
+    const trace = traceBug(waveform, reference, [...outs], linesAreLearners ? designCode : null);
+    return { testcaseId, waveform: { ...waveform, signals, maxTime }, mismatches: mismatchRanges(pairs, maxTime), ...(trace.length ? { trace } : {}) };
   } catch (err) {
     console.warn("[grading] failing-test waveform unavailable:", err);
     return null;

@@ -52,6 +52,8 @@ model User {
   comments         Comment[]
   announcementsSeenAt DateTime? // last opened /announcements: everything newer shows on the bell
   lessonProgress   LessonProgress[]
+  xpEvents         XpEvent[]
+  liveSnapshots    LiveSnapshot[]
   mockInterviews   MockInterview[]
 
   @@index([guardianTokenHash])
@@ -153,9 +155,26 @@ model UserXp {
   unlockedModules String   @default("[\"mod_logic_gates\", \"mod_arithmetic\"]")
   lastDailyBonus  String?  // UTC date (YYYY-MM-DD) the daily-challenge bonus was last awarded
   dailyStreak     Int      @default(0) // consecutive days the daily bonus was claimed, as of lastDailyBonus
+  streakFreezes   Int      @default(0) // missed days the streak can survive (lib/daily.ts: one per 7-day run, at most 2)
   updatedAt       DateTime @updatedAt
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// One row per XP award, for the weekly leaderboard and daily quests (lib/xp.ts). `source` names
+/// what earned it (problem:<id>, lesson:<kind>:<slug>, daily:<day>, quest:<day>:<id>); unique per
+/// user, so the same reward is never logged twice. XP from before this table isn't in it.
+model XpEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  amount    Int
+  source    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source])
+  @@index([createdAt])
 }
 
 // ============================================================================
@@ -200,6 +219,7 @@ model Submission {
   logicDepth      Int?
   ffBits          Int?
   fmaxMhz         Float?   // timing problems (lib/arena/timing.ts): place-and-route Fmax on an iCE40-HX8K
+  areaUm2         Float?   // standard-cell area on Sky130 HD (POST /metrics), for the smallest-chip leaderboard
 
   // Wrong SUBMITs: shortest differing input sequence vs. the reference, as a text
   // table (lib/grading.ts counterexampleTable). Shown to the AI tutor.
@@ -265,6 +285,37 @@ model Classroom {
   owner       User          @relation("OwnedClasses", fields: [ownerId], references: [id], onDelete: Cascade)
   members     ClassMember[]
   assignments Assignment[]
+  liveLab     LiveLab?
+}
+
+/// A running live lab (lib/live-lab.ts): while it exists, students who joined send their Sandbox code and last
+/// run, and the class's teachers see them. Ending the lab deletes the row and, with it, every snapshot.
+model LiveLab {
+  id        String         @id @default(uuid())
+  classId   String         @unique
+  startedBy String
+  startedAt DateTime       @default(now())
+
+  classroom Classroom      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  snapshots LiveSnapshot[]
+}
+
+/// One joined student's latest Sandbox state in a live lab, and the teacher's note to them.
+model LiveSnapshot {
+  id        String   @id @default(uuid())
+  labId     String
+  userId    String
+  files     String   @default("[]")  // JSON [{name, content}]: design, testbench, extra files
+  run       String?                  // JSON {status, passed, total, firstError}: the last run (lib/live-lab.ts runSummary)
+  note      String?                  // from the teacher
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lab       LiveLab  @relation(fields: [labId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, userId])
+  @@index([userId])
 }
 
 model ClassMember {
@@ -306,11 +357,20 @@ model SharedDesign {
   testbenchCode String
   files         String?  // JSON [{name, content}]: more design files (lib/project-files.ts)
   kind          String   @default("sandbox")  // "sandbox", or "circuit": designCode holds the circuit's JSON
+  designLang    String   @default("verilog")  // "verilog" | "vhdl"
+  tbLang        String   @default("verilog")  // "verilog" | "vhdl" | "python" (cocotb)
+  public        Boolean  @default(false)      // listed in /explore; the link works either way
+  forkOf        String?                       // the share it was forked from (credit on its page)
+  forks         Int      @default(0)          // times it was forked into someone's projects
+  projectId     String?                       // the owner's project it was shared from: sharing it again updates this link
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt   // the owner can update the code; the link stays the same
 
   owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
+  @@index([public, forks])
+  @@index([ownerId, projectId])
 }
 
 // ============================================================================
@@ -327,14 +387,29 @@ model Project {
   designLanguage    String   @default("verilog")
   testbenchLanguage String   @default("verilog")
   pins              String?  // JSON {"<board>:<top>": constraints text} (components/BitstreamTab.tsx)
+  forkOf            String?  // the shared design (/s/<id>) this project was forked from
   kind              String   @default("sandbox")  // "sandbox", or "circuit": designCode holds the circuit's JSON
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   owner             User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   versions          ProjectVersion[]
+  pairInvite        PairInvite?
 
   @@index([ownerId, updatedAt])
+}
+
+// Pair mode (lib/pair.ts): a link that lets one other person edit this project with its owner, live. Only its hash is kept.
+model PairInvite {
+  id        String   @id @default(uuid())
+  projectId String   @unique   // one live link per project: a new one replaces it
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 // A saved state of a project; autosaves within a couple of minutes share one (lib/projects.ts).

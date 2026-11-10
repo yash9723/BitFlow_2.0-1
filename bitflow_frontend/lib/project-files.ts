@@ -45,7 +45,12 @@ export function combineDesign(main: string, files: ProjectFile[]) {
     const p = [...parts].reverse().find((q) => line >= q.start) ?? parts[0];
     return { file: p.name, line: line - p.start + 1 };
   };
-  return { code, locate, multi: parts.length > 1 };
+  /** The other way: a file's line as a line of the combined text (null for a file that isn't in it). */
+  const place = (file: string, line: number) => {
+    const p = parts.find((q) => q.name === file);
+    return p ? p.start + line - 1 : null;
+  };
+  return { code, locate, place, multi: parts.length > 1 };
 }
 
 /** Data files for the simulator's `files`, or undefined when there are none. */

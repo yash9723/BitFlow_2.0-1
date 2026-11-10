@@ -875,6 +875,8 @@ class TestMetrics:
 
     def test_and_gate(self, client):
         d = self._m(client, "module g(input a, input b, output y); assign y = a & b; endmodule")
+        area = d.pop("areaUm2")          # Sky130 area: a number where the library is installed (tests/test_asic.py)
+        assert area is None or area > 0, area
         assert d == {"ok": True, "gates": 1, "ffBits": 0, "depth": 1}, d
 
     def test_counter_flip_flops(self, client):

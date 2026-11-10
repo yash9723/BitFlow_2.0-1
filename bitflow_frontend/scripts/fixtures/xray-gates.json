@@ -1,0 +1,744 @@
+{
+  "creator": "Yosys 0.52 (git sha1 fee39a328, ccache clang 18.1.3 -O3 -flto -flto)",
+  "modules": {
+    "top": {
+      "attributes": {
+        "top": "00000000000000000000000000000001",
+        "src": "design.v:1.1-8.10"
+      },
+      "ports": {
+        "clk": {
+          "direction": "input",
+          "bits": [ 2 ]
+        },
+        "rst": {
+          "direction": "input",
+          "bits": [ 3 ]
+        },
+        "a": {
+          "direction": "input",
+          "bits": [ 4, 5, 6, 7 ]
+        },
+        "b": {
+          "direction": "input",
+          "bits": [ 8, 9, 10, 11 ]
+        },
+        "q": {
+          "direction": "output",
+          "bits": [ 12, 13, 14, 15 ]
+        },
+        "s": {
+          "direction": "output",
+          "bits": [ 16, 17, 18, 19 ]
+        },
+        "p": {
+          "direction": "output",
+          "bits": [ 20 ]
+        }
+      },
+      "cells": {
+        "_20_": {
+          "hide_name": 0,
+          "type": "$_NOT_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 5 ],
+            "Y": [ 21 ]
+          }
+        },
+        "_21_": {
+          "hide_name": 0,
+          "type": "$_NOT_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 4 ],
+            "Y": [ 22 ]
+          }
+        },
+        "_22_": {
+          "hide_name": 0,
+          "type": "$_NOT_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 7 ],
+            "Y": [ 23 ]
+          }
+        },
+        "_23_": {
+          "hide_name": 0,
+          "type": "$_NOT_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 6 ],
+            "Y": [ 24 ]
+          }
+        },
+        "_24_": {
+          "hide_name": 0,
+          "type": "$_XOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 7 ],
+            "B": [ 6 ],
+            "Y": [ 25 ]
+          }
+        },
+        "_25_": {
+          "hide_name": 0,
+          "type": "$_XNOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 5 ],
+            "B": [ 4 ],
+            "Y": [ 26 ]
+          }
+        },
+        "_26_": {
+          "hide_name": 0,
+          "type": "$_XNOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 25 ],
+            "B": [ 26 ],
+            "Y": [ 20 ]
+          }
+        },
+        "_27_": {
+          "hide_name": 0,
+          "type": "$_AND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 4 ],
+            "B": [ 12 ],
+            "Y": [ 27 ]
+          }
+        },
+        "_28_": {
+          "hide_name": 0,
+          "type": "$_NAND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 5 ],
+            "B": [ 13 ],
+            "Y": [ 28 ]
+          }
+        },
+        "_29_": {
+          "hide_name": 0,
+          "type": "$_XOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 5 ],
+            "B": [ 13 ],
+            "Y": [ 29 ]
+          }
+        },
+        "_30_": {
+          "hide_name": 0,
+          "type": "$_NAND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 27 ],
+            "B": [ 29 ],
+            "Y": [ 30 ]
+          }
+        },
+        "_31_": {
+          "hide_name": 0,
+          "type": "$_XOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 27 ],
+            "B": [ 29 ],
+            "Y": [ 31 ]
+          }
+        },
+        "_32_": {
+          "hide_name": 0,
+          "type": "$_NAND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 28 ],
+            "B": [ 30 ],
+            "Y": [ 32 ]
+          }
+        },
+        "_33_": {
+          "hide_name": 0,
+          "type": "$_NAND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 6 ],
+            "B": [ 14 ],
+            "Y": [ 33 ]
+          }
+        },
+        "_34_": {
+          "hide_name": 0,
+          "type": "$_XOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 6 ],
+            "B": [ 14 ],
+            "Y": [ 34 ]
+          }
+        },
+        "_35_": {
+          "hide_name": 0,
+          "type": "$_NAND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 32 ],
+            "B": [ 34 ],
+            "Y": [ 35 ]
+          }
+        },
+        "_36_": {
+          "hide_name": 0,
+          "type": "$_XOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 32 ],
+            "B": [ 34 ],
+            "Y": [ 36 ]
+          }
+        },
+        "_37_": {
+          "hide_name": 0,
+          "type": "$_AND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 33 ],
+            "B": [ 35 ],
+            "Y": [ 37 ]
+          }
+        },
+        "_38_": {
+          "hide_name": 0,
+          "type": "$_XOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 7 ],
+            "B": [ 15 ],
+            "Y": [ 38 ]
+          }
+        },
+        "_39_": {
+          "hide_name": 0,
+          "type": "$_XNOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 37 ],
+            "B": [ 38 ],
+            "Y": [ 39 ]
+          }
+        },
+        "_40_": {
+          "hide_name": 0,
+          "type": "$_XOR_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 4 ],
+            "B": [ 12 ],
+            "Y": [ 40 ]
+          }
+        },
+        "_41_": {
+          "hide_name": 0,
+          "type": "$_AND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 22 ],
+            "B": [ 8 ],
+            "Y": [ 16 ]
+          }
+        },
+        "_42_": {
+          "hide_name": 0,
+          "type": "$_AND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 21 ],
+            "B": [ 9 ],
+            "Y": [ 17 ]
+          }
+        },
+        "_43_": {
+          "hide_name": 0,
+          "type": "$_AND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 24 ],
+            "B": [ 10 ],
+            "Y": [ 18 ]
+          }
+        },
+        "_44_": {
+          "hide_name": 0,
+          "type": "$_AND_",
+          "parameters": {
+          },
+          "attributes": {
+          },
+          "port_directions": {
+            "A": "input",
+            "B": "input",
+            "Y": "output"
+          },
+          "connections": {
+            "A": [ 23 ],
+            "B": [ 11 ],
+            "Y": [ 19 ]
+          }
+        },
+        "_45_": {
+          "hide_name": 0,
+          "type": "$_SDFF_PP0_",
+          "parameters": {
+          },
+          "attributes": {
+            "src": "design.v:5.3-7.21"
+          },
+          "port_directions": {
+            "C": "input",
+            "D": "input",
+            "Q": "output",
+            "R": "input"
+          },
+          "connections": {
+            "C": [ 2 ],
+            "D": [ 40 ],
+            "Q": [ 12 ],
+            "R": [ 3 ]
+          }
+        },
+        "_46_": {
+          "hide_name": 0,
+          "type": "$_SDFF_PP0_",
+          "parameters": {
+          },
+          "attributes": {
+            "src": "design.v:5.3-7.21"
+          },
+          "port_directions": {
+            "C": "input",
+            "D": "input",
+            "Q": "output",
+            "R": "input"
+          },
+          "connections": {
+            "C": [ 2 ],
+            "D": [ 31 ],
+            "Q": [ 13 ],
+            "R": [ 3 ]
+          }
+        },
+        "_47_": {
+          "hide_name": 0,
+          "type": "$_SDFF_PP0_",
+          "parameters": {
+          },
+          "attributes": {
+            "src": "design.v:5.3-7.21"
+          },
+          "port_directions": {
+            "C": "input",
+            "D": "input",
+            "Q": "output",
+            "R": "input"
+          },
+          "connections": {
+            "C": [ 2 ],
+            "D": [ 36 ],
+            "Q": [ 14 ],
+            "R": [ 3 ]
+          }
+        },
+        "_48_": {
+          "hide_name": 0,
+          "type": "$_SDFF_PP0_",
+          "parameters": {
+          },
+          "attributes": {
+            "src": "design.v:5.3-7.21"
+          },
+          "port_directions": {
+            "C": "input",
+            "D": "input",
+            "Q": "output",
+            "R": "input"
+          },
+          "connections": {
+            "C": [ 2 ],
+            "D": [ 39 ],
+            "Q": [ 15 ],
+            "R": [ 3 ]
+          }
+        }
+      },
+      "netnames": {
+        "_0_": {
+          "hide_name": 0,
+          "bits": [ 40 ],
+          "attributes": {
+            "src": "design.v:7.15-7.20|/share/techmap.v:270.23-270.24"
+          }
+        },
+        "_10_": {
+          "hide_name": 0,
+          "bits": [ 27 ],
+          "attributes": {
+          }
+        },
+        "_11_": {
+          "hide_name": 0,
+          "bits": [ 28 ],
+          "attributes": {
+          }
+        },
+        "_12_": {
+          "hide_name": 0,
+          "bits": [ 29 ],
+          "attributes": {
+          }
+        },
+        "_13_": {
+          "hide_name": 0,
+          "bits": [ 30 ],
+          "attributes": {
+          }
+        },
+        "_14_": {
+          "hide_name": 0,
+          "bits": [ 32 ],
+          "attributes": {
+          }
+        },
+        "_15_": {
+          "hide_name": 0,
+          "bits": [ 33 ],
+          "attributes": {
+          }
+        },
+        "_16_": {
+          "hide_name": 0,
+          "bits": [ 34 ],
+          "attributes": {
+          }
+        },
+        "_17_": {
+          "hide_name": 0,
+          "bits": [ 35 ],
+          "attributes": {
+          }
+        },
+        "_18_": {
+          "hide_name": 0,
+          "bits": [ 37 ],
+          "attributes": {
+          }
+        },
+        "_19_": {
+          "hide_name": 0,
+          "bits": [ 38 ],
+          "attributes": {
+          }
+        },
+        "_1_": {
+          "hide_name": 0,
+          "bits": [ 31 ],
+          "attributes": {
+            "src": "design.v:7.15-7.20|/share/techmap.v:270.26-270.27"
+          }
+        },
+        "_2_": {
+          "hide_name": 0,
+          "bits": [ 36 ],
+          "attributes": {
+            "src": "design.v:7.15-7.20|/share/techmap.v:270.26-270.27"
+          }
+        },
+        "_3_": {
+          "hide_name": 0,
+          "bits": [ 39 ],
+          "attributes": {
+            "src": "design.v:7.15-7.20|/share/techmap.v:270.26-270.27"
+          }
+        },
+        "_4_": {
+          "hide_name": 0,
+          "bits": [ 21 ],
+          "attributes": {
+          }
+        },
+        "_5_": {
+          "hide_name": 0,
+          "bits": [ 22 ],
+          "attributes": {
+          }
+        },
+        "_6_": {
+          "hide_name": 0,
+          "bits": [ 23 ],
+          "attributes": {
+          }
+        },
+        "_7_": {
+          "hide_name": 0,
+          "bits": [ 24 ],
+          "attributes": {
+          }
+        },
+        "_8_": {
+          "hide_name": 0,
+          "bits": [ 25 ],
+          "attributes": {
+          }
+        },
+        "_9_": {
+          "hide_name": 0,
+          "bits": [ 26 ],
+          "attributes": {
+          }
+        },
+        "a": {
+          "hide_name": 0,
+          "bits": [ 4, 5, 6, 7 ],
+          "attributes": {
+            "src": "design.v:1.46-1.47"
+          }
+        },
+        "b": {
+          "hide_name": 0,
+          "bits": [ 8, 9, 10, 11 ],
+          "attributes": {
+            "src": "design.v:1.61-1.62"
+          }
+        },
+        "clk": {
+          "hide_name": 0,
+          "bits": [ 2 ],
+          "attributes": {
+            "src": "design.v:1.18-1.21"
+          }
+        },
+        "p": {
+          "hide_name": 0,
+          "bits": [ 20 ],
+          "attributes": {
+            "src": "design.v:1.107-1.108"
+          }
+        },
+        "q": {
+          "hide_name": 0,
+          "bits": [ 12, 13, 14, 15 ],
+          "attributes": {
+            "src": "design.v:1.81-1.82"
+          }
+        },
+        "rst": {
+          "hide_name": 0,
+          "bits": [ 3 ],
+          "attributes": {
+            "src": "design.v:1.29-1.32"
+          }
+        },
+        "s": {
+          "hide_name": 0,
+          "bits": [ 16, 17, 18, 19 ],
+          "attributes": {
+            "src": "design.v:1.97-1.98"
+          }
+        }
+      }
+    }
+  }
+}

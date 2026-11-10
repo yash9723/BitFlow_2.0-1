@@ -24,11 +24,14 @@
 
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
+import { REVEAL_LINE } from "@/lib/trace";
+import { useRef, useCallback, useEffect, useState } from "react";
 import MonacoEditor, { OnMount, BeforeMount, loader } from "@monaco-editor/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
 import type { Diagnostic } from "@/lib/diagnostics";
-import { VERILOG_LANGUAGES, registerVerilog } from "@/lib/verilog-monaco";
+import type { Text as YText } from "yjs";
+import type { PairAwareness } from "@/lib/pair-binding";
+import { VERILOG_LANGUAGES, registerVerilog, takePendingReveal } from "@/lib/verilog-monaco";
 import { lintInBrowser } from "@/lib/synth/client";
 import { mono } from "@/lib/fonts";
 import PixelLoader from "@/components/pixel/PixelLoader";
@@ -58,6 +61,13 @@ interface EditorProps {
   diagnostics?: Diagnostic[];
   /** Check the Verilog as you type (Yosys in the browser) and show its errors and warnings. Design files only. */
   lint?: boolean;
+  /** A project file's model (lib/verilog-monaco.ts uriOf): shared with cross-file definitions, references and rename. */
+  path?: string;
+  /** Highlight and scroll to the line sent by a REVEAL_LINE event ("Trace the bug", lib/trace.ts). */
+  revealLines?: boolean;
+  /** Pair mode: keep this editor in step with a shared text, and show the partner's cursor (lib/pair-binding.ts). */
+  collabText?: YText | null;
+  collabAwareness?: PairAwareness | null;
 }
 
 const LINT_DELAY_MS = 1200;
@@ -298,9 +308,14 @@ export default function Editor({
   readOnly = false,
   diagnostics,
   lint = false,
+  path,
+  revealLines = false,
+  collabText = null,
+  collabAwareness = null,
 }: EditorProps) {
   const editorRef = useRef<MonacoEditorNS.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
+  const [mounted, setMounted] = useState(false);
   const diagnosticsRef = useRef(diagnostics);
   diagnosticsRef.current = diagnostics;
 
@@ -368,14 +383,58 @@ export default function Editor({
     return () => clearTimeout(t);
   }, [value, lint, language]);
 
+  // "Trace the bug": mark the line it points at until the next one (or until the editor goes).
+  useEffect(() => {
+    if (!revealLines) return;
+    let marked: MonacoEditorNS.IEditorDecorationsCollection | null = null;
+    const reveal = (e: Event) => {
+      const editor = editorRef.current, monaco = monacoRef.current, model = editor?.getModel();
+      if (!editor || !monaco || !model) return;
+      const line = Math.min(Math.max((e as CustomEvent<number>).detail, 1), model.getLineCount());
+      marked?.clear();
+      marked = editor.createDecorationsCollection([{
+        range: new monaco.Range(line, 1, line, 1),
+        options: { isWholeLine: true, className: "bf-trace-line", linesDecorationsClassName: "bf-trace-gutter" },
+      }]);
+      editor.revealLineInCenter(line);
+      editor.setPosition({ lineNumber: line, column: model.getLineFirstNonWhitespaceColumn(line) || 1 });
+    };
+    window.addEventListener(REVEAL_LINE, reveal);
+    return () => { window.removeEventListener(REVEAL_LINE, reveal); marked?.clear(); };
+  }, [revealLines]);
+
+  // Pair mode: bound while there's a shared text; loaded only then.
+  useEffect(() => {
+    const editor = editorRef.current, monaco = monacoRef.current;
+    if (!collabText || !editor || !monaco) return;
+    let unbind: (() => void) | null = null, gone = false;
+    import("@/lib/pair-binding").then(({ bindEditor }) => { if (!gone) unbind = bindEditor(monaco as never, collabText, editor, collabAwareness); });
+    return () => { gone = true; unbind?.(); };
+  }, [collabText, collabAwareness, mounted]);
+
   /** Store the editor instance so we can call methods on it if needed. */
   const handleMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    setMounted(true);
     // Activate our custom theme immediately after mount
     editor.updateOptions({ theme: "phosphor-dark" });
     applyMarkers();
-  }, [applyMarkers]);
+    // With two editors on a page (Sandbox: design + testbench) they share one keybinding service, and the rename
+    // box's Enter can land on the wrong editor and do nothing. Send these keys to the editor that has the focus.
+    const K = monaco.KeyCode, M = monaco.KeyMod;
+    const focused = () => monaco.editor.getEditors().find((e) => e.hasWidgetFocus()) ?? editor;
+    editor.addCommand(K.Enter, () => focused().trigger("keyboard", "acceptRenameInput", {}), "renameInputVisible");
+    editor.addCommand(M.Shift | K.Enter, () => focused().trigger("keyboard", "acceptRenameInputWithPreview", {}), "renameInputVisible");
+    editor.addCommand(K.Escape, () => focused().trigger("keyboard", "cancelRenameInput", {}), "renameInputVisible");
+    // Opened by a go-to-definition from another file: land on the definition.
+    const at = path ? takePendingReveal(path) : null;
+    if (at) {
+      editor.setPosition({ lineNumber: at.line, column: at.column });
+      editor.revealLineInCenter(at.line);
+      editor.focus();
+    }
+  }, [applyMarkers, path]);
 
   const canFormat = VERILOG_LANGUAGES.includes(language) && !readOnly;
   return (
@@ -388,6 +447,7 @@ export default function Editor({
         loading={<EditorSkeleton />}
         beforeMount={(monaco) => { defineTheme(monaco); registerVerilog(monaco); registerFormatter(monaco); }}
         onMount={handleMount}
+        {...(path ? { path, keepCurrentModel: true } : {})}
         onChange={(val) => onChange(val ?? "")}
         options={{
           ...EDITOR_OPTIONS,

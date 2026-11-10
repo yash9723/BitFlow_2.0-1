@@ -19,12 +19,18 @@ export default function LeaderboardPage() {
   const [board, setBoard] = useState<{ entries: Entry[]; me: Mine } | null>(null);
   const [daily, setDaily] = useState<Daily | null>(null);
   const [failed, setFailed] = useState(false);
+  const [period, setPeriod] = useState<"week" | "all">("week");
 
   useEffect(() => {
-    fetch("/api/leaderboard")
+    setBoard(null);
+    setFailed(false);
+    fetch(`/api/leaderboard?period=${period}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then(setBoard)
       .catch(() => setFailed(true));
+  }, [period]);
+
+  useEffect(() => {
     fetch("/api/daily")
       .then((r) => (r.ok ? r.json() : null))
       .then(setDaily)
@@ -41,8 +47,18 @@ export default function LeaderboardPage() {
         <div>
           <h1 className="font-serif text-3xl">Leaderboard</h1>
           <p className="text-[12px] text-ghost mt-1">
-            Ranked by total XP. Solve problems — and the daily challenge — to climb.
+            {period === "week"
+              ? "Ranked by XP earned this week. It resets every Monday at 00:00 UTC."
+              : "Ranked by total XP. Solve problems — and the daily challenge — to climb."}
           </p>
+          <div role="tablist" aria-label="Leaderboard period" className="inline-flex mt-4 rounded-lg border border-rim p-0.5 text-[11px]">
+            {(["week", "all"] as const).map((p) => (
+              <button key={p} role="tab" aria-selected={period === p} onClick={() => setPeriod(p)}
+                      className={`px-3 py-1 rounded-md ${period === p ? "bg-phosphor/15 text-phosphor" : "text-ghost hover:text-bright"}`}>
+                {p === "week" ? "This week" : "All time"}
+              </button>
+            ))}
+          </div>
         </div>
 
         {daily?.problem && (
@@ -82,7 +98,7 @@ export default function LeaderboardPage() {
             </div>
           ) : board.entries.length === 0 ? (
             <div className="p-6 text-[12px] text-dim">
-              No one has earned XP yet — solve a problem to take the top spot.
+              {period === "week" ? "No XP earned yet this week — solve a problem to take the top spot." : "No one has earned XP yet — solve a problem to take the top spot."}
             </div>
           ) : (
             <table className="w-full text-[12.5px]">
@@ -123,7 +139,7 @@ export default function LeaderboardPage() {
             <span className="text-ghost">
               Your standing:{" "}
               <span className="text-bright font-semibold">
-                {board.me.rank ? `#${board.me.rank}` : "unranked — earn XP to join"}
+                {board.me.rank ? `#${board.me.rank}` : period === "week" ? "no XP yet this week" : "unranked — earn XP to join"}
               </span>
             </span>
             <span className="text-ghost">

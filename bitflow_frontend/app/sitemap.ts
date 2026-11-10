@@ -1,6 +1,6 @@
 /**
  * app/sitemap.ts — /sitemap.xml: the public pages search engines should index.
- * Pages behind sign-in are left out (crawlers only see the login redirect).
+ * Pages behind sign-in are left out (they are noindex: lib/site.ts GATED).
  *
  * No lastmod or changefreq: we have no real per-page modification dates, and search engines
  * ignore (or distrust a site for) a lastmod that is just "now". Priority is a hint only.
@@ -13,6 +13,7 @@ import { STUDIO_TOOLS } from "@/lib/studio/tools";
 import { LESSONS } from "@/lib/lab/lessons";
 import { ACADEMY_TOPIC_META } from "@/lib/academy-meta";
 import { ARTICLES } from "@/lib/articles";
+import { CHALLENGES } from "@/lib/studio/circuit-challenges";
 
 const SITEMAP_PAGES: [path: string, priority: number][] = [
   ["/", 1], ["/announcements", 0.7], ["/about", 0.8], ["/studio", 0.8], ["/lab", 0.9], ["/lab/credits", 0.3],
@@ -20,8 +21,9 @@ const SITEMAP_PAGES: [path: string, priority: number][] = [
   ["/academy", 0.9], ["/academy/roadmap", 0.6],
   ...ACADEMY_TOPIC_META.map((t): [string, number] => [`/academy/${t.slug}`, 0.8]),
   ["/articles", 0.8], ...ARTICLES.map((a): [string, number] => [`/articles/${a.slug}`, 0.7]),
-  ["/leaderboard", 0.6], ["/problems", 0.8], ["/privacy", 0.3], ["/terms", 0.3], ["/contact", 0.4], ["/flash", 0.7],
+  ["/leaderboard", 0.6], ["/problems", 0.8], ["/privacy", 0.3], ["/terms", 0.3], ["/contact", 0.4], ["/flash", 0.7], ["/explore", 0.6],
   ...STUDIO_TOOLS.map((t): [string, number] => [t.href, 0.7]),
+  ...CHALLENGES.map((c): [string, number] => [`/studio/challenges/${c.id}`, 0.5]),
 ];
 
 // Read at request time so new problems appear without a deploy.

@@ -61,7 +61,16 @@ export default function AboutPage() {
           <p>
             Whether you are a student writing your first logic gate or an experienced engineer prototyping a complex state machine, BitFlow aims to provide the fastest, most frictionless path from idea to functional simulation.
           </p>
-          
+
+          <h2 className="font-display text-xl text-bright mt-10 mb-4">Built on open source</h2>
+          <p>
+            Simulation in your browser runs <a className="text-phosphor hover:underline" href="https://github.com/steveicarus/iverilog">Icarus Verilog</a> (GPL-2.0-or-later),
+            compiled to WebAssembly; the binaries and their corresponding source are listed in{" "}
+            <a className="text-phosphor hover:underline" href="/iverilog/SOURCE.md">/iverilog/SOURCE.md</a>.
+            Synthesis uses <a className="text-phosphor hover:underline" href="https://yosyshq.net/yosys/">Yosys</a> and nextpnr through{" "}
+            <a className="text-phosphor hover:underline" href="https://yowasp.org/">YoWASP</a>, and board programming uses openFPGALoader.
+          </p>
+
           <div className="pt-8">
             <Link
               href="/sandbox"

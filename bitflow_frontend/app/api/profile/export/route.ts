@@ -23,11 +23,11 @@ export async function GET(request: Request) {
   if (!success) return NextResponse.json({ error: "You can download your data 3 times an hour. Please try again later." }, { status: 429 });
 
   const id = me.id;
-  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks, oauth] = await Promise.all([
+  const [user, xp, progress, submissions, projects, shares, certificates, comments, memberships, owned, guardians, events, lessons, mocks, oauth, xpLog, live] = await Promise.all([
     prisma.user.findUnique({ where: { id }, select: {
       username: true, role: true, publicProfile: true, createdAt: true, announcementsSeenAt: true,
       birthYear: true, birthMonth: true, consentVersion: true, consentAt: true, guardianStatus: true, guardianAllowAi: true, nomineeName: true, nomineeContact: true } }),
-    prisma.userXp.findUnique({ where: { userId: id }, select: { totalXp: true, dailyStreak: true, lastDailyBonus: true, updatedAt: true } }),
+    prisma.userXp.findUnique({ where: { userId: id }, select: { totalXp: true, dailyStreak: true, streakFreezes: true, lastDailyBonus: true, updatedAt: true } }),
     prisma.userProgress.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" },
       select: { solved: true, attempts: true, firstSolvedAt: true, xpEarned: true, question: { select: { slug: true, title: true } } } }),
     prisma.submission.findMany({ where: { userId: id }, orderBy: { createdAt: "desc" }, take: MAX_SUBMISSIONS + 1,
@@ -47,6 +47,8 @@ export async function GET(request: Request) {
     prisma.lessonProgress.findMany({ where: { userId: id }, select: { kind: true, slug: true, done: true, quizScore: true, hwBoard: true, draft: true, xpAwarded: true, completedAt: true, updatedAt: true } }),
     prisma.mockInterview.findMany({ where: { userId: id }, orderBy: { startedAt: "asc" }, select: { problems: true, startedAt: true, endsAt: true, finishedAt: true } }),
     prisma.oAuthAccount.findMany({ where: { userId: id }, select: { provider: true, providerAccountId: true, createdAt: true } }),
+    prisma.xpEvent.findMany({ where: { userId: id }, orderBy: { createdAt: "asc" }, select: { amount: true, source: true, createdAt: true } }),
+    prisma.liveSnapshot.findMany({ where: { userId: id }, select: { files: true, run: true, note: true, joinedAt: true, updatedAt: true, lab: { select: { classroom: { select: { name: true } } } } } }),
   ]);
   if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
   await audit(id, "data.exported", id);
@@ -60,6 +62,8 @@ export async function GET(request: Request) {
     privacy: { birthYear, birthMonth, consentVersion, consentAt, guardianStatus, guardianAllowAi, nominee: nomineeName ? { name: nomineeName, contact: nomineeContact } : null,
                parentConsents: guardians, events },
     xp,
+    xpLog,      // each XP award since the log began (problems, lessons, daily bonus, quests)
+    liveLabs: live.map(({ lab, files, run, ...l }) => ({ class: lab.classroom.name, ...l, files: parse(files), run: parse(run) })),   // deleted when the lab ends
     lessons,
     progress: progress.map(({ question, ...p }) => ({ problem: question.slug, title: question.title, ...p })),
     submissions: submissions.slice(0, MAX_SUBMISSIONS).map(({ question, testbenchCode, ...s }) => ({

@@ -1,61 +1,65 @@
 const path = require("path");
 
+// ─────────────────────────────────────────────────────────────────────────
+// Security Headers, on every response served by Next.js.
+// frameAncestors is "'none'" everywhere except /embed/*, the read-only player that other sites
+// put in an <iframe> (app/embed/[id]/page.tsx): it shows public code and needs no session.
+// ─────────────────────────────────────────────────────────────────────────
+function securityHeaders(frameAncestors) {
+  return [
+    // Blocks the page from being embedded in an iframe (clickjacking); /embed relies on CSP frame-ancestors alone
+    ...(frameAncestors === "'none'" ? [{ key: "X-Frame-Options", value: "DENY" }] : []),
+    // Stops browsers from guessing the MIME type (MIME-sniffing attacks)
+    { key: "X-Content-Type-Options", value: "nosniff" },
+    // Limits referrer info sent to external sites
+    { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+    // Prevents browsers from storing sensitive data
+    { key: "X-DNS-Prefetch-Control", value: "on" },
+    // Disallow reading sensitive hardware APIs
+    {
+      key: "Permissions-Policy",
+      // usb / serial: flashing a real FPGA board and its serial port (lib/synth/flash.ts, lib/webserial.ts)
+      value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(self), serial=(self)",
+    },
+    // Force HTTPS for 1 year (only effective in production over HTTPS)
+    {
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains; preload",
+    },
+    // Content Security Policy — restrict what resources can load
+    // 'unsafe-inline' needed for Monaco Editor inline styles; tighten later
+    {
+      key: "Content-Security-Policy",
+      value: [
+        "default-src 'self'",
+        // Monaco is self-hosted under /monaco (no CDN needed)
+        // jsDelivr: YoWASP Yosys (WebAssembly) for synthesis in the browser (lib/synth/worker.ts)
+        // Google Analytics (components/Analytics.tsx) loads only after the visitor accepts the banner
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net https://www.googletagmanager.com",
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self' data:",   // fonts are self-hosted (lib/fonts.ts)
+        "img-src 'self' data: blob: https://www.googletagmanager.com https://*.google-analytics.com",
+        // Simulation + AI calls go through our own /api routes (server-side);
+        // jsDelivr serves the YoWASP WebAssembly files
+        "connect-src 'self' blob: https://api.liveblocks.io wss://api.liveblocks.io https://cdn.jsdelivr.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
+        "worker-src 'self' blob:",
+        `frame-ancestors ${frameAncestors}`,
+      ].join("; "),
+    },
+  ];
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // No source maps in production: the shipped JS stays minified (scripts/check-bundle-leaks.ts).
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Security Headers
-  // Applied to every response served by Next.js.
-  // ─────────────────────────────────────────────────────────────────────────
   async headers() {
     return [
-      {
-        source: "/(.*)",
-        headers: [
-          // Blocks the page from being embedded in an iframe (clickjacking)
-          { key: "X-Frame-Options", value: "DENY" },
-          // Stops browsers from guessing the MIME type (MIME-sniffing attacks)
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          // Limits referrer info sent to external sites
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          // Prevents browsers from storing sensitive data
-          { key: "X-DNS-Prefetch-Control", value: "on" },
-          // Disallow reading sensitive hardware APIs
-          {
-            key: "Permissions-Policy",
-            // usb / serial: flashing a real FPGA board and its serial port (lib/synth/flash.ts, lib/webserial.ts)
-            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(self), serial=(self)",
-          },
-          // Force HTTPS for 1 year (only effective in production over HTTPS)
-          {
-            key: "Strict-Transport-Security",
-            value: "max-age=31536000; includeSubDomains; preload",
-          },
-          // Content Security Policy — restrict what resources can load
-          // 'unsafe-inline' needed for Monaco Editor inline styles; tighten later
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              // Monaco is self-hosted under /monaco (no CDN needed)
-              // jsDelivr: YoWASP Yosys (WebAssembly) for synthesis in the browser (lib/synth/worker.ts)
-              // Google Analytics (components/Analytics.tsx) loads only after the visitor accepts the banner
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net https://www.googletagmanager.com",
-              "style-src 'self' 'unsafe-inline'",
-              "font-src 'self' data:",   // fonts are self-hosted (lib/fonts.ts)
-              "img-src 'self' data: blob: https://www.googletagmanager.com https://*.google-analytics.com",
-              // Simulation + AI calls go through our own /api routes (server-side);
-              // jsDelivr serves the YoWASP WebAssembly files
-              "connect-src 'self' blob: https://cdn.jsdelivr.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
-              "worker-src 'self' blob:",
-              "frame-ancestors 'none'",
-            ].join("; "),
-          },
-        ],
-      },
+      // Every page but /embed/*: never framed. (scripts/share.check.ts checks both rules.)
+      { source: "/((?!embed/).*)", headers: securityHeaders("'none'") },
+      { source: "/embed/:path*", headers: securityHeaders("*") },
       // Gowin chip databases (scripts/vendor-gowin.mjs): the path names the tool version, so they never change
       { source: "/fpga/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
       // openFPGALoader (scripts/vendor-openfpgaloader.mjs), same: versioned path
