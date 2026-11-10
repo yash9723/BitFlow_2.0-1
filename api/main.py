@@ -31,6 +31,7 @@ from api.exceptions import VerilogSandboxError, sandbox_error_handler, unhandled
 from api.routes.asic import router as asic_router
 from api.routes.hdl import formal_router, vhdl_router
 from api.routes.health import router as health_router
+from api.routes.pair import router as pair_router, running as pair_running
 from api.routes.simulate import router as simulate_router
 from api.routes.style import router as style_router
 from api.routes.synthesize import board_router, equivalence_router, fpga_router, metrics_router, router as synthesize_router
@@ -72,7 +73,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from api.warmup import warm_up
         warm_task = asyncio.create_task(warm_up())
 
-    yield  # ← application runs here
+    async with pair_running():   # pair mode's sync server (api/routes/pair.py)
+        yield  # ← application runs here
 
     if warm_task is not None and not warm_task.done():
         warm_task.cancel()
@@ -141,6 +143,7 @@ def create_app() -> FastAPI:
     app.include_router(vhdl_router)  # POST /vhdl
     app.include_router(formal_router)  # POST /formal
     app.include_router(asic_router)  # POST /asic
+    app.include_router(pair_router)  # WS /pair/{room}, POST /pair/close
 
     # ── Root redirect ─────────────────────────────────────────────────────────
     @app.get("/", include_in_schema=False)

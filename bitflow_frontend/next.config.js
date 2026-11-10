@@ -1,5 +1,11 @@
 const path = require("path");
 
+// Pair mode's sync server (lib/pair-server.ts): the browser opens a WebSocket to the backend.
+const pairSyncOrigin = (() => {
+  try { const u = new URL(process.env.PAIR_SYNC_URL || process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || ""); return ` wss://${u.host}`; }
+  catch { return ""; }
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 // Security Headers, on every response served by Next.js.
 // frameAncestors is "'none'" everywhere except /embed/*, the read-only player that other sites
@@ -41,7 +47,7 @@ function securityHeaders(frameAncestors) {
         "img-src 'self' data: blob: https://www.googletagmanager.com https://*.google-analytics.com",
         // Simulation + AI calls go through our own /api routes (server-side);
         // jsDelivr serves the YoWASP WebAssembly files
-        "connect-src 'self' blob: https://api.liveblocks.io wss://api.liveblocks.io https://cdn.jsdelivr.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
+        `connect-src 'self' blob:${pairSyncOrigin} https://cdn.jsdelivr.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com`,
         "worker-src 'self' blob:",
         `frame-ancestors ${frameAncestors}`,
       ].join("; "),

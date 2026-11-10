@@ -29,6 +29,19 @@ logger = logging.getLogger(__name__)
 _bearer_scheme = HTTPBearer()
 
 
+def decode_token(token: str, audience: str | None = None) -> dict:
+    """Verify a frontend-signed token; raises jwt.InvalidTokenError. A token carrying an `aud` (a pair-mode
+    token, api/routes/pair.py, which reaches the browser) only passes when that audience is asked for, so it
+    can't call the simulation routes; and a token without one fails when an audience is asked for."""
+    # Public-key mode accepts ES256 only, so an HS256 token "signed" with the
+    # public key can't slip through (algorithm confusion).
+    if settings.jwt_public_key:
+        key, algorithms = settings.jwt_public_key.replace("\\n", "\n"), ["ES256"]
+    else:
+        key, algorithms = settings.jwt_secret, ["HS256"]
+    return jwt.decode(token, key, algorithms=algorithms, audience=audience)
+
+
 async def verify_jwt(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ) -> dict:
@@ -38,17 +51,8 @@ async def verify_jwt(
     Returns the decoded payload dict on success.
     Raises HTTPException 401 on any failure (missing, expired, bad signature).
     """
-    token = credentials.credentials
-    # Public-key mode accepts ES256 only, so an HS256 token "signed" with the
-    # public key can't slip through (algorithm confusion).
-    if settings.jwt_public_key:
-        key, algorithms = settings.jwt_public_key.replace("\\n", "\n"), ["ES256"]
-    else:
-        key, algorithms = settings.jwt_secret, ["HS256"]
-
     try:
-        payload = jwt.decode(token, key, algorithms=algorithms)
-        return payload
+        return decode_token(credentials.credentials)
 
     except jwt.ExpiredSignatureError:
         logger.warning("JWT rejected: token has expired")
