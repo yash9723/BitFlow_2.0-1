@@ -137,11 +137,15 @@ export function usePair(projectId: string | null, content: EditorContent, load: 
         const user = (s as { user?: { name?: string; color?: string } } | null)?.user;
         return clientID !== doc.clientID && user?.name ? [{ clientID, name: String(user.name), color: safeColor(user.color) }] : [];
       }));
+      let me = "";   // setting awareness updates presence, which fires `self` again: write only on a real change
       const subs = [
         room.events.others.subscribe(updatePeers),
         room.events.self.subscribe((self) => {
           const info = self.info as unknown as Peer | undefined;
-          if (info) awareness.setLocalStateField("user", { name: info.name, color: info.color } as never);
+          const key = info ? `${info.name}\n${info.color}` : "";
+          if (!info || key === me) return;
+          me = key;
+          awareness.setLocalStateField("user", { name: info.name, color: info.color } as never);
         }),
       ];
       awareness.on("change", onAwareness);
