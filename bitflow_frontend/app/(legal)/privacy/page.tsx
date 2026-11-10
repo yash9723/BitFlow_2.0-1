@@ -59,9 +59,9 @@ export default function PrivacyPage() {
       <h2>Who processes it for us</h2>
       <p>
         We use these service providers (Data Processors), only to run {SITE_NAME}: <strong>Vercel</strong> (website hosting),
-        <strong> Render</strong> (the simulator that runs your code), <strong>Neon</strong> (the database), <strong>GitHub</strong>
-        (encrypted backups), <strong>Liveblocks</strong> (only while you pair on a project: it keeps the two editors in step,
-        and the session&apos;s copy of the code is deleted when the session ends or its link expires), and, only if you use the AI tutor, the configured AI provider (such as OpenAI, Google, Anthropic or
+        <strong> Render</strong> (the simulator that runs your code, and while you pair on a project, keeps the two editors in
+        step: the code is held only in memory and is gone when you both leave), <strong>Neon</strong> (the database),
+        <strong> GitHub</strong> (encrypted backups), and, only if you use the AI tutor, the configured AI provider (such as OpenAI, Google, Anthropic or
         Groq). Some of them process data outside India, which the DPDP Act allows except to countries the Government restricts.
       </p>
 

@@ -1,11 +1,11 @@
 /**
  * lib/pair.ts — pair mode: two people edit one Sandbox project at the same time.
  *
- * The owner of a saved project makes a link (valid PAIR_INVITE_HOURS); whoever opens it while signed in joins a
- * Liveblocks room for that project and both type into the same files, seeing each other's cursor. The text lives in
- * a Yjs document in the room (one Y.Text per file, PAIR_KEYS); the owner's browser keeps autosaving it to the
- * project as usual, the partner's never writes to it. Ending the session (or the link expiring) deletes the room,
- * so Liveblocks keeps no copy of the code (lib/pair-server.ts).
+ * The owner of a saved project makes a link (valid PAIR_INVITE_HOURS); whoever opens it while signed in joins the
+ * link's room on BitFlow's own sync server (api/routes/pair.py) and both type into the same files, seeing each
+ * other's cursor. The text lives in a Yjs document in the room (one Y.Text per file, PAIR_KEYS), held only in
+ * memory; the owner's browser keeps autosaving it to the project as usual, the partner's never writes to it. Ending
+ * the session (or the link expiring) disconnects the room (lib/pair-server.ts).
  *
  * Shared by the browser (hooks/usePair.ts) and the API (app/api/pair): no server-only imports here.
  */
@@ -15,16 +15,8 @@ import type { EditorContent } from "@/components/ProjectsMenu";
 export const PAIR_INVITE_HOURS = 24;
 export const PAIR_PARAM = "pair";          // /sandbox?pair=<invite code>
 
-const ROOM_PREFIX = "bitflow-project:";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{32,64}$/;
-
-export const roomFor = (projectId: string) => ROOM_PREFIX + projectId;
-export function projectOfRoom(room: unknown): string | null {
-  if (typeof room !== "string" || !room.startsWith(ROOM_PREFIX)) return null;
-  const id = room.slice(ROOM_PREFIX.length);
-  return UUID.test(id) ? id : null;
-}
 
 /** The invite as it travels in the link: "<projectId>.<token>". The server keeps only the token's hash. */
 export const inviteCode = (projectId: string, token: string) => `${projectId}.${token}`;

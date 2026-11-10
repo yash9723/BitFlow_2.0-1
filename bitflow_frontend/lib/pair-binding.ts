@@ -13,7 +13,7 @@ import type * as MonacoNS from "monaco-editor";
 type Monaco = typeof MonacoNS;
 type Selection = { anchor: unknown; head: unknown };
 
-/** The parts of the Liveblocks (or y-protocols) awareness the binding uses. */
+/** The parts of the y-protocols awareness (y-websocket) the binding uses. */
 export interface PairAwareness {
   doc: Y.Doc;
   getStates(): Map<number, unknown>;
