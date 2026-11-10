@@ -135,6 +135,15 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
     for (const st of path) assert.ok(st.href.startsWith("/"));
   });
 
+  await ok("the AI tutor route needs a sign-in, keeps per-user and site-wide daily caps, and never puts a key in a URL", () => {
+    const route = fs.readFileSync(path.join(__dirname, "..", "app", "api", "ai", "chat", "route.ts"), "utf8");
+    const prov = fs.readFileSync(path.join(__dirname, "..", "lib", "ai-providers.ts"), "utf8");
+    assert.ok(/getSessionUser\(\)[\s\S]{0,200}status: 401/.test(route), "the tutor must reject guests");
+    assert.ok(/prefix: "ai-day"/.test(route) && /prefix: "ai-global"/.test(route) && /AI_GLOBAL_PER_DAY/.test(route), "per-user and site-wide daily caps");
+    assert.ok(!/[?&]key=\$\{/.test(prov), "an API key in a URL ends up in logs: send it in a header");
+    assert.ok(/x-goog-api-key/.test(prov));
+  });
+
   await ok("landing FAQ: complete answers, and the chapter count it states is the real one", () => {
     assert.ok(HOME_FAQ.length >= 5);
     for (const f of HOME_FAQ) assert.ok(f.q.endsWith("?") && f.a.length > 40, `weak FAQ entry: ${f.q}`);

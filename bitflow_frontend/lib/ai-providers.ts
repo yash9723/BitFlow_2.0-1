@@ -125,11 +125,12 @@ function geminiProvider(): AIProvider {
         generationConfig: { maxOutputTokens: 8192 },
       };
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      // The key goes in a header, not the URL, so it can't end up in a proxy or access log.
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
       const res = await fetch(url, {
         method:  "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body:    JSON.stringify(body),
       });
 
