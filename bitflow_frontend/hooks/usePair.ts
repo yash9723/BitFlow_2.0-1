@@ -1,23 +1,23 @@
 "use client";
 /**
- * hooks/usePair.ts — pair mode in the Sandbox (lib/pair.ts): connects to the project's Liveblocks room and keeps
- * the shared Yjs document and the Sandbox's editors in step.
+ * hooks/usePair.ts — pair mode in the Sandbox (lib/pair.ts): connects to the link's room on BitFlow's sync server
+ * (y-websocket to api/routes/pair.py) and keeps the shared Yjs document and the Sandbox's editors in step.
  *
- *  - Owner: while the open project has a session (/api/pair/<id>) it joins the room; when nobody else is in it,
- *    the project as saved here becomes the shared text. Its autosave (components/ProjectsMenu.tsx) carries on.
+ *  - Owner: while the open project has a session (/api/pair/<id>) it joins the room; when the room is empty,
+ *    the project as saved here becomes the shared text. A new link moves it to the new link's room. Its autosave (components/ProjectsMenu.tsx) carries on.
  *  - Partner (/sandbox?pair=<code>): asked first, then their editors show the shared text. Their open-project
  *    pointer is cleared so nothing they type is saved into a project of theirs.
  *
  * Text you type goes to the document through the editor binding (lib/pair-binding.ts); everything else that changes
  * the editors (a template, a new file, the language) is written here. The partner's changes arrive through
- * `load`. Liveblocks and Yjs load only when a session starts.
+ * `load`. Yjs and y-websocket load only when a session starts.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type * as YT from "yjs";
 import type { SandboxProject } from "@/hooks/useSimulation";
 import type { EditorContent } from "@/components/ProjectsMenu";
 import { CURRENT_KEY } from "@/components/ProjectsMenu";
-import { PAIR_KEYS, PAIR_PARAM, keysOf, parseInvite, roomFor, safeColor, writeContent as write, type PairDoc } from "@/lib/pair";
+import { PAIR_KEYS, PAIR_PARAM, keysOf, parseInvite, safeColor, writeContent as write, type PairDoc } from "@/lib/pair";
 import type { PairAwareness } from "@/lib/pair-binding";
 
 export interface Peer { name: string; color: string; owner: boolean }
@@ -58,28 +58,26 @@ export function usePair(projectId: string | null, content: EditorContent, load: 
 
   const target = invite ? (accepted ? { projectId: parseInvite(invite)!.projectId, invite } : null)
                         : projectId && owner?.session ? { projectId, invite: null } : null;
-  const targetKey = target ? `${target.projectId}|${target.invite ?? ""}` : "";
+  const targetKey = target ? `${target.projectId}|${target.invite ?? owner?.session?.expiresAt ?? ""}` : "";
 
   useEffect(() => {
     if (!target) return;
     let cancelled = false, cleanup: (() => void) | null = null;
     setStatus("connecting"); setError(null);
     (async () => {
-      const [Y, { createClient }, { LiveblocksYjsProvider }] = await Promise.all([import("yjs"), import("@liveblocks/client"), import("@liveblocks/yjs")]);
+      const res = await fetch("/api/pair/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId: target.projectId, invite: target.invite }) });
+      const access = await res.json().catch(() => ({ reason: "Couldn't reach BitFlow." }));
       if (cancelled) return;
-      const client = createClient({
-        authEndpoint: async (room) => {
-          const res = await fetch("/api/pair/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room, invite: target.invite }) });
-          const j = await res.json().catch(() => ({ error: "forbidden", reason: "Couldn't reach BitFlow." }));
-          if (!res.ok && !cancelled) { setError(j.reason ?? "Couldn't join."); setStatus("ended"); }
-          return j;
-        },
-      });
-      const { room, leave } = client.enterRoom(roomFor(target.projectId), { initialPresence: {} });
+      if (!res.ok) { setError(access.reason ?? "Couldn't join."); setStatus("ended"); return; }
+      const [Y, { WebsocketProvider }] = await Promise.all([import("yjs"), import("y-websocket")]);
+      if (cancelled) return;
       const doc = new Y.Doc();
-      const provider = new LiveblocksYjsProvider(room, doc);
-      const files = doc.getMap<YT.Text>("files"), meta = doc.getMap<unknown>("meta");
+      // disableBc: every edit goes through the server, so ending a room really stops it
+      const provider = new WebsocketProvider(access.server, access.room, doc, { params: { token: access.token }, disableBc: true });
+      const me = { name: String(access.name), color: safeColor(access.color), owner: !!access.owner };
+      provider.awareness.setLocalStateField("user", me);
       const awareness = provider.awareness as unknown as PairAwareness;
+      const files = doc.getMap<YT.Text>("files"), meta = doc.getMap<unknown>("meta");
       const remember = (key: string, value: string) => {
         const s = seen.current.get(key) ?? [];
         if (s[s.length - 1] !== value) { s.push(value); if (s.length > SEEN) s.shift(); seen.current.set(key, s); }
@@ -120,41 +118,38 @@ export function usePair(projectId: string | null, content: EditorContent, load: 
       files.observeDeep(onDoc);
       meta.observe(onDoc);
 
+      // The server drops a room when its last person leaves, so a document that's already full means the partner
+      // is there: take it. Empty: the owner's saved project becomes the text; the partner waits for the owner.
       const onSync = (synced: boolean) => {
         if (!synced || cancelled || ready) return;
         const empty = !files.has(PAIR_KEYS.design);
-        if (!target.invite && (empty || room.getOthers().length === 0)) {   // owner, alone: the saved project is the truth
+        if (!target.invite && empty) {
           write({ Y, doc, files, meta }, contentRef.current, null, true, seen.current);
           becomeReady();
-        } else if (empty) setStatus("waiting");                             // partner, before the owner has opened it
+        } else if (empty) setStatus("waiting");
         else { rememberAll(); fromDoc(); becomeReady(); }
       };
       provider.on("sync", onSync);
-      if (provider.synced) onSync(true);
+      const onClosed = () => { if (!cancelled) { setError("This pair session has ended."); setStatus("ended"); } };
+      provider.on("closed", onClosed);
 
-      const updatePeers = () => setPeers(room.getOthers().map((o) => o.info as unknown as Peer).filter((p) => p?.name));
-      const onAwareness = () => setCursors([...awareness.getStates()].flatMap(([clientID, s]) => {
-        const user = (s as { user?: { name?: string; color?: string } } | null)?.user;
-        return clientID !== doc.clientID && user?.name ? [{ clientID, name: String(user.name), color: safeColor(user.color) }] : [];
-      }));
-      let me = "";   // setting awareness updates presence, which fires `self` again: write only on a real change
-      const subs = [
-        room.events.others.subscribe(updatePeers),
-        room.events.self.subscribe((self) => {
-          const info = self.info as unknown as Peer | undefined;
-          const key = info ? `${info.name}\n${info.color}` : "";
-          if (!info || key === me) return;
-          me = key;
-          awareness.setLocalStateField("user", { name: info.name, color: info.color } as never);
-        }),
-      ];
-      awareness.on("change", onAwareness);
+      type User = { name?: unknown; color?: unknown; owner?: unknown };
+      const onAwareness = ({ added }: { added: number[] }) => {
+        const others = [...provider.awareness.getStates()].flatMap(([id, s]) => {
+          const user = (s as { user?: User }).user;
+          return id !== doc.clientID && user?.name ? [{ id, name: String(user.name), color: safeColor(user.color), owner: !!user.owner }] : [];
+        });
+        setPeers(others.map(({ name, color, owner }) => ({ name, color, owner })));
+        setCursors(others.map(({ id, name, color }) => ({ clientID: id, name, color })));
+        // someone new: send our state now, so they see us at once rather than at the next 15 s renewal
+        if (added.some((id) => id !== doc.clientID)) provider.awareness.setLocalStateField("user", me);
+      };
+      provider.awareness.on("change", onAwareness);
       cleanup = () => {
-        subs.forEach((u) => u());
-        awareness.off("change", onAwareness);
+        provider.awareness.off("change", onAwareness);
         files.unobserveDeep(onDoc); meta.unobserve(onDoc);
-        provider.off("sync", onSync);
-        provider.destroy(); leave(); doc.destroy();
+        provider.off("sync", onSync); provider.off("closed", onClosed);
+        provider.destroy(); doc.destroy();
       };
     })().catch((err) => { if (!cancelled) { setError(String((err as Error)?.message ?? err)); setStatus("ended"); } });
     return () => {

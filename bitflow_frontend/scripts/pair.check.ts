@@ -1,13 +1,13 @@
 /**
  * scripts/pair.check.ts — pair mode (lib/pair.ts, lib/pair-binding.ts, lib/pair-server.ts) without a network:
- * two Yjs documents that pass updates to each other stand in for the Liveblocks room, and a small fake of Monaco's
+ * two Yjs documents that pass updates to each other stand in for the sync server's room (tests/test_pair.py covers it), and a small fake of Monaco's
  * text model stands in for each person's editor.
  */
 import assert from "node:assert/strict";
 import * as Y from "yjs";
-import { PAIR_KEYS, colorFor, cssString, inviteCode, parseInvite, projectOfRoom, roomFor, safeColor, writeContent } from "../lib/pair";
+import { PAIR_KEYS, colorFor, cssString, inviteCode, parseInvite, safeColor, writeContent } from "../lib/pair";
 import { bindEditor } from "../lib/pair-binding";
-import { hashInvite, liveblocks, newInviteToken } from "../lib/pair-server";
+import { hashInvite, newInviteToken, roomFor } from "../lib/pair-server";
 
 // ── Links and rooms ──
 const pid = "0f1e2d3c-aaaa-bbbb-cccc-111122223333";
@@ -15,12 +15,10 @@ const token = newInviteToken();
 assert.match(token, /^[A-Za-z0-9_-]{32}$/);
 assert.deepEqual(parseInvite(inviteCode(pid, token)), { projectId: pid, token });
 for (const bad of [null, "", pid, `${pid}.short`, `not-a-uuid.${token}`, `${pid}.${token}<x>`]) assert.equal(parseInvite(bad), null, String(bad));
-assert.equal(projectOfRoom(roomFor(pid)), pid);
-assert.equal(projectOfRoom("bitflow-project:../x"), null);
-assert.equal(projectOfRoom("other:" + pid), null);
+assert.match(roomFor(pid, hashInvite(token)), new RegExp(`^${pid}\.[0-9a-f]{16}$`), "the room name api/routes/pair.py accepts");
+assert.notEqual(roomFor(pid, hashInvite(token)), roomFor(pid, hashInvite(newInviteToken())), "a new link, a new room");
 assert.equal(hashInvite("abc"), hashInvite("abc"));
 assert.match(hashInvite(token), /^[0-9a-f]{64}$/);
-assert.equal(liveblocks(), process.env.LIVEBLOCKS_SECRET_KEY?.startsWith("sk_") ? liveblocks() : null, "off without a key");
 assert.equal(cssString('a"b\\c'), '"a\\"b\\\\c"', "quotes and backslashes escaped");
 assert.equal(cssString("x\ny"), '"x y"');
 assert.equal(safeColor("#38bdf8"), "#38bdf8");
