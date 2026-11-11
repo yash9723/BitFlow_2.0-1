@@ -43,8 +43,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser }            from "@/lib/auth-utils";
 import { prisma }                    from "@/lib/prisma";
 import { rateLimit }                 from "@/lib/rate-limit";
-import { AINotConfiguredError, getProvider } from "@/lib/ai-providers";
+import { AINotConfiguredError, getProvider, pickModel } from "@/lib/ai-providers";
+import { budgetState, recordUsage, spentTodayPaise } from "@/lib/ai-budget";
 import {
+  QUICK_ACTIONS,
   SANDBOX_SYSTEM_PROMPT,
   TUTOR_SYSTEM_PROMPT,
   buildContextMessage,
@@ -95,7 +97,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "You've reached today's AI tutor limit. It resets within a day." }, { status: 429 });
   }
   const site = await rateLimit(req, { limit: GLOBAL_PER_DAY, windowMs: 24 * 60 * 60_000, prefix: "ai-global", key: "site" });
-  if (!site.success) {
+  const budget = budgetState(await spentTodayPaise());
+  if (!site.success || budget === "paused") {
     return NextResponse.json({ error: "The AI tutor has answered a lot of questions today and is resting until tomorrow. Everything else on BitFlow still works." }, { status: 429 });
   }
 
@@ -178,10 +181,21 @@ export async function POST(req: NextRequest) {
       : [contextMessage, ...body.messages];
 
     // ── Dispatch to configured provider ─────────────────────────────────────
-    const provider = getProvider();
-    const response = await provider.chat(messages, systemPrompt, { userId: user.id, problemSlug: typeof slug === "string" && slug ? slug : undefined });
+    // A Sandbox quick action is one fixed, well-scoped question: the Lite model answers it.
+    const problemSlug = typeof slug === "string" && slug ? slug : undefined;
+    const quick = !problemSlug && body.messages.length === 1 && QUICK_ACTIONS.some((a) => a.prompt === body.messages[0].content.trim());
+    const kind = problemSlug ? "tutor" : quick ? "quick" : "sandbox";
+    const { model, skipAgent } = pickModel(kind, budget);
 
-    return NextResponse.json(response);
+    const provider = getProvider();
+    const started  = Date.now();
+    const response = await provider.chat(messages, systemPrompt, { userId: user.id, problemSlug, model, skipAgent });
+    await recordUsage({
+      userId: user.id, kind, provider: response.provider, model: response.model ?? model,
+      usage: response.usage ?? null, latencyMs: Date.now() - started,
+    });
+
+    return NextResponse.json({ content: response.content, tokensUsed: response.tokensUsed, provider: response.provider });
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal server error";

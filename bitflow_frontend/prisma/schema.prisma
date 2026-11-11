@@ -648,3 +648,22 @@ model CommentReport {
 
   @@id([commentId, userId])
 }
+
+// One row per AI answer (lib/ai-budget.ts): what it cost, so spend can be seen and capped per day.
+// No prompt or code is stored here, only counts.
+model AiUsage {
+  id           String   @id @default(cuid())
+  userId       String
+  kind         String   // "sandbox" | "quick" | "tutor"
+  provider     String   // "gemini" | "agent" | ...
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  cachedTokens Int      @default(0)
+  paise        Int      // estimated cost, ₹1 = 100 paise
+  latencyMs    Int
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+}
