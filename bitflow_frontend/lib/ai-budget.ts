@@ -58,9 +58,16 @@ let memo: { day: number; at: number; paise: number } | null = null;
 export async function spentTodayPaise(now = new Date()): Promise<number> {
   const day = istDayStart(now).getTime();
   if (memo && memo.day === day && now.getTime() - memo.at < 60_000) return memo.paise;
-  const agg = await prisma.aiUsage.aggregate({ _sum: { paise: true }, where: { createdAt: { gte: new Date(day) } } });
-  memo = { day, at: now.getTime(), paise: agg._sum.paise ?? 0 };
-  return memo.paise;
+  try {
+    const agg = await prisma.aiUsage.aggregate({ _sum: { paise: true }, where: { createdAt: { gte: new Date(day) } } });
+    memo = { day, at: now.getTime(), paise: agg._sum.paise ?? 0 };
+    return memo.paise;
+  } catch (err) {
+    // No table yet (a preview build skips the schema push) or the database blipped: let the request through.
+    // The request-count caps in the chat route still hold, so this can't run away.
+    console.warn("[ai] spend unknown, budget not applied:", err instanceof Error ? err.message : err);
+    return 0;
+  }
 }
 
 /** One row per answer. Never throws: losing a usage row must not lose the student's answer. */
