@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, bitflow-hardening-and-features]
+    branches: [main, bitflow-hardening-and-features, claude/clever-albattani-x3g2qq]
   pull_request:
 
 jobs:
@@ -102,6 +102,7 @@ jobs:
       - run: npm run check-seo
       - run: npm run check-walkthrough
       - run: npm run check-tutor-agent
+      - run: npm run check-ai-budget
       - run: npm run check-health-race
       - run: npm run check-numbers
       - run: npm run check-boolexpr

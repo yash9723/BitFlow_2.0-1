@@ -38,15 +38,34 @@ export interface AIResponse {
   tokensUsed:    number | null;
   /** Which provider handled this request. */
   provider:      string;
+  /** The model that answered and its token split, when the provider reports them (lib/ai-budget.ts prices them). */
+  model?:        string;
+  usage?:        TokenUsage;
 }
 
 import { signAgentToken } from "@/lib/agent-auth";
+import type { BudgetState, TokenUsage } from "@/lib/ai-budget";
 
 /** Thrown when the selected provider has no API key configured (→ HTTP 503). */
 export class AINotConfiguredError extends Error {}
 
-/** Who is asking and about which problem. Only the tutor agent uses it (to mint its scoped token); direct providers ignore it. */
-export interface AIChatMeta { userId: string; problemSlug?: string }
+/**
+ * Who is asking and about which problem (the tutor agent mints its scoped token from these), plus the route's choice
+ * of model (Gemini only) and whether to skip the agent, from pickModel below.
+ */
+export interface AIChatMeta { userId: string; problemSlug?: string; model?: string; skipAgent?: boolean }
+
+export const FLASH_MODEL = () => process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
+export const LITE_MODEL  = () => process.env.GEMINI_LITE_MODEL ?? "gemini-3.5-flash-lite";
+
+/**
+ * The cheapest model that does the job. A quick action (one fixed, well-scoped question) and anything past today's
+ * soft budget use Lite; a tutoring conversation uses Flash. Past the soft budget the tutor agent is skipped too.
+ */
+export function pickModel(kind: "quick" | "sandbox" | "tutor", budget: BudgetState): { model: string; skipAgent: boolean } {
+  const lite = kind === "quick" || budget !== "ok";
+  return { model: lite ? LITE_MODEL() : FLASH_MODEL(), skipAgent: budget !== "ok" };
+}
 
 export interface AIProvider {
   name:    string;
@@ -109,12 +128,12 @@ function geminiProvider(): AIProvider {
   return {
     name: "gemini",
 
-    async chat(messages, systemPrompt) {
+    async chat(messages, systemPrompt, meta) {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) throw new AINotConfiguredError("GEMINI_API_KEY not set in environment.");
 
-      // gemini-1.5-flash was shut down in Sept 2025; Google recommends 3.8 Flash for new projects.
-      const model = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
+      // The route picks Flash or Flash-Lite per request (pickModel); GEMINI_MODEL is the default.
+      const model = meta?.model ?? FLASH_MODEL();
 
       // Gemini uses a different message format — merge system into first user message
       const contents = messages.map((m) => ({
@@ -148,10 +167,14 @@ function geminiProvider(): AIProvider {
       const parts: Array<{ text?: string; thought?: boolean }> =
         data.candidates?.[0]?.content?.parts ?? [];
       const text = parts.filter((p) => !p.thought && p.text).map((p) => p.text).join("");
+      const u = data.usageMetadata ?? {};
       return {
         content:    text,
-        tokensUsed: data.usageMetadata?.totalTokenCount ?? null,
+        tokensUsed: u.totalTokenCount ?? null,
         provider:   "gemini",
+        model,
+        // Thinking tokens bill as output.
+        usage: { input: u.promptTokenCount ?? 0, output: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0), cached: u.cachedContentTokenCount ?? 0 },
       };
     },
   };
@@ -295,7 +318,7 @@ export function agentProvider(fallback: AIProvider): AIProvider {
     name: "agent",
     async chat(messages, systemPrompt, meta) {
       const url = process.env.AGENT_URL?.replace(/\/+$/, "");
-      if (!url || !meta?.problemSlug) return fallback.chat(messages, systemPrompt, meta);
+      if (!url || !meta?.problemSlug || meta.skipAgent) return fallback.chat(messages, systemPrompt, meta);
       try {
         const token = signAgentToken({ sub: meta.userId, slug: meta.problemSlug });
         const ctl = new AbortController();
@@ -309,7 +332,10 @@ export function agentProvider(fallback: AIProvider): AIProvider {
           if (!res.ok) throw new Error(`agent answered ${res.status}`);
           const data = await res.json();
           if (typeof data?.content !== "string" || !data.content.trim()) throw new Error("agent returned no text");
-          return { content: data.content, tokensUsed: typeof data.tokens_used === "number" ? data.tokens_used : null, provider: "agent" };
+          const total = typeof data.tokens_used === "number" ? data.tokens_used : null;
+          // ponytail: the agent reports only a total; split it 70/30 input/output until it reports both.
+          const usage = total === null ? undefined : { input: Math.round(total * 0.7), output: Math.round(total * 0.3) };
+          return { content: data.content, tokensUsed: total, provider: "agent", model: FLASH_MODEL(), usage };
         } finally { clearTimeout(timer); }
       } catch (err) {
         console.warn("[ai] tutor agent unavailable, using the plain provider:", err instanceof Error ? err.message : err);
