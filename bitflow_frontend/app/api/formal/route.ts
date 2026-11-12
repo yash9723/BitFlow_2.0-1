@@ -12,6 +12,7 @@
 import { NextResponse } from "next/server";
 import { designAsVerilog, formalOnBackend, type FormalMode } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
+import { heavyBudget } from "@/lib/heavy-limit";
 import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
@@ -30,6 +31,9 @@ export async function POST(request: Request) {
   if (!success) {
     return NextResponse.json({ error: "Too many proof requests. Please wait a moment." }, { status: 429 });
   }
+
+  const busy = await heavyBudget(request, user.id);
+  if (busy) return busy;
 
   const body = await request.json().catch(() => ({}));
   const { designCode, harnessCode } = body ?? {};

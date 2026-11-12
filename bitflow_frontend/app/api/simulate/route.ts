@@ -10,8 +10,9 @@
  */
 
 import { NextResponse } from "next/server";
-import { simulateOnBackend } from "@/lib/backend";
+import { jobClass, simulateOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
+import { heavyBudget } from "@/lib/heavy-limit";
 import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
@@ -33,6 +34,10 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
+    if (jobClass("/simulate", body) === "heavy") {   // Verilator, VHDL, Python testbench
+      const busy = await heavyBudget(request, user.id);
+      if (busy) return busy;
+    }
     const { status, data } = await simulateOnBackend(body);
     return NextResponse.json(data, { status });
   } catch (err: any) {

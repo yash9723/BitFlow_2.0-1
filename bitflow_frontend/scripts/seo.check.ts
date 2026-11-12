@@ -109,6 +109,13 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
     }
   });
 
+  await ok("heavy simulator jobs share one per-user budget (formal, ASIC, FPGA, Verilator/VHDL/Python runs); plain Icarus runs do not", () => {
+    const read = (r: string) => fs.readFileSync(path.join(__dirname, "..", "app", "api", r, "route.ts"), "utf8");
+    for (const r of ["formal", "asic", "synthesize", "simulate"]) assert.ok(/heavyBudget\(request, user\.id\)/.test(read(r)), `/api/${r} skips the shared heavy budget`);
+    assert.ok(/jobClass\("\/simulate", body\) === "heavy"/.test(read("simulate")), "/api/simulate must only count heavy runs");
+    assert.ok(/board === true \|\| body\.fpga[\s\S]{0,200}heavyBudget/.test(read("synthesize")), "plain synthesis is light: only the FPGA/board branch counts");
+  });
+
   await ok("every article is in the sitemap and llms.txt, with a unique title and description and links that resolve", async () => {
     assert.ok(paths.includes("/articles"));
     const text = await llms().text();

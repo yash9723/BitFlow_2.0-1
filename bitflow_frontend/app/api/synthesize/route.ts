@@ -12,6 +12,7 @@
 import { NextResponse } from "next/server";
 import { boardOnBackend, designAsVerilog, fpgaOnBackend, metricsOnBackend, synthesizeOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
+import { heavyBudget } from "@/lib/heavy-limit";
 import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { fsmSvg, schematicSvg, type FsmInfo } from "@/lib/hardware-diagrams";
 import { reportError } from "@/lib/error-log";
@@ -53,6 +54,8 @@ export async function POST(request: Request) {
 
   let status: number, data: any;
   if (body.board === true || body.fpga === "ice40" || body.fpga === "xc7") {
+    const busy = await heavyBudget(request, user.id);   // FPGA place-and-route is heavy; plain Yosys synthesis is not
+    if (busy) return busy;
     try {
       ({ status, data } = await (body.board === true ? boardOnBackend(designCode) : fpgaOnBackend(designCode, body.fpga)));
     } catch (err) {

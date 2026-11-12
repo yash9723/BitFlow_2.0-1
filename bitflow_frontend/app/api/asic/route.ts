@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { asicOnBackend, designAsVerilog } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
+import { heavyBudget } from "@/lib/heavy-limit";
 import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
@@ -28,6 +29,8 @@ export async function POST(request: Request) {
   if (!success) {
     return NextResponse.json({ error: "Too many ASIC runs. Please wait a moment." }, { status: 429 });
   }
+  const busy = await heavyBudget(request, user.id);
+  if (busy) return busy;
 
   const body = await request.json().catch(() => ({}));
   const { designCode, testbenchCode } = body ?? {};
