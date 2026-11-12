@@ -72,6 +72,7 @@
     "check-seo": "tsx scripts/seo.check.ts",
     "check-walkthrough": "tsx scripts/walkthrough.check.ts",
     "check-tutor-agent": "tsx scripts/tutor-agent.check.ts",
+    "check-loadtest": "tsx scripts/loadtest.check.ts",
     "check-ai-budget": "tsx scripts/ai-budget.check.ts",
     "check-health-race": "tsx scripts/health-race.check.ts",
     "check-lab": "tsx scripts/lab.check.ts",
