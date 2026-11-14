@@ -4,7 +4,6 @@
 **/.env.*
 !**/.env.example
 bitflow_frontend
-api/workspace
 tests
 tools
 .git
