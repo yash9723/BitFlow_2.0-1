@@ -10,6 +10,7 @@
     "postinstall": "prisma generate",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "check": "node scripts/run-checks.mjs",
     "check-problems": "tsx scripts/check-problems.ts",
     "import-solutions": "tsx scripts/import-reference-solutions.ts",
     "check-gate-sim": "tsx scripts/gate-sim.check.ts",
