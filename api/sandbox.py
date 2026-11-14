@@ -2,16 +2,12 @@
 sandbox.py — Native subprocess simulation engine
 =================================================
 
-Runs Verilog simulations natively using iverilog/vvp installed in the
-container, instead of launching a Docker-in-Docker child container.
-
-This also works on hosts where the
-Docker daemon is not available inside the running container.
+Runs Verilog simulations as resource-limited child processes, using the
+iverilog/vvp installed next to the API. No Docker daemon is involved.
 
 Public surface:
     run_simulation(tmpdir, workspace_id, timeout) -> SandboxResult
-    inspect_image(image_name) -> ImageInfo | None
-    docker_is_available() -> bool
+    _run_limited(cmd, cwd, timeout) -> (returncode, output)   # every tool run goes through this
 """
 
 from __future__ import annotations
@@ -53,14 +49,6 @@ class SandboxResult:
     # Verilator flow only (api/verilator_sim.py): failed assertions and coverage of the design.
     assertions:   list = field(default_factory=list)
     coverage:     Optional[dict] = None
-
-
-@dataclass
-class ImageInfo:
-    """Stub kept for API compatibility with health/status routes."""
-    image_id:    str
-    size_bytes:  int
-    size_mb:     float
 
 
 # =============================================================================
@@ -200,26 +188,6 @@ def _lint_design(design_file: str, cwd: str) -> str:
     if rc == 0 and not out:
         return "[OK] No lint warnings."
     return out
-
-
-# =============================================================================
-# Public helpers
-# =============================================================================
-
-def docker_is_available() -> bool:
-    """
-    Always returns False — simulations run natively (no Docker daemon needed).
-    Kept for API compatibility with health/status routes.
-    """
-    return False
-
-
-def inspect_image(image_name: str) -> Optional[ImageInfo]:
-    """
-    Always returns None — no Docker image management in native mode.
-    Kept for API compatibility with the /status route.
-    """
-    return None
 
 
 # =============================================================================

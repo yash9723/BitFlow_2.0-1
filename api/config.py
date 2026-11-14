@@ -13,7 +13,7 @@ Precedence (highest → lowest):
 
 Usage anywhere in the codebase:
     from api.config import settings
-    print(settings.docker_image)
+    print(settings.timeout_seconds)
 """
 
 from __future__ import annotations
@@ -33,14 +33,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",          # load from .env if present
         env_file_encoding="utf-8",
-        case_sensitive=False,     # DOCKER_IMAGE == docker_image
+        case_sensitive=False,     # LOG_LEVEL == log_level
         extra="ignore",           # silently drop unknown env vars
-    )
-
-    # ── Docker image ─────────────────────────────────────────────────────────
-    docker_image: str = Field(
-        default="verilog-sandbox:latest",
-        description="Name:tag of the pre-built Icarus Verilog sandbox image.",
     )
 
     # ── Simulation limits ─────────────────────────────────────────────────────
@@ -80,37 +74,7 @@ class Settings(BaseSettings):
         description="After startup, run one tiny job in the background so the first real request isn't a cold start.",
     )
 
-    # ── Container resource caps ───────────────────────────────────────────────
-    mem_limit: str = Field(
-        default="128m",
-        description="Docker memory limit string, e.g. '128m', '512m', '1g'.",
-    )
-    cpu_quota: int = Field(
-        default=50_000,
-        ge=1_000,
-        description="Docker CPU quota in microseconds per cpu_period.",
-    )
-    cpu_period: int = Field(
-        default=100_000,
-        ge=1_000,
-        description="Docker CPU period in microseconds (default 100 ms).",
-    )
-    pids_limit: int = Field(
-        default=64,
-        ge=8,
-        description="Maximum number of processes inside the container.",
-    )
-
-    # ── Networking ────────────────────────────────────────────────────────────
-    network_disabled: bool = Field(
-        default=True,
-        description="Set to false only for debugging — never in production.",
-    )
-
-    host_tmp_dir: str | None = Field(
-        default=None,
-        description="Host-side path to mapping of /tmp for sibling containers.",
-    )
+    # Per-run memory, file-size, process and output caps are fixed in api/sandbox.py.
 
     # ── Input validation ──────────────────────────────────────────────────────
     max_source_bytes: int = Field(
@@ -139,14 +103,14 @@ class Settings(BaseSettings):
         ),
     )
 
-    # ── Sandbox user (must match Dockerfile) ─────────────────────────────────
+    # ── Sandbox user ─────────────────────────────────────────────────────────
     sandbox_uid: int = Field(
         default=10001,
-        description="UID of the non-root user inside the sandbox container.",
+        description="UID user code runs as when the API itself runs as root (api/sandbox.py).",
     )
     sandbox_gid: int = Field(
         default=10001,
-        description="GID of the non-root user inside the sandbox container.",
+        description="GID that goes with sandbox_uid.",
     )
     cocotb_enabled: bool = Field(
         default=True,
@@ -174,12 +138,6 @@ class Settings(BaseSettings):
         description="Enable interactive OpenAPI /docs and /redoc Swagger UI endpoints.",
     )
 
-    # ── Computed helpers ──────────────────────────────────────────────────────
-    @property
-    def sandbox_user(self) -> str:
-        """Returns 'uid:gid' string expected by the Docker SDK's `user` param."""
-        return f"{self.sandbox_uid}:{self.sandbox_gid}"
-
     @model_validator(mode="after")
     def _need_jwt_key(self) -> "Settings":
         if not self.jwt_secret and not self.jwt_public_key:
@@ -193,16 +151,6 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             v = v.strip()
             return v or None
-        return v
-
-    @field_validator("mem_limit")
-    @classmethod
-    def _validate_mem_limit(cls, v: str) -> str:
-        """Ensure the mem_limit string ends with a valid Docker suffix."""
-        if not v[-1].lower() in ("b", "k", "m", "g"):
-            raise ValueError(
-                f"mem_limit '{v}' must end with b/k/m/g (e.g. '128m')."
-            )
         return v
 
     @field_validator("log_level")

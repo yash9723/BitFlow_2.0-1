@@ -21,8 +21,6 @@ RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod 755 /usr/local/bin/en
 
 COPY api/ /app/api/
 
-RUN cp /app/api/.env /app/.env || true
-
 EXPOSE 8080
 
 CMD ["sh", "-c", "python -m uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

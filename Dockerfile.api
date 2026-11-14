@@ -60,11 +60,6 @@ COPY api/ /app/api/
 RUN cd /app && JWT_SECRET=image-build-placeholder-never-used-at-runtime python -c "from api.verilator_sim import prebuild_runtime; prebuild_runtime()" \
     && ls /opt/verilator-runtime
 
-# Copy the environment file to working directory root if it exists
-RUN cp /app/api/.env /app/.env || true
-
-
-
 # Port the API listens on inside the compose network
 EXPOSE 8080
 
