@@ -439,7 +439,7 @@ export default function Bitzy({ mood, lookX = 0, caption }: { mood: Mood; lookX?
         <div className="w-[130px] h-[24px] rounded-full bg-phosphor/25 blur-[18px] -mt-1 pointer-events-none" />
       </div>
 
-      <div className={`relative mt-6 px-4 text-center text-[11px] tracking-[0.14em] uppercase ${face === "error" ? "text-danger" : face === "surprised" ? "text-warn" : "text-phosphor"}`}>
+      <div className={`relative mt-6 px-4 text-center font-mono text-caption tracking-[0.14em] uppercase ${face === "error" ? "text-danger" : face === "surprised" ? "text-warn" : "text-phosphor"}`}>
         {shownCaption}
       </div>
     </div>

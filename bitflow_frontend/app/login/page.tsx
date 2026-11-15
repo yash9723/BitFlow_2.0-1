@@ -148,12 +148,12 @@ export default function LoginPage() {
 
   const busy = status === "loading" || status === "success";
   const tab = (active: boolean) =>
-    `flex-1 py-1.5 rounded-md text-center text-[11px] font-semibold tracking-wider uppercase transition-colors duration-150 ${
+    `flex-1 py-1.5 rounded-md text-center text-caption font-semibold tracking-wider uppercase transition-colors duration-150 ${
       active ? "bg-phosphor/10 text-phosphor border border-phosphor/30" : "text-ghost hover:text-pale border border-transparent"
     }`;
 
   return (
-    <div className="relative min-h-screen bg-void overflow-hidden flex flex-col items-center justify-center px-4 sm:px-6 py-12 text-bright">
+    <div className="relative min-h-screen bg-void overflow-hidden font-ui flex flex-col items-center justify-center px-4 sm:px-6 py-12 text-bright">
       <style>{`
         .bf-input:-webkit-autofill,
         .bf-input:-webkit-autofill:hover,
@@ -185,15 +185,15 @@ export default function LoginPage() {
             </Link>
           </nav>
 
-          <h1 className="font-serif text-2xl text-bright mb-1">
+          <h1 className="text-heading-sm text-bright mb-1">
             {asAdmin ? "Admin registration" : isSignUp ? "Create your account" : "Welcome back!"}
           </h1>
-          <p className="text-[12.5px] text-ghost mb-6">
+          <p className="text-small text-ghost mb-6">
             {asAdmin ? "Initialise admin credentials with the system key" : isSignUp ? "Set up a new BitFlow profile" : "Enter your login details to continue to BitFlow"}
           </p>
 
           {errorMsg && (
-            <div role="alert" className="p-3 rounded-lg border border-danger/30 bg-danger/10 text-danger text-[11px] mb-5 flex gap-2">
+            <div role="alert" className="p-3 rounded-lg border border-danger/30 bg-danger/10 text-danger text-small mb-5 flex gap-2">
               <span className="font-bold">⚠ ERROR:</span>
               <span className="flex-1">{errorMsg}</span>
             </div>
@@ -201,7 +201,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="username" className="block text-[11px] text-pale mb-1.5">Username</label>
+              <label htmlFor="username" className="block text-caption text-pale mb-1.5">Username</label>
               <input
                 id="username"
                 type="text"
@@ -218,7 +218,7 @@ export default function LoginPage() {
                 onFocus={() => setFocus("username")}
                 onBlur={() => setFocus(null)}
                 placeholder="e.g. system_operator"
-                className="bf-input w-full bg-[#141a15] border border-rim rounded-lg px-3.5 py-2.5 text-[13px] text-bright placeholder-dim/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none focus:border-phosphor transition-colors"
+                className="bf-input w-full bg-[#141a15] border border-rim rounded-lg px-3.5 py-2.5 text-body text-bright placeholder-dim/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none focus:border-phosphor transition-colors"
               />
             </div>
 
@@ -237,7 +237,7 @@ export default function LoginPage() {
                 onCapsLock={setCapsLock}
                 placeholder="••••••••"
               />
-              <div className="flex items-center justify-between gap-3 mt-1.5 min-h-[16px] text-[11px]">
+              <div className="flex items-center justify-between gap-3 mt-1.5 min-h-[16px] text-caption">
                 <span role="status" className="text-warn">{inPassword && capsLock ? "Caps Lock is on" : ""}</span>
                 {!isSignUp && (
                   <Link href="/reset-password" className="text-phosphor hover:text-phosphor-glow transition-colors">
@@ -282,14 +282,14 @@ export default function LoginPage() {
               onMouseLeave={() => setHoverSubmit(false)}
               onFocus={() => setHoverSubmit(true)}
               onBlur={() => setHoverSubmit(false)}
-              className={`w-full py-3 rounded-lg text-[13px] font-bold tracking-wide uppercase transition-[background-color,transform] duration-150 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed ${
+              className={`w-full py-3 rounded-lg text-small font-semibold tracking-wide uppercase transition-[background-color,transform] duration-150 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed ${
                 asAdmin ? "bg-info text-void hover:bg-info/85" : "bg-phosphor text-void hover:bg-phosphor-glow"
               }`}
             >
               {status === "loading" ? "Decrypting..." : status === "success" ? "Access granted" : isSignUp ? "Create Profile" : "Authorize"}
             </button>
             {isSignUp && (
-              <p className="text-[11px] text-ghost text-center">
+              <p className="text-caption text-ghost text-center">
                 Using BitFlow also means following the{" "}
                 <Link href="/terms" className="text-phosphor hover:underline">Terms</Link>.
               </p>
@@ -298,7 +298,7 @@ export default function LoginPage() {
 
           {!asAdmin && providers.length > 0 && (
             <div className="mt-5">
-              <div className="flex items-center gap-3 text-[10px] uppercase tracking-[0.14em] text-dim mb-3" aria-hidden="true">
+              <div className="flex items-center gap-3 text-caption uppercase tracking-[0.14em] text-dim mb-3" aria-hidden="true">
                 <span className="h-px flex-1 bg-rim/60" />or<span className="h-px flex-1 bg-rim/60" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -307,7 +307,7 @@ export default function LoginPage() {
                   <a
                     key={p}
                     href={oauthHref(p)}
-                    className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-rim bg-[#141a15] text-[12px] font-semibold text-pale hover:text-bright hover:border-phosphor/50 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-phosphor"
+                    className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-rim bg-[#141a15] text-small font-semibold text-pale hover:text-bright hover:border-phosphor/50 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-phosphor"
                   >
                     <ProviderMark provider={p} />
                     Continue with {PROVIDER_LABEL[p] ?? p}

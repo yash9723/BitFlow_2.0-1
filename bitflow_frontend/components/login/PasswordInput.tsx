@@ -22,7 +22,7 @@ export default function PasswordInput({ id, label, hint, admin, onShownChange, o
 
   return (
     <div>
-      <label htmlFor={id} className={`block text-[11px] mb-1.5 ${admin ? "text-info" : "text-pale"}`}>{label}</label>
+      <label htmlFor={id} className={`block text-caption mb-1.5 ${admin ? "text-info" : "text-pale"}`}>{label}</label>
       {/* Focus counts for the input and its eye toggle together, so moving between them isn't a blur. */}
       <div
         className="relative"
@@ -35,7 +35,7 @@ export default function PasswordInput({ id, label, hint, admin, onShownChange, o
           type={shown ? "text" : "password"}
           onKeyDown={caps}
           onKeyUp={caps}
-          className={`bf-input w-full rounded-lg px-3.5 py-2.5 pr-11 text-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none transition-colors ${
+          className={`bf-input w-full rounded-lg px-3.5 py-2.5 pr-11 text-body shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none transition-colors ${
             admin
               ? "bg-[#141a1f] border border-info/40 text-info placeholder-info/25 focus:border-info"
               : "bg-[#141a15] border border-rim text-bright placeholder-dim/50 focus:border-phosphor"
@@ -62,7 +62,7 @@ export default function PasswordInput({ id, label, hint, admin, onShownChange, o
           </svg>
         </button>
       </div>
-      {hint && <span className="block text-[10px] text-dim/70 mt-1">{hint}</span>}
+      {hint && <span className="block text-caption text-dim/70 mt-1">{hint}</span>}
     </div>
   );
 }
