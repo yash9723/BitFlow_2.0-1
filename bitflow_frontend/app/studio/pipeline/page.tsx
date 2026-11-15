@@ -2,12 +2,9 @@
 
 import StudioShell from "@/components/studio/StudioShell";
 import { PipelineTool } from "@/components/studio/loaders";
+import { pageMeta } from "@/lib/site";
 
-export const metadata = {
-  title: "CPU pipeline animator",
-  description: "Step a 5-stage RISC-V pipeline cycle by cycle: forwarding, load-use stalls, branch flushes and CPI, checked against the instruction set.",
-  alternates: { canonical: "/studio/pipeline" },
-};
+export const metadata = pageMeta("/studio/pipeline", "CPU pipeline animator", "Step a 5-stage RISC-V pipeline cycle by cycle: forwarding, load-use stalls, branch flushes and CPI, checked against the instruction set.");
 
 export default function PipelinePage() {
   return (

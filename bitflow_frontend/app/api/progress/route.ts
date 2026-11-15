@@ -129,7 +129,8 @@ export async function POST(request: Request) {
       });
     } else if (actionType === "hint") {
       const currentHints = JSON.parse(userProgress.hintsUnlocked || "[]");
-      if (hintTier && !currentHints.includes(hintTier)) {
+      // Tiers are 1, 2 or 3 (lib/progress-storage.ts): anything else would just be stored as sent.
+      if ([1, 2, 3].includes(hintTier) && !currentHints.includes(hintTier)) {
         currentHints.push(hintTier);
         userProgress = await prisma.userProgress.update({
           where: { id: userProgress.id },

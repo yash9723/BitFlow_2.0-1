@@ -116,7 +116,7 @@ export function Metastable() {
       <p className="text-[14px] text-pale tabular-nums" role="status">Mean time between failures: <strong className={stages === 1 ? "text-danger" : "text-phosphor"}>{seconds < 60 ? `${seconds.toFixed(2)} seconds` : <>{years.toExponential(0).split("e+")[0]} × 10<sup>{years.toExponential(0).split("e+")[1]}</sup> years</>}</strong> <span className="text-dim text-[12px]">(100 MHz clock, 1 MHz data, illustrative figures)</span></p>
       <Caption>
         {resolved ? `It settles after ${settle.toFixed(1)} ns, before the next stage reads it.` : `It needs ${settle.toFixed(1)} ns, but only ${available} ns is available, so the next stage may read a voltage that isn't a clean 0 or 1.`}
-        {" "}Each extra nanosecond of settling multiplies the time between failures enormously, and that's why two flip-flops in a row are the standard synchronizer.
+        {" "}Each extra nanosecond of settling multiplies the time between failures enormously, and that&apos;s why two flip-flops in a row are the standard synchronizer.
       </Caption>
     </AnimCard>
   );

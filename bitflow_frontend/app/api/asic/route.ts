@@ -11,7 +11,8 @@
 import { NextResponse } from "next/server";
 import { asicOnBackend, designAsVerilog } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
-import { getSessionUser } from "@/lib/auth-utils";
+import { heavyBudget } from "@/lib/heavy-limit";
+import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ const MAX_SOURCE_CHARS = 512 * 1024;
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
+  if (!user) return signInRequired();
   const { success } = await rateLimit(request, {
     limit: 10, anonymousLimit: 20, windowMs: 60_000, prefix: "asic",
     key: user ? `user:${user.id}` : undefined,
@@ -27,6 +29,8 @@ export async function POST(request: Request) {
   if (!success) {
     return NextResponse.json({ error: "Too many ASIC runs. Please wait a moment." }, { status: 429 });
   }
+  const busy = await heavyBudget(request, user.id);
+  if (busy) return busy;
 
   const body = await request.json().catch(() => ({}));
   const { designCode, testbenchCode } = body ?? {};

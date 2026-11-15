@@ -252,22 +252,16 @@ class SimulateResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """GET /health — basic liveness probe."""
-    status: str                       # "ok" | "degraded"
-    docker_available: bool
-    image: str                        # configured sandbox image name
+    """GET /health — liveness probe."""
+    status: str                       # "ok"
     version: str                      # API version string
 
 
 class StatusResponse(BaseModel):
-    """GET /status — richer readiness probe with docker image inspection."""
-    status: str
-    docker_available: bool
-    image_found: bool
-    image: str
-    image_id: Optional[str]          # short SHA if the image exists
-    image_size_mb: Optional[float]   # uncompressed image size
-    settings_summary: dict           # safe subset of active settings
+    """GET /status — readiness probe."""
+    status: str                       # "ready" | "unavailable"
+    tools: dict[str, bool]            # simulator tools found on PATH
+    settings_summary: dict            # active limits (nothing secret)
 
 
 class ErrorDetail(BaseModel):

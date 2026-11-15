@@ -201,7 +201,7 @@ export function AdderRace() {
       <RaceRow title="Carry lookahead" n={n} t={t} time={(i) => claCarryTime(i, n)} />
       <Controls s={s} />
       <Caption>
-        t = {t} gate delays. Ripple's last carry arrives at {end}. Lookahead's slowest arrives at {worst}{t >= worst && t < end ? ", so it's finished while ripple is still going" : ""}.
+        t = {t} gate delays. Ripple&apos;s last carry arrives at {end}. Lookahead&apos;s slowest arrives at {worst}{t >= worst && t < end ? ", so it's finished while ripple is still going" : ""}.
         {" "}{n > 4 ? `The carry out, at a group boundary, is ready at ${cla}.` : ""}
       </Caption>
     </AnimCard>

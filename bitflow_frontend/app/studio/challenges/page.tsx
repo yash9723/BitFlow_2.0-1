@@ -5,13 +5,10 @@ import StudioShell from "@/components/studio/StudioShell";
 import { getSessionUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
 import { CHALLENGES } from "@/lib/studio/circuit-challenges";
+import { pageMeta } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
-export const metadata = {
-  title: "Circuit challenges",
-  description: "Build circuits against a gate budget: XOR from four NANDs, a 4-bit adder, BCD to 7-segment, a sequence detector. Each one is checked by simulation.",
-  alternates: { canonical: "/studio/challenges" },
-};
+export const metadata = pageMeta("/studio/challenges", "Circuit challenges", "Build circuits against a gate budget: XOR from four NANDs, a 4-bit adder, BCD to 7-segment, a sequence detector. Each one is checked by simulation.");
 
 const LEVELS = ["Beginner", "Core", "GATE"] as const;
 

@@ -121,3 +121,9 @@ export async function getSessionUser() {
   const { bannedAt: _banned, ...user } = session.user;
   return user;
 }
+
+
+/** 401 for the routes that run code on the simulators: reading is open, running needs an account. */
+export function signInRequired() {
+  return NextResponse.json({ error: "Sign in to run your code. A free account is all it takes." }, { status: 401 });
+}

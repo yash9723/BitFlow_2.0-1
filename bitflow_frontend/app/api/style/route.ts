@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 import { styleOnBackend } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
-import { getSessionUser } from "@/lib/auth-utils";
+import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ const MAX_FILES = 16;
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
+  if (!user) return signInRequired();
   const { success } = await rateLimit(request, {
     limit: 40, anonymousLimit: 120, windowMs: 60_000, prefix: "style",
     key: user ? `user:${user.id}` : undefined,

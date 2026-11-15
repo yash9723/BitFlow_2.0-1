@@ -56,14 +56,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     import logging
     logger = logging.getLogger(__name__)
-    logger.info("Verilog Sandbox API starting up")
-    logger.info("Docker image  : %s", settings.docker_image)
+    logger.info("BitFlow simulation API starting up")
     logger.info("Timeout default : %ds  (max %ds)", settings.timeout_seconds, settings.max_timeout_seconds)
-    logger.info("Memory limit  : %s", settings.mem_limit)
-    logger.info("Network disabled: %s", settings.network_disabled)
-
-    # Simulations run natively via iverilog/vvp subprocess — no Docker daemon needed.
-    logger.info("Native simulation mode: using iverilog/vvp subprocess directly")
+    logger.info("Concurrent runs : %d light, %d heavy (0 = shared)",
+                settings.max_concurrent_simulations, settings.max_heavy_simulations)
 
     # Warm the tools in the background: the server answers requests at once, and the first real
     # run no longer pays for a cold start (api/warmup.py; WARMUP=false turns it off).
@@ -80,7 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         warm_task.cancel()
 
     # ── Shutdown ─────────────────────────────────────────────────────────────
-    logger.info("Verilog Sandbox API shutting down")
+    logger.info("BitFlow simulation API shutting down")
 
 
 # =============================================================================
@@ -96,10 +92,10 @@ def create_app() -> FastAPI:
     conftest.py after monkey-patching the settings object).
     """
     app = FastAPI(
-        title       = "Verilog Sandbox API",
+        title       = "BitFlow Simulation API",
         description = (
-            "A secure, containerised REST API for compiling and simulating "
-            "Verilog designs using Icarus Verilog."
+            "Compiles, simulates, synthesizes and checks HDL designs for BitFlow "
+            "(Icarus Verilog, Verilator, GHDL, Yosys, nextpnr, OpenSTA)."
         ),
         version     = "1.0.0",
         docs_url    = "/docs" if settings.enable_docs else None,
@@ -109,13 +105,13 @@ def create_app() -> FastAPI:
     )
 
     # ── CORS ─────────────────────────────────────────────────────────────────
-    # allow_origins=["*"] is fine for local development.
-    # In production replace with your frontend origin, e.g.:
-    #   CORS_ORIGINS='["https://yourapp.com"]' in .env
+    # Browsers don't call this API: the frontend's server does, with a Bearer token.
+    # No cookies are involved, so credentials stay off (with the default "*" origins,
+    # allowing them would let any site make credentialed requests).
     app.add_middleware(
         CORSMiddleware,
         allow_origins     = settings.cors_origins,
-        allow_credentials = True,
+        allow_credentials = False,
         allow_methods     = ["GET", "POST"],
         allow_headers     = ["*"],
     )
@@ -151,7 +147,7 @@ def create_app() -> FastAPI:
         """Root endpoint."""
         if settings.enable_docs:
             return RedirectResponse(url="/docs")
-        return {"status": "ok", "service": "Verilog Sandbox API"}
+        return {"status": "ok", "service": "BitFlow Simulation API"}
 
     return app
 

@@ -12,6 +12,7 @@ build
 secret_password.txt
 
 # Python
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/

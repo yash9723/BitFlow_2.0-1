@@ -6,7 +6,23 @@ work through graded problems and Arena challenges, and earn XP.
 - **Frontend** — Next.js 14 + Prisma (SQLite by default) in `bitflow_frontend/`
 - **Simulation API** — FastAPI in `api/`: Icarus Verilog (Verilog / SystemVerilog subset), GHDL (VHDL),
   cocotb (Python testbenches), Yosys + Z3 (synthesis, formal verification), nextpnr-ice40 (place & route),
-  Verilator (lint)
+  Verilator (lint and verification runs), OpenSTA + Sky130 (ASIC area, timing, power)
+- **Tutor agent** — an optional AI tutor service in `agents/tutor/`
+
+## Repository layout
+
+| Path | What it holds |
+|------|---------------|
+| `bitflow_frontend/` | The Next.js app: pages and API routes (`app/`), UI (`components/`), logic (`lib/`), database schema (`prisma/`), checks (`scripts/*.check.ts`), browser tests (`e2e/`) |
+| `api/` | The FastAPI simulation API; `api/sandbox.py` runs every tool under resource limits |
+| `tests/` | API tests (pytest) |
+| `agents/tutor/` | The tutor agent service |
+| `docker-compose.yml`, `Dockerfile.api`, `bitflow_frontend/Dockerfile` | The supported deployment: one server running Compose |
+| `setup_server.sh`, `aws/`, `gcp/`, `scripts/backup.sh` | Server bootstrap for a VPS, EC2 or GCE, and the database backup job |
+| `Dockerfile` | A smaller API image with Icarus Verilog only (simulation, no synthesis or ASIC tools) |
+| `docs/` | Operations notes (`breach-runbook.md`) |
+| `tools/windows-usb-setup/` | USB driver setup for flashing FPGA boards from Windows |
+| `.github/` | CI, uptime and backup workflows, Dependabot |
 
 ---
 
@@ -172,11 +188,22 @@ JWT_SECRET=dev-secret-at-least-32-characters-long npm run dev
 ## Tests
 
 ```bash
-python -m pytest tests -q                        # API (sandbox tests need iverilog)
-cd bitflow_frontend && npm run type-check && npm run build
+# API
+ruff check api tests --select F,E9     # unused or undefined names, syntax errors
+python -m pytest tests -q              # tests that need a tool (iverilog, yosys, …) skip without it
+
+# Frontend
+cd bitflow_frontend
+npm run lint                           # ESLint, Next.js core-web-vitals rules
+npm run type-check
+npm run check                          # every scripts/*.check.ts; `npm run check -- pair wave` runs a subset
+npm run build
 ```
 
-CI (`.github/workflows/ci.yml`) runs both on every push and pull request.
+CI (`.github/workflows/ci.yml`) runs all of these on every pull request and on pushes to the
+release branches, plus the ASIC flow and the Playwright smoke tests in `bitflow_frontend/e2e/`
+against a real API container. A new `scripts/<name>.check.ts` is picked up by `npm run check`
+without touching `package.json` or the workflow.
 
 ## Waveforms
 

@@ -5,6 +5,14 @@ on:
     branches: [main, bitflow-hardening-and-features]
   pull_request:
 
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR replaces the run in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   api:
     name: API tests (pytest + iverilog)
@@ -24,6 +32,8 @@ jobs:
           tar -xzf /tmp/verible.tgz -C /tmp
           sudo install -m 755 /tmp/verible-$V/bin/verible-verilog-lint /tmp/verible-$V/bin/verible-verilog-format /usr/local/bin/
       - run: pip install -r requirements-dev.txt
+      - name: Lint (unused or undefined names, syntax errors)
+        run: ruff check api tests --select F,E9
       - run: python -m pytest tests -q
 
   # OpenSTA is packaged by Debian but not Ubuntu: the ASIC flow runs in the API image's base.
@@ -54,69 +64,12 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iverilog
       - run: npm ci
       - run: npm run check-problems
-      - run: npm run check-gate-sim
-      - run: npm run check-contests
-      - run: npm run check-announcements
-      - run: npm run check-interview
-      - run: npm run check-diagnostics
-      - run: npm run check-mutants
-      - run: npm run check-verification
-      - run: npm run check-pixel
-      - run: npm run check-asic-path
-      - run: npm run check-icarus
-      - run: npm run check-wave-nav
-      - run: npm run check-schematic
-      - run: npm run check-share
-      - run: npm run check-engagement
-      - run: npm run check-trace
-      - run: npm run check-tinytapeout
-      - run: npm run check-chip-xray
-      - run: npm run check-live-lab
-      - run: npm run check-pair
-      - run: npm run check-waveform-diff
-      - run: npm run check-vhdl-starter
-      - run: npm run check-bitstream
-      - run: npm run check-similarity
-      - run: npm run check-dpdp
-      - run: npm run check-lessons
-      - run: npm run check-hardware
-      - run: npm run check-academy
-      - run: npm run check-admin
-      - run: npm run check-oauth
-      - run: npm run check-radix
-      - run: npm run check-plot
-      - run: npm run check-logic
-      - run: npm run check-logic-circuit
-      - run: npm run check-fsm
-      - run: npm run check-fsm-tools
-      - run: npm run check-wave
-      - run: npm run check-circuit
-      - run: npm run check-circuit-challenges
-      - run: npm run check-pnr
-      - run: npm run check-riscv
-      - run: npm run check-report
-      - run: npm run check-palette
-      - run: npm run check-backend-pool
-      - run: npm run check-sim-retry
-      - run: npm run check-hedge
-      - run: npm run check-health-race
-      - run: npm run check-numbers
-      - run: npm run check-boolexpr
-      - run: npm run check-cache
-      - run: npm run check-generators
-      - run: npm run check-protocol
-      - run: npm run check-tbgen
-      - run: npm run check-share
-      - run: npm run check-policy
-      - run: npm run check-constraints
-      - run: npm run check-flash
-      - run: npm run check-webserial
-      - run: npm run check-projects
-      - run: npm run check-verilog-lang
+      - name: Every scripts/*.check.ts
+        run: npm run check
       - name: Board Lab lessons (every starter synthesizes and fails a goal) with YoWASP Yosys
         run: |
           npm install --no-save --prefix "$RUNNER_TEMP/yw" @yowasp/yosys@0.52.893
-          YOWASP_YOSYS="$RUNNER_TEMP/yw/node_modules/@yowasp/yosys/gen/bundle.js" npm run check-lab
+          YOWASP_YOSYS="$RUNNER_TEMP/yw/node_modules/@yowasp/yosys/gen/bundle.js" npm run check -- lab.check
 
   web:
     name: Frontend type-check + build
@@ -132,6 +85,7 @@ jobs:
           cache: npm
           cache-dependency-path: bitflow_frontend/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run type-check
       - run: npm run build
         env:

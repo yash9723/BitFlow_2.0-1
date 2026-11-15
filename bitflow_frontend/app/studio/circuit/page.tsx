@@ -2,12 +2,9 @@
 
 import StudioShell from "@/components/studio/StudioShell";
 import { CircuitTool } from "@/components/studio/loaders";
+import { pageMeta } from "@/lib/site";
 
-export const metadata = {
-  title: "Circuit editor",
-  description: "Build circuits from gates, flip-flops, switches and LEDs, watch them run live, and export Verilog with a self-checking testbench.",
-  alternates: { canonical: "/studio/circuit" },
-};
+export const metadata = pageMeta("/studio/circuit", "Circuit editor", "Build circuits from gates, flip-flops, switches and LEDs, watch them run live, and export Verilog with a self-checking testbench.");
 
 export default function CircuitPage() {
   return (

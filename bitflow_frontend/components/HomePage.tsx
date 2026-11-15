@@ -1,5 +1,7 @@
 "use client";
 
+import { HOME_FAQ } from "@/lib/home-faq";
+import { type HomeFacts, homePath } from "@/lib/home-path";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -15,10 +17,10 @@ const NAV_LINKS = [
   { label: "About", href: "/about" },
 ];
 
-/* ── Real product stats — no invented numbers ─────────────────────── */
-const STATS = [
-  { value: "97+", label: "Practice Problems" },
-  { value: "8", label: "Academy Modules" },
+/* ── Real product stats — no invented numbers; the counts are read from the product (app/page.tsx) ─── */
+const statsFor = (f: HomeFacts) => [
+  ...(f.problems ? [{ value: String(f.problems), label: "Practice Problems" }] : []),
+  { value: String(f.chapters), label: "Academy Chapters" },
   { value: "100%", label: "Browser-Based" },
 ];
 
@@ -240,7 +242,8 @@ const SOCIAL_LINKS = [
   },
 ];
 
-export default function LandingPage() {
+export default function LandingPage({ facts }: { facts: HomeFacts }) {
+  const STATS = statsFor(facts), PATH = homePath(facts);
   const { user, loading } = useAuth();   // the full page renders while loading so crawlers and link previews see it
   const router = useRouter();
 
@@ -301,8 +304,8 @@ export default function LandingPage() {
             Build.
           </h1>
           <p className="text-[15px] text-ghost leading-relaxed max-w-md mb-8">
-            The all-in-one platform for RTL design, verification, and digital electronics learning — write,
-            simulate, and debug Verilog and SystemVerilog right in your browser.
+            BitFlow is an online Verilog and SystemVerilog simulator and learning platform for RTL design,
+            verification and digital electronics: write, simulate and debug right in your browser, with nothing to install.
           </p>
           <div className="flex flex-wrap gap-3.5 mb-10">
             <Link
@@ -357,6 +360,28 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* The path: where to start and where it leads. The same list is in the page's structured data (app/page.tsx). */}
+      <section aria-labelledby="path-title" className="max-w-[1400px] mx-auto px-6 md:px-10 pb-20">
+        <div className="text-center max-w-2xl mx-auto mb-10">
+          <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Your path</div>
+          <h2 id="path-title" className="font-serif text-2xl md:text-3xl text-pale">From your first bit to a verified design.</h2>
+        </div>
+        <ol className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {PATH.map((st, i) => (
+            <li key={st.title} className="relative">
+              <Link href={st.href} className="group block h-full border border-rim rounded-xl p-5 bg-pit hover:border-phosphor/50 transition-colors">
+                <span className="font-mono text-[11px] text-phosphor">Step {i + 1}</span>
+                <span className="block font-serif text-lg text-bright mt-1 mb-2 group-hover:text-phosphor transition-colors">{st.title}</span>
+                <span className="block text-[12.5px] text-ghost leading-relaxed">{st.body}</span>
+              </Link>
+            </li>
+          ))}
+        </ol>
+        <div className="text-center mt-5">
+          <Link href="/academy/roadmap" className="text-[12px] text-ghost hover:text-bright underline underline-offset-4">See the VLSI career roadmap →</Link>
+        </div>
+      </section>
+
       {/* Categories — hover pop animation */}
       <section className="max-w-[1400px] mx-auto px-6 md:px-10 pb-20">
         <div className="text-center max-w-2xl mx-auto mb-10">
@@ -380,6 +405,22 @@ export default function LandingPage() {
               </div>
               <div className="text-[11px] text-dim group-hover:text-pale transition-colors">{cat.tags}</div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Questions people ask: the same list feeds the FAQPage data in app/page.tsx */}
+      <section aria-labelledby="faq-title" className="max-w-3xl mx-auto px-6 pb-20">
+        <h2 id="faq-title" className="font-serif text-2xl md:text-3xl text-pale mb-6">Questions</h2>
+        <div className="divide-y divide-rim/50 border-y border-rim/50">
+          {HOME_FAQ.map((f) => (
+            <details key={f.q} className="group py-4">
+              <summary className="cursor-pointer list-none flex items-center justify-between gap-4 text-[14px] text-bright">
+                {f.q}
+                <span aria-hidden className="text-phosphor group-open:rotate-45 transition-transform">+</span>
+              </summary>
+              <p className="mt-3 text-[13px] text-ghost leading-relaxed">{f.a}</p>
+            </details>
           ))}
         </div>
       </section>

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createSession, hashPassword, verifyPassword } from "@/lib/auth-utils";
@@ -5,6 +6,11 @@ import { rateLimit } from "@/lib/rate-limit";
 import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
+
+// Checked when the username is unknown, so that reply takes as long as a wrong password
+// and the form can't be timed to find accounts.
+const NO_SUCH_USER = hashPassword(crypto.randomBytes(16).toString("hex"));
+const invalid = () => NextResponse.json({ error: "Invalid username or password." }, { status: 400 });
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +29,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!normalizedUsername || !password) {
+    if (!normalizedUsername || typeof password !== "string" || !password) {
       return NextResponse.json(
         { error: "Username and password are required." },
         { status: 400 }
@@ -42,13 +48,11 @@ export async function POST(request: Request) {
       where: { username: normalizedUsername },
     });
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "Invalid username or password." },
-        { status: 400 }
-      );
-    }
+    // Verify password hash (against a throwaway hash when there is no such user)
+    const { ok, needsRehash } = verifyPassword(password, user?.password ?? NO_SUCH_USER);
+    if (!user || !ok) return invalid();
 
+    // Everything below comes only after the password is right, so it doesn't reveal which usernames exist.
     // Student login should not fail because of a stale/wrong role toggle.
     // Admin login remains explicitly protected.
     if (role === "ADMIN" && user.role !== "ADMIN") {
@@ -57,16 +61,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    // Verify password hash
-    const { ok, needsRehash } = verifyPassword(password, user.password);
-    if (!ok) {
-      return NextResponse.json(
-        { error: "Invalid username or password." },
-        { status: 400 }
-      );
-    }
-    // Only after the password is right, so this doesn't reveal which usernames exist.
     if (user.bannedAt) {
       return NextResponse.json({ error: "This account has been suspended. Use the contact form if you think that's a mistake." }, { status: 403 });
     }
@@ -88,10 +82,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (err: any) {
+    // The details go to the error log, not to the client (database errors name hosts and tables).
     await reportError("Login error:", err);
-    const errorMessage = err?.message || "Internal Server Error";
     return NextResponse.json(
-      { error: errorMessage },
+      { error: "Sign-in failed. Please try again." },
       { status: 500 }
     );
   }

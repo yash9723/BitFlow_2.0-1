@@ -12,7 +12,8 @@
 import { NextResponse } from "next/server";
 import { designAsVerilog, formalOnBackend, type FormalMode } from "@/lib/backend";
 import { rateLimit } from "@/lib/rate-limit";
-import { getSessionUser } from "@/lib/auth-utils";
+import { heavyBudget } from "@/lib/heavy-limit";
+import { getSessionUser, signInRequired } from "@/lib/auth-utils";
 import { reportError } from "@/lib/error-log";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ const MODES: FormalMode[] = ["bmc", "prove", "cover"];
 
 export async function POST(request: Request) {
   const user = await getSessionUser();
+  if (!user) return signInRequired();
   const { success } = await rateLimit(request, {
     limit: 15, anonymousLimit: 60, windowMs: 60_000, prefix: "formal",
     key: user ? `user:${user.id}` : undefined,
@@ -29,6 +31,9 @@ export async function POST(request: Request) {
   if (!success) {
     return NextResponse.json({ error: "Too many proof requests. Please wait a moment." }, { status: 429 });
   }
+
+  const busy = await heavyBudget(request, user.id);
+  if (busy) return busy;
 
   const body = await request.json().catch(() => ({}));
   const { designCode, harnessCode } = body ?? {};

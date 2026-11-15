@@ -92,22 +92,22 @@ async function run(factory: Factory, locateFile: Factories["locateFile"], args: 
   let code = 0;
   let size = 0;
   const keep = (s: string) => { if (size < MAX_OUTPUT) { lines.push(s); size += s.length + 1; } };
-  const module = await factory({
+  const em = await factory({
     ...(locateFile ? { locateFile } : {}),
     print: keep, printErr: keep,
     noInitialRun: true,
     quit: (status: number, toThrow: unknown) => { code = status; throw toThrow; },
   });
-  for (const [name, data] of Object.entries(files)) module.FS.writeFile("/" + name, data);
+  for (const [name, data] of Object.entries(files)) em.FS.writeFile("/" + name, data);
   try {
-    const rc = module.callMain(args);
+    const rc = em.callMain(args);
     if (typeof rc === "number") code = rc;
   } catch (e) {
     const status = (e as { status?: number } | null)?.status;
     if (typeof status === "number") code = status;
     else if (code === 0) throw e;
   }
-  return { lines, code, module };
+  return { lines, code, module: em };
 }
 
 const STATUS = ["success", "file_missing", "compile_error", "timeout", "runtime_error", "internal_error"] as const;

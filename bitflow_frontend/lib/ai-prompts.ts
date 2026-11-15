@@ -204,13 +204,22 @@ const lastLines = (s: string, n: number) => s.trim().split("\n").slice(-n).join(
  * testbench source and expected outputs are deliberately left out.
  */
 export function buildTutorContext(problem: TutorProblem, last: TutorLastSubmission | null): string {
+  return [...problemLines(problem), "", ...lastResultLines(last)].join("\n");
+}
+
+/** The problem part of the tutor context (statement and constraints). */
+export function problemLines(problem: TutorProblem): string[] {
   const lines = ["[Problem]", `Title: ${problem.title}`, "", problem.statement.trim()];
   try {
     const constraints: string[] = JSON.parse(problem.constraints || "[]");
     if (constraints.length) lines.push("", "Constraints:", ...constraints.map((c) => `- ${c}`));
   } catch { /* ignore malformed constraints */ }
+  return lines;
+}
 
-  lines.push("", "[Latest graded submission]");
+/** The latest-graded-result part of the tutor context; the tutor agent's get_last_result tool returns exactly this. */
+export function lastResultLines(last: TutorLastSubmission | null): string[] {
+  const lines = ["[Latest graded submission]"];
   if (!last) {
     lines.push("Not submitted yet.");
   } else if (last.accepted) {
@@ -233,7 +242,7 @@ export function buildTutorContext(problem: TutorProblem, last: TutorLastSubmissi
       );
     }
   }
-  return lines.join("\n");
+  return lines;
 }
 
 export interface DesignScores {

@@ -45,6 +45,8 @@ const chapter: AcademyTopic = {
       heading: "What's inside a gate",
       blocks: [
         p("Modern chips build gates from CMOS transistors, which come in two complementary types. A **PMOS** transistor conducts when its input is 0, and an **NMOS** transistor conducts when its input is 1. Each gate has a network of PMOS transistors that can connect the output up to the supply, and a mirror network of NMOS transistors that can connect it down to ground."),
+        p("To see where those transistors sit in the silicon, here is a cross-section of an inverter. Turn it with the mouse or the Turn buttons."),
+        { kind: "anim", id: "cmos-cutaway-3d" },
         { kind: "anim", id: "cmos-gate" },
         p("Compare NAND and NOR above. NAND has its PMOS transistors in parallel and its NMOS in series. NOR has them the other way round. Series becomes parallel and vice versa, and you'll see the same swap again in De Morgan's theorem in the next chapter."),
         { kind: "callout", tone: "note", text: "This is why NAND and NOR are the natural gates in CMOS. An AND gate is really a NAND followed by a NOT, so it costs two more transistors and is slower. Chapter 9 looks at this in detail." },

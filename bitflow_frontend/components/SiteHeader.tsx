@@ -41,6 +41,7 @@ const MORE_LINKS: { href: string; label: string }[] = [
   { href: "/explore", label: "Explore shared designs" },
   { href: "/flash", label: "Flash a board" },
   { href: "/academy/roadmap", label: "VLSI roadmap" },
+  { href: "/articles", label: "Articles" },
   { href: "/about", label: "About" },
   { href: "/contact", label: "Contact" },
 ];

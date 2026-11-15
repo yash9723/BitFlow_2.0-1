@@ -48,10 +48,6 @@ RUN sh /tmp/install_sky130.sh /opt/sky130 && rm /tmp/install_sky130.sh
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entrypoint script
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod 755 /usr/local/bin/entrypoint.sh
-
 # Copy the API source code
 COPY api/ /app/api/
 
@@ -59,11 +55,6 @@ COPY api/ /app/api/
 # verification run only compiles the student's model (api/verilator_sim.py prebuild_runtime).
 RUN cd /app && JWT_SECRET=image-build-placeholder-never-used-at-runtime python -c "from api.verilator_sim import prebuild_runtime; prebuild_runtime()" \
     && ls /opt/verilator-runtime
-
-# Copy the environment file to working directory root if it exists
-RUN cp /app/api/.env /app/.env || true
-
-
 
 # Port the API listens on inside the compose network
 EXPOSE 8080

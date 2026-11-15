@@ -17,7 +17,11 @@ import { routeAll } from "@/lib/studio/circuit-route";
 import { type Transient, DEFAULT_DELAYS, DelaySim } from "@/lib/studio/delay-sim";
 import { CIRCUIT_INCOMING_KEY } from "@/lib/studio/logic-circuit";
 
-export default function CircuitViewer({ circuit, slow = false }: { circuit: Circuit; slow?: boolean }) {
+/**
+ * `forced` sets named inputs from outside (a walkthrough stepping a circuit); each change plays back through the gates
+ * like a click would. `edges` is a count: every increase pulses the circuit's clocks once.
+ */
+export default function CircuitViewer({ circuit, slow = false, forced, edges = 0 }: { circuit: Circuit; slow?: boolean; forced?: Record<string, number>; edges?: number }) {
   const router = useRouter();
   const c = useMemo(() => routeAll(circuit), [circuit]);
   const { net, bitsOf } = useMemo(() => compile(c), [c]);
@@ -103,6 +107,19 @@ export default function CircuitViewer({ circuit, slow = false }: { circuit: Circ
   const step = (p: (typeof knobs)[number]) => drive(p.label, ((inputs.current[p.label] ?? 0) + 1) % 2 ** portWidth(p));
   const outputs = outputParts(c).map((p) => `${p.label} = ${toNumber(sim.current!.get(p.label))}`).join(", ");
   const btn = "px-2 py-1 rounded border border-rim/60 text-ghost hover:text-bright";
+
+  const forcedKey = forced ? JSON.stringify(forced) : "";
+  useEffect(() => {
+    if (!forced) return;
+    for (const [label, v] of Object.entries(forced)) if ((inputs.current[label] ?? 0) !== v) drive(label, v);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forcedKey]);
+  const lastEdges = useRef(edges);
+  useEffect(() => {
+    if (edges > lastEdges.current) clocks.forEach((p) => pulse(p.label));
+    lastEdges.current = edges;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edges]);
 
   return (
     <div className="rounded-xl border border-rim/60 bg-pit overflow-hidden">

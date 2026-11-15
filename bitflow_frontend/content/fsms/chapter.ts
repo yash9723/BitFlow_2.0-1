@@ -82,6 +82,7 @@ const chapter: AcademyTopic = {
       blocks: [
         p("The standard style splits an FSM into three parts: the state register, the next-state logic and the output logic. It reads directly from a state table, and the synthesis tool chooses the encoding if you let it."),
         { kind: "code", text: "localparam S0 = 2'd0, S1 = 2'd1, S2 = 2'd2;\nreg [1:0] state, next;\n\nalways @(posedge clk or posedge rst)      // state register\n  if (rst) state <= S0;\n  else     state <= next;\n\nalways @(*) begin                         // next-state logic\n  next = S0;                              // default: no latches\n  case (state)\n    S0: if (x) next = S1;\n    S1: if (x) next = S2;\n    S2: if (x) next = S2;\n  endcase\nend\n\nassign y = (state == S2);                 // Moore output", caption: "The chapter's machine in Verilog. The default assignment matters: leaving `next` unset on any path would create an unwanted latch." },
+        { kind: "anim", id: "walk-fsm-101" },
         { kind: "link", href: "/studio/challenges/traffic-light", label: "Challenge: traffic light", text: "A classic FSM that also has timing. Build it in the circuit editor, and earn XP." },
       ],
     },

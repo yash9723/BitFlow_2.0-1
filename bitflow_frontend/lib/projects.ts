@@ -22,7 +22,6 @@ export interface ProjectContent {
 type Invalid = { error: string; status: number };
 
 /** The content of a save request, checked; or why it can't be saved. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function projectContent(body: any): { content: ProjectContent } | Invalid {
   const { designCode, testbenchCode } = body ?? {};
   if (typeof designCode !== "string" || typeof testbenchCode !== "string") return { error: "designCode and testbenchCode are required.", status: 400 };

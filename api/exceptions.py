@@ -61,52 +61,6 @@ class InvalidSourceError(VerilogSandboxError):
     error_code  = "invalid_source"
 
 
-class TimeoutValueError(VerilogSandboxError):
-    """Raised when the caller requests a timeout above the server ceiling."""
-    http_status = 422
-    error_code  = "timeout_out_of_range"
-
-
-# =============================================================================
-# Docker / infrastructure errors  (5xx)
-# =============================================================================
-
-class SandboxImageNotFound(VerilogSandboxError):
-    """
-    Raised when the verilog-sandbox Docker image does not exist locally.
-    The operator must run `docker build` before starting the API.
-    """
-    http_status = 503
-    error_code  = "image_not_found"
-
-    def __init__(self, image: str) -> None:
-        super().__init__(
-            f"Docker image '{image}' not found. "
-            "Run: docker build -t verilog-sandbox:latest ."
-        )
-        self.image = image
-
-
-class DockerDaemonError(VerilogSandboxError):
-    """
-    Raised when the Docker daemon is unreachable or returns an unexpected
-    API error (permissions, out-of-disk, etc.).
-    """
-    http_status = 503
-    error_code  = "docker_unavailable"
-
-
-class ContainerStartError(VerilogSandboxError):
-    """Raised when a container fails to start (image pull error, OOM at start, …)."""
-    http_status = 503
-    error_code  = "container_start_failed"
-
-
-class WorkspaceError(VerilogSandboxError):
-    """Raised when the host-side temp directory cannot be created or written."""
-    http_status = 500
-    error_code  = "workspace_error"
-
 
 # =============================================================================
 # Global exception handlers (registered in main.py)

@@ -27,7 +27,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import jwt
 import pytest
@@ -35,8 +35,6 @@ from fastapi.testclient import TestClient
 
 # Patch settings BEFORE importing the app so the lru_cache picks up test values
 TEST_JWT_SECRET = "test-secret-0123456789abcdef0123456789abcdef"
-os.environ.setdefault("DOCKER_IMAGE", "verilog-sandbox:latest")
-os.environ.setdefault("NETWORK_DISABLED", "true")
 os.environ["JWT_SECRET"] = TEST_JWT_SECRET
 
 from api.main import create_app  # noqa: E402 — import after env setup
@@ -141,43 +139,27 @@ def _patch_sandbox(result, vcd_content: bytes = b"$version Icarus $end"):
 
 class TestHealth:
 
-    def test_health_returns_200(self, client):
-        with patch("api.routes.health.docker_is_available", return_value=True):
+    def test_health_is_liveness_only(self, client):
+        # Liveness is about the process: it must answer even with no simulator installed.
+        with patch("api.routes.health.shutil.which", return_value=None):
             resp = client.get("/health")
         assert resp.status_code == 200
+        assert resp.json() == {"status": "ok", "version": "1.0.0"}
 
-    def test_health_shape(self, client):
-        with patch("api.routes.health.docker_is_available", return_value=True):
-            body = client.get("/health").json()
-        assert "status"           in body
-        assert "docker_available" in body
-        assert "image"            in body
-        assert "version"          in body
-
-    def test_health_docker_unavailable(self, client):
-        with patch("api.routes.health.docker_is_available", return_value=False):
-            body = client.get("/health").json()
-        # We still return 200 — liveness is about the process, not Docker
-        assert body["status"]           == "ok"
-        assert body["docker_available"] is False
-
-    def test_status_ready(self, client):
-        fake_info = MagicMock()
-        fake_info.image_id = "sha256:abc"
-        fake_info.size_mb  = 88.0
-        with patch("api.routes.health.docker_is_available", return_value=True), \
-             patch("api.routes.health.inspect_image",       return_value=fake_info):
+    def test_status_ready_when_icarus_is_installed(self, client):
+        installed = {"iverilog", "vvp", "yosys"}
+        with patch("api.routes.health.shutil.which", side_effect=lambda name: f"/usr/bin/{name}" if name in installed else None):
             body = client.get("/status").json()
-        assert body["status"]        == "ready"
-        assert body["image_found"]   is True
-        assert body["image_size_mb"] == 88.0
+        assert body["status"] == "ready"
+        assert body["tools"]["yosys"] is True
+        assert body["tools"]["ghdl"] is False        # optional: absent, still ready
+        assert body["settings_summary"]["timeout_seconds"] >= 1
 
-    def test_status_degraded_no_image(self, client):
-        with patch("api.routes.health.docker_is_available", return_value=True), \
-             patch("api.routes.health.inspect_image",       return_value=None):
-            body = client.get("/status").json()
-        assert body["status"]      == "degraded"
-        assert body["image_found"] is False
+    def test_status_unavailable_without_icarus(self, client):
+        with patch("api.routes.health.shutil.which", side_effect=lambda name: None if name == "vvp" else f"/usr/bin/{name}"):
+            resp = client.get("/status")
+        assert resp.status_code == 200               # the body carries the state
+        assert resp.json()["status"] == "unavailable"
 
     def test_root_without_docs_returns_status(self, client):
         # /docs is disabled by default (ENABLE_DOCS=false), so / returns JSON

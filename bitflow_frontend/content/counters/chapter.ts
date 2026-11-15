@@ -35,6 +35,7 @@ const chapter: AcademyTopic = {
       heading: "Synchronous counters",
       blocks: [
         p("In a **synchronous counter**, all flip-flops share one clock, and logic decides which should toggle. Look at counting in binary: a bit toggles exactly when all the bits below it are 1. So T₀ = 1, T₁ = q₀, and T₂ = q₁q₀."),
+        { kind: "anim", id: "walk-counter" },
         { kind: "circuit", slow: true, circuit: draw("sync_counter", (d) => {
             const clk = d.clock("clk", 20, 360);
             d.part("const1", "one", 20, 30);

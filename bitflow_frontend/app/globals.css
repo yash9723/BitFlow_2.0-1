@@ -27,6 +27,9 @@
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 @layer base {
+  /* Code is shown as typed: the mono font's ligatures would draw Verilog's "<=" (nonblocking assignment) as a "less than or equal" sign and "==" as a bar. */
+  pre, code, kbd, samp, .no-ligatures { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+
   :root {
     --font-ui:      var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-display: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

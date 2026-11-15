@@ -60,6 +60,17 @@ test("sign up, simulate in the Sandbox and save a project", async ({ page }) => 
   await expect(page.getByRole("button", { name: /e2e project/ })).toBeVisible();
 });
 
+test("sign-in errors don't say whether an account exists", async ({ request }) => {
+  // The account from the test above with a wrong password, and a username nobody has: same answer,
+  // including when asking to sign in as an admin (that check comes after the password).
+  const attempt = (name: string) => request.post("/api/auth/login", { data: { username: name, password: "not-the-password", role: "ADMIN" } });
+  const exists = await attempt(username);
+  const missing = await attempt(`nobody${crypto.randomBytes(4).toString("hex")}`);
+  expect(exists.status()).toBe(400);
+  expect(missing.status()).toBe(400);
+  expect(await exists.json()).toEqual(await missing.json());
+});
+
 test("run and submit a problem", async ({ page }) => {
   await quiet(page);
   await signIn(page, false);
