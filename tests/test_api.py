@@ -35,8 +35,6 @@ from fastapi.testclient import TestClient
 
 # Patch settings BEFORE importing the app so the lru_cache picks up test values
 TEST_JWT_SECRET = "test-secret-0123456789abcdef0123456789abcdef"
-os.environ.setdefault("DOCKER_IMAGE", "verilog-sandbox:latest")
-os.environ.setdefault("NETWORK_DISABLED", "true")
 os.environ["JWT_SECRET"] = TEST_JWT_SECRET
 
 from api.main import create_app  # noqa: E402 — import after env setup

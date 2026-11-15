@@ -36,7 +36,9 @@ RULES_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 
 # Its own small pool, so typing never waits behind simulations; 2 keeps it light on 0.1 CPU.
 _slots = asyncio.Semaphore(2)
-_SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}\.(v|sv|vh|svh)$")
+# Names reach Verible's command line: they start with a letter, digit or underscore so one can't
+# be read as an option ("--flag.v") or be a dot-file.
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}\.(v|sv|vh|svh)$")
 
 # design.v:6:3-8: Use 'always_comb' instead of 'always @*'. [Style: combinational-logic] [always-comb]
 # design.v:3:12: syntax error at token ";"

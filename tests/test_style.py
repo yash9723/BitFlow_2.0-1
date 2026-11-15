@@ -82,7 +82,7 @@ class TestEndpoints:
         assert anon.post("/style/lint", json={"files": [{"name": "design.v", "content": UGLY}]}).status_code in (401, 403)
 
     def test_rejects_unsafe_file_names(self, client):
-        for name in ("../etc/passwd.v", "design.exe", "a b.v"):
+        for name in ("../etc/passwd.v", "design.exe", "a b.v", "--lint_fatal.v", "..v"):
             r = client.post("/style/lint", json={"files": [{"name": name, "content": UGLY}]})
             assert r.status_code == 200 and r.json()["ok"] is False, name
 
