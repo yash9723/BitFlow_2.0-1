@@ -194,28 +194,28 @@ function ellipsoid(c, R, r, part, mat) {
 }
 // parts: each has its own number, so edges between them can be seen
 const PART = { pelvis: 1, waist: 2, chest: 3, neck: 4, head: 5, face: 6, upperN: 7, elbowN: 8, foreN: 9, handN: 10, upperF: 11, elbowF: 12, foreF: 13, handF: 14, thighN: 15, kneeN: 16, shinN: 17, footN: 18, thighF: 19, kneeF: 20, shinF: 21, footF: 22, weapon: 23, offWeapon: 24 };
-const useFrame = (name) => { curFrameIndex = FRAME_IDS.indexOf(name); };
+const setFrame = (name) => { curFrameIndex = FRAME_IDS.indexOf(name); };
 
 function drawBody(S) {
   const { B, armN, armF, legN, legF, sN, sF, hipN, hipF, turn } = S, F_ = (name) => B[name];
-  useFrame("pelvis");
+  setFrame("pelvis");
   ellipsoid(add(F_("pelvis").t, mv(F_("pelvis").R, [0, -0.2, 0])), F_("pelvis").R, [2.9, 2.6, 4.2], PART.pelvis, 0);
-  useFrame("waist");
+  setFrame("waist");
   sweep(F_("pelvis").t, F_("chest").t, 3, 3.3, PART.waist, 1);
-  useFrame("chest");
+  setFrame("chest");
   ellipsoid(add(F_("chest").t, mv(F_("chest").R, [0.2, 0.9, 0])), F_("chest").R, [3.4, 4.2, 5.5], PART.chest, 0);
-  useFrame("neck");
+  setFrame("neck");
   sweep(F_("neck").t, add(F_("neck").t, mv(F_("head").R, [0, 1.6, 0])), 1.25, 1.15, PART.neck, 1);
-  useFrame("head");
+  setFrame("head");
   ellipsoid(F_("head").t, F_("head").R, [3, 3.3, 2.8], PART.head, 0);
   ellipsoid(add(F_("head").t, mv(F_("head").R, [0.85, -0.45, 0])), F_("head").R, [2.4, 2.7, 2.35], PART.face, 0);
   const arm = (far, A, sh, up, el, fo, ha, nameU, nameF) => {
     curDim = far ? 1 : 0;
-    useFrame(nameU);
+    setFrame(nameU);
     sphere(sh, 2.5, up, 0);
     sweep(sh, A.joint, 2.1, 1.6, up, 0);
     sphere(A.joint, 1.45, el, 1);
-    useFrame(nameF);
+    setFrame(nameF);
     sweep(A.joint, A.end, 1.6, 1.2, fo, 0, 0.15);
     sphere(A.end, 1.9, ha, 0);
     curDim = 0;
@@ -223,12 +223,12 @@ function drawBody(S) {
   arm(false, armN, sN, PART.upperN, PART.elbowN, PART.foreN, PART.handN, "upperN", "foreN");
   arm(true, armF, sF, PART.upperF, PART.elbowF, PART.foreF, PART.handF, "upperF", "foreF");
   const leg = (far, L, hip, th, kn, sh, fo, nameT, nameS, nameFt) => {
-    useFrame(nameT);
+    setFrame(nameT);
     sweep(hip, L.joint, 3.2, 2.2, th, 0);
     sphere(L.joint, 1.9, kn, 1);
-    useFrame(nameS);
+    setFrame(nameS);
     sweep(L.joint, L.end, 2.15, 1.4, sh, 0, 0.4);
-    useFrame(nameFt);
+    setFrame(nameFt);
     const R = F_(nameFt).R, a = F_(nameFt).t;
     sweep(add(a, mv(R, [-1.5, -0.6, 0])), add(a, mv(R, [4.6, -1.1, 0])), 1.7, 1.25, fo, 0);
   };

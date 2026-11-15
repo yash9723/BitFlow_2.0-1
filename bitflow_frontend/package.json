@@ -1,5 +1,5 @@
 {
-  "name": "verilog-sandbox-frontend",
+  "name": "bitflow-frontend",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -111,6 +111,8 @@
     "seed": "npx tsx prisma/seed.ts"
   },
   "devDependencies": {
-    "@types/three": "0.170.0"
+    "@types/three": "0.170.0",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.35"
   }
 }

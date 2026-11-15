@@ -26,7 +26,6 @@ export const MAX_PNR_CELLS = 4000;
 const MAX_PATHS = 3, MAX_HOPS = 200;
 const round = (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d;
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export function pnrSummary(report: any, placed: any, grid: { width: number; height: number }): PnrSummary {
   const fmax = Object.entries<any>(report?.fmax ?? {})
     .filter(([, v]) => v?.achieved)
@@ -60,7 +59,6 @@ export function pnrSummary(report: any, placed: any, grid: { width: number; heig
   const sortedTiles = [...tiles.values()].sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2].localeCompare(b[2]));
   return { ok: true, fmax, utilization, grid, tiles: sortedTiles, cells, critical: critical.slice(0, MAX_PATHS) };
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** "q_SB_DFFESR_Q_7_D_SB_LUT4_O_LC" -> "q"; "alu.sum_SB_LUT4_O" -> "alu.sum": the design signal a cell came from. */
 export function signalOf(cell: string): string {

@@ -32,6 +32,8 @@ jobs:
           tar -xzf /tmp/verible.tgz -C /tmp
           sudo install -m 755 /tmp/verible-$V/bin/verible-verilog-lint /tmp/verible-$V/bin/verible-verilog-format /usr/local/bin/
       - run: pip install -r requirements-dev.txt
+      - name: Lint (unused or undefined names, syntax errors)
+        run: ruff check api tests --select F,E9
       - run: python -m pytest tests -q
 
   # OpenSTA is packaged by Debian but not Ubuntu: the ASIC flow runs in the API image's base.
@@ -83,6 +85,7 @@ jobs:
           cache: npm
           cache-dependency-path: bitflow_frontend/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm run type-check
       - run: npm run build
         env:

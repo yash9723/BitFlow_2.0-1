@@ -27,7 +27,7 @@ export default function SchematicView({ netlist, cursor, onOpenSource, describe 
   const hot = useMemo(() => new Set(emphasis ?? []), [emphasis]);
   const { top } = useMemo(() => schematicModules(netlist), [netlist]);
   const [path, setPath] = useState<string[]>(top ? [top] : []);
-  const module = path[path.length - 1];
+  const current = path[path.length - 1];
   const [layout, setLayout] = useState<SchLayout | null | "loading" | "error">("loading");
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
   const [selected, setSelected] = useState<string | null>(null);
@@ -45,15 +45,15 @@ export default function SchematicView({ netlist, cursor, onOpenSource, describe 
   }, []);
 
   useEffect(() => {
-    if (!module) return;
+    if (!current) return;
     let stale = false;
     setLayout("loading");
     setSelected(null);
-    schematicLayout(netlist, module)
+    schematicLayout(netlist, current)
       .then((L) => { if (!stale) { setLayout(L); if (L) requestAnimationFrame(() => fit(L)); } })
       .catch(() => { if (!stale) setLayout("error"); });
     return () => { stale = true; };
-  }, [netlist, module, fit]);
+  }, [netlist, current, fit]);
 
   // Wheel zoom around the pointer (a native listener: React's wheel events can't preventDefault).
   useEffect(() => {
@@ -107,11 +107,11 @@ export default function SchematicView({ netlist, cursor, onOpenSource, describe 
            }}
            onPointerUp={() => { setTimeout(() => { drag.current = null; }, 0); }}
            onPointerLeave={() => { drag.current = null; }}>
-        {layout === "loading" && <span className="absolute inset-0 flex items-center justify-center gap-2 font-mono text-[11px] text-dim"><PixelSpinner size={12} /> Laying out {module}…</span>}
+        {layout === "loading" && <span className="absolute inset-0 flex items-center justify-center gap-2 font-mono text-[11px] text-dim"><PixelSpinner size={12} /> Laying out {current}…</span>}
         {layout === "error" && <p className="p-3 font-mono text-[11px] text-danger">The schematic couldn&apos;t be laid out.</p>}
         {layout === null && <p className="p-3 font-mono text-[11px] text-dim">No module to draw.</p>}
         {L && (
-          <svg width="100%" height="100%" role="img" aria-label={`Schematic of ${module}`} fontFamily="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" fontSize={11}
+          <svg width="100%" height="100%" role="img" aria-label={`Schematic of ${current}`} fontFamily="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" fontSize={11}
                onClick={(e) => { if (e.target === e.currentTarget && !drag.current?.moved) setSelected(null); }}>
             <defs>
               <marker id="sv-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill={C.line} /></marker>

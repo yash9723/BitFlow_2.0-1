@@ -37,11 +37,11 @@ export function indexVerilog(files: SourceFile[]): VerilogIndex {
     }
     for (const m of code.matchAll(DECL)) {
       const at = m.index! + m[0].indexOf(m[1]);
-      const module = spans.find((s) => at >= s.from && at <= s.to)?.name ?? null;
+      const inModule = spans.find((s) => at >= s.from && at <= s.to)?.name ?? null;
       const kind = (m[1] + m[2]).replace(/\s+/g, " ").trim();
       for (const name of m[4].split(",").map((s) => s.trim().match(/^[A-Za-z_]\w*/)?.[0]).filter((n): n is string => !!n)) {
-        if (!decls.some((d) => d.name === name && d.module === module && d.file === f.name)) {
-          decls.push({ name, kind, range: (m[3] ?? "").trim(), file: f.name, line: lineAt(code, at), module });
+        if (!decls.some((d) => d.name === name && d.module === inModule && d.file === f.name)) {
+          decls.push({ name, kind, range: (m[3] ?? "").trim(), file: f.name, line: lineAt(code, at), module: inModule });
         }
       }
     }
@@ -285,9 +285,9 @@ export function driverOf(files: SourceFile[], name: string, scope: string): Loc 
     for (const re of patterns) {
       for (const m of code.matchAll(re)) {
         const at = m.index! + m[0].search(new RegExp(`\\b${n}\\b`));
-        const module = spans.find((s) => at >= s.from && at < s.to)?.name ?? null;
+        const inModule = spans.find((s) => at >= s.from && at < s.to)?.name ?? null;
         if (/^\s*(input|output|inout|wire|reg|logic|parameter|localparam)\b/.test(code.slice(code.lastIndexOf("\n", at) + 1, at))) continue;  // a declaration's initialiser counts below only if nothing else drives it
-        found.push({ file: f.name, ...posAt(code, at), length: name.length, module });
+        found.push({ file: f.name, ...posAt(code, at), length: name.length, module: inModule });
       }
     }
   }
