@@ -32,7 +32,8 @@ async function getShared(id: string) {
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const s = await getShared(params.id);
-  return { title: s ? s.title : "Design not found" };   // the root layout adds " · BitFlow"
+  if (!s) notFound();   // in metadata so the status is a real 404 (app/loading.tsx streams otherwise)
+  return { title: s.title };   // the root layout adds " · BitFlow"
 }
 
 function Code({ name, code }: { name: string; code: string }) {

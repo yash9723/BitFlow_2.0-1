@@ -21,7 +21,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps) {
   const problem = await getArenaProblemBySlugFromDb((await params).slug);
-  if (!problem) return { title: "Problem not found" };
+  if (!problem) notFound();   // here, not only in the page: metadata resolves before app/loading.tsx streams a 200
   return {
     title:       { absolute: `${problem.title} · BitFlow` },   // app/arena/layout.tsx's plain title drops the root template
     description: `${problem.title}: a ${String(problem.difficulty).toLowerCase()} ${problem.category} problem in the BitFlow Arena, graded against hidden tests.`,

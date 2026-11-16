@@ -5,6 +5,7 @@
 // the worked solution and starter code; hidden tests and the reference solution are never selected.
 import Link from "next/link";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import AuthGate from "@/components/AuthGate";
 import SiteHeader from "@/components/SiteHeader";
 import ReportIssueLink from "@/components/feedback/ReportIssueLink";
@@ -20,7 +21,7 @@ const readable = (q: { archived: boolean; unlockAfter: string | null } | null) =
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const q = await prisma.question.findUnique({ where: { slug: params.slug }, select: { title: true, difficulty: true, archived: true, unlockAfter: true } });
-  if (!q) return { ...GATED, title: "Problem not found" };
+  if (!q) notFound();   // in metadata so the status is a real 404: the page is a client component and app/loading.tsx streams
   const level = q.difficulty.toLowerCase();
   const description = `${q.title}: ${/^[aeiou]/.test(level) ? "an" : "a"} ${level} Verilog problem on BitFlow. Write the module, simulate it and get graded against hidden tests.`;
   return readable(q) ? pageMeta(`/problems/${params.slug}`, q.title, description) : { ...GATED, title: q.title, description };

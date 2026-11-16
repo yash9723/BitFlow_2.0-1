@@ -19,7 +19,7 @@ const fmt = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: 
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const c = await certificateById(params.id);
-  if (!c) return { title: "Certificate not found", robots: { index: false } };
+  if (!c) notFound();   // in metadata so the status is a real 404 (app/loading.tsx streams otherwise)
   return {
     title: `${c.track.name} certificate: ${c.username}`,
     description: `${c.username} completed the ${c.track.name} track on ${SITE_NAME} (${c.problems} ${c.track.lessons ? "lessons" : "problems"}), ${fmt(c.issuedAt)}.`,

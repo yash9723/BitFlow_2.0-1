@@ -12,9 +12,8 @@ export const dynamic = "force-dynamic";
 
 export function generateMetadata({ params }: { params: { id: string } }) {
   const c = challengeById(params.id);
-  return c
-    ? pageMeta(`/studio/challenges/${c.id}`, `${c.title}: circuit challenge`, c.statement.length < 100 ? `${c.statement} Build it in your browser; BitFlow checks it by simulation.` : c.statement)
-    : { title: "Challenge not found" };
+  if (!c) notFound();   // in metadata so the status is a real 404 (app/loading.tsx streams otherwise)
+  return pageMeta(`/studio/challenges/${c.id}`, `${c.title}: circuit challenge`, c.statement.length < 100 ? `${c.statement} Build it in your browser; BitFlow checks it by simulation.` : c.statement);
 }
 
 export default async function ChallengePage({ params }: { params: { id: string } }) {

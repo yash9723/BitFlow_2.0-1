@@ -14,6 +14,14 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+// The lookup also runs here: metadata resolves before app/loading.tsx streams, so a missing slug gets a real 404.
+export async function generateMetadata({ params }: PageProps) {
+  const { slug } = await params;
+  const q = await prisma.question.findUnique({ where: { slug }, select: { slug: true } });
+  if (!q) notFound();
+  return {};
+}
+
 export default async function LearnPage({ params }: PageProps) {
   const { slug } = await params;
 

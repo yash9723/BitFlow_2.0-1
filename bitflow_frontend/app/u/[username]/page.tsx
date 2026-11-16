@@ -30,7 +30,7 @@ async function publicUserId(username: string): Promise<string | null> {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const id = await publicUserId(params.username);
-  if (!id) return { title: "Profile not found", robots: { index: false } };
+  if (!id) notFound();   // in metadata so the status is a real 404 (app/loading.tsx streams otherwise)
   const name = decodeURIComponent(params.username);
   return {
     title: `${name}'s profile`,
