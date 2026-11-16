@@ -7,9 +7,10 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import AuthGate from "@/components/AuthGate";
 import SiteHeader from "@/components/SiteHeader";
+import ReportIssueLink from "@/components/feedback/ReportIssueLink";
 import { getSessionUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
-import { GATED, SITE_URL, jsonLd, pageMeta } from "@/lib/site";
+import { GATED, SITE_URL, breadcrumbs, jsonLd, pageMeta } from "@/lib/site";
 
 const listOf = (json: string): string[] => { try { const v = JSON.parse(json); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
 const examplesOf = (json: string): { input?: string; output?: string; explanation?: string }[] => { try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; } };
@@ -20,7 +21,8 @@ const readable = (q: { archived: boolean; unlockAfter: string | null } | null) =
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const q = await prisma.question.findUnique({ where: { slug: params.slug }, select: { title: true, difficulty: true, archived: true, unlockAfter: true } });
   if (!q) return { ...GATED, title: "Problem not found" };
-  const description = `${q.title}: a ${q.difficulty.toLowerCase()} Verilog problem on BitFlow. Write the module, simulate it and get graded against hidden tests.`;
+  const level = q.difficulty.toLowerCase();
+  const description = `${q.title}: ${/^[aeiou]/.test(level) ? "an" : "a"} ${level} Verilog problem on BitFlow. Write the module, simulate it and get graded against hidden tests.`;
   return readable(q) ? pageMeta(`/problems/${params.slug}`, q.title, description) : { ...GATED, title: q.title, description };
 }
 
@@ -48,6 +50,7 @@ export default async function Layout({ children, params }: { children: React.Rea
   return (
     <div className="min-h-screen bg-void text-bright">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(schema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(breadcrumbs([["Problems", "/problems"], [q.title, `/problems/${params.slug}`]])) }} />
       <SiteHeader />
       <main className="max-w-3xl mx-auto px-6 py-10 space-y-6">
         <nav aria-label="Breadcrumb" className="font-mono text-[11px] text-dim">
@@ -56,6 +59,7 @@ export default async function Layout({ children, params }: { children: React.Rea
         <header className="space-y-2">
           <h1 className="font-serif text-3xl leading-tight">{q.title}</h1>
           <p className="font-mono text-[11px] uppercase tracking-widest text-ghost">{q.difficulty} · {q.category} · {q.xpReward} XP</p>
+          <ReportIssueLink slug={params.slug} className="font-mono text-[11px]" />
         </header>
 
         <div className="rounded-xl border border-phosphor/30 bg-phosphor/5 p-5 flex flex-wrap items-center justify-between gap-4">

@@ -40,7 +40,27 @@ const config: Config = {
       },
 
       // ── Typography ───────────────────────────────────────────────────────
+      // The type scale of the landing, sign-in and dashboard pages. Reading text (Inter) has five steps and
+      // three headings, each with its own line height, tracking and weight, so a size is one class.
+      // The pixel face (Jersey 10) is drawn on a grid of 56/3 font pixels to the em: it is only sharp at
+      // sizes where one font pixel is a whole number of screen pixels, which is what pixel-2 … pixel-6 are.
+      fontSize: {
+        caption:      ["12px", { lineHeight: "16px", letterSpacing: "0.01em" }],
+        small:        ["13px", { lineHeight: "20px" }],
+        body:         ["15px", { lineHeight: "24px" }],
+        lead:         ["17px", { lineHeight: "28px" }],
+        subhead:      ["18px", { lineHeight: "26px", letterSpacing: "-0.01em", fontWeight: "500" }],
+        "heading-sm": ["26px", { lineHeight: "32px", letterSpacing: "-0.015em", fontWeight: "600" }],
+        heading:      ["32px", { lineHeight: "38px", letterSpacing: "-0.02em", fontWeight: "600" }],
+        headline:     ["40px", { lineHeight: "44px", letterSpacing: "-0.025em", fontWeight: "600" }],
+        "pixel-2":    ["37.333px", { lineHeight: "0.857", fontWeight: "400" }],
+        "pixel-3":    ["56px",     { lineHeight: "0.857", fontWeight: "400" }],
+        "pixel-4":    ["74.667px", { lineHeight: "0.857", fontWeight: "400" }],
+        "pixel-6":    ["112px",    { lineHeight: "0.857", fontWeight: "400" }],
+      },
       fontFamily: {
+        // Inter at its normal weight, for reading text (font-display and font-serif are bold by a rule in globals.css)
+        ui:      ["var(--font-ui)", "sans-serif"],
         // Blocky pixel lettering for the pixel UI (components/pixel)
         pixel:   ["var(--font-pixel)", "monospace"],
         // Headings, branding, body copy — Inter, site-wide
@@ -103,6 +123,11 @@ const config: Config = {
           "0%, 100%": { opacity: "0.12" },
           "50%":      { opacity: "0.85" },
         },
+        // The landing page's waveform cursor sweeping across the trace (--scan is how far, in the SVG's own units)
+        scan: {
+          from: { transform: "translateX(0)" },
+          to:   { transform: "translateX(var(--scan))" },
+        },
         // Chip mascot antenna idle wiggle
         wiggle: {
           "0%, 100%": { transform: "rotate(-5deg)" },
@@ -143,6 +168,7 @@ const config: Config = {
         dash:       "dash 2.4s linear forwards",
         fade_up:    "fade_up 0.5s ease-out both",
         trace_flow: "trace_flow 1.9s linear infinite",
+        scan:       "scan 7s linear infinite",
         pulse_glow: "pulse_glow 6s ease-in-out infinite",
         cell_pulse: "cell_pulse 2.4s ease-in-out infinite",
         wiggle:      "wiggle 2.6s ease-in-out infinite",

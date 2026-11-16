@@ -20,6 +20,7 @@ import {
   quizPassed,
 } from "@/lib/academy-progress-storage";
 import SiteHeader from "@/components/SiteHeader";
+import HelpfulBlock from "@/components/feedback/HelpfulBlock";
 import { useAuth } from "@/hooks/useAuth";
 import { LESSONS_SYNCED, reportLesson } from "@/lib/lesson-sync";
 
@@ -131,6 +132,7 @@ export default function TopicView({ topic, prev, next }: Props) {
             {topic.extraInteractives?.map((id) => (
               <InteractiveWidget key={id} id={id} />
             ))}
+            <HelpfulBlock target={topic.slug} what="chapter" />
           </div>
         )}
         {(tab === "quiz" || tab === "flashcards") && !user && (

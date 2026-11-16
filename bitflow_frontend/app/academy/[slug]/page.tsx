@@ -17,6 +17,7 @@ interface Props {
 export function generateStaticParams() {
   return getTopicSlugs().map((slug) => ({ slug }));
 }
+export const dynamicParams = false;   // unknown slugs get a real 404; app/loading.tsx would otherwise stream them with a 200
 
 export function generateMetadata({ params }: Props): Metadata {
   const topic = getTopicBySlug(params.slug);

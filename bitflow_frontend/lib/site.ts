@@ -28,12 +28,29 @@ export const CONTACT_EMAIL = process.env.CONTACT_EMAIL || null;
  */
 export const pageMeta = (path: string, title: string, description: string) => {
   const full = `${title} · ${SITE_NAME}`;   // openGraph and twitter titles don't go through the root title template
+  description = snippet(description);
   return {
-    title, description, alternates: { canonical: path },
+    // Search results cut titles at about 60 characters: drop the " · BitFlow" suffix rather than the page's own words.
+    title: full.length > 60 ? { absolute: title } : title,
+    description, alternates: { canonical: path },
     openGraph: { type: "website" as const, siteName: SITE_NAME, title: full, description, url: path },
     twitter: { card: "summary_large_image" as const, title: full, description },
   };
 };
+
+/** A meta description that fits a search snippet (~160 characters), cut at a word boundary. */
+export const snippet = (text: string, max = 160) => {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length <= max ? t : `${t.slice(0, t.lastIndexOf(" ", max - 1))}…`;
+};
+
+/** BreadcrumbList structured data from [name, path] pairs, home first. */
+export const breadcrumbs = (trail: [string, string][]) => ({
+  "@context": "https://schema.org", "@type": "BreadcrumbList",
+  itemListElement: [["Home", "/"] as [string, string], ...trail].map(([name, path], i) => ({
+    "@type": "ListItem", position: i + 1, name, item: `${SITE_URL}${path === "/" ? "" : path}`,
+  })),
+});
 
 /** Paths no crawler should fetch (app/robots.ts). */
 export const PRIVATE_PATHS = ["/api/", "/admin", "/dashboard", "/profile", "/classes", "/s/", "/reset-password", "/guardian/"];

@@ -6,7 +6,8 @@ export const metadata = {
   ...pageMeta("/academy", "Academy",
     "Digital electronics from your first bit to the university and GATE syllabus, with circuits you can click, worked examples and quizzes."),
   // A string title in a layout drops the root template for its pages, so give the chapters their own.
-  title: { default: "Academy · BitFlow", template: "%s · BitFlow Academy" },
+  // The default still goes through the root "%s · BitFlow" template, so it is just "Academy".
+  title: { default: "Academy", template: "%s · BitFlow Academy" },
 };
 
 export default function AcademyLayout({ children }: { children: React.ReactNode }) {

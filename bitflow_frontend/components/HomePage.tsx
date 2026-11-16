@@ -1,14 +1,22 @@
 "use client";
+/**
+ * components/HomePage.tsx — the landing page (mounted by app/page.tsx, which also owns its metadata and
+ * structured data). Top to bottom: the bench (a Verilog module beside the waveform it produces), what you
+ * work with, the learning path, the Academy's topics as the pins of a chip, questions, and the way in.
+ * The path and the questions come from lib/home-path.ts and lib/home-faq.ts, which also feed the page's
+ * structured data, so keep rendering every item of both.
+ */
 
 import { HOME_FAQ } from "@/lib/home-faq";
 import { type HomeFacts, homePath } from "@/lib/home-path";
-import { useEffect } from "react";
+import { SITE_TAGLINE } from "@/lib/site";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SiteLinks } from "@/components/SiteFooter";
 import { useAuth } from "@/hooks/useAuth";
+import AsciiChips from "@/components/AsciiChips";
 
-/* ── Nav links — centered between logo and Sign In ────────────────── */
 const NAV_LINKS = [
   { label: "Sandbox IDE", href: "/sandbox" },
   { label: "Learning", href: "/learn" },
@@ -17,194 +25,233 @@ const NAV_LINKS = [
   { label: "About", href: "/about" },
 ];
 
-/* ── Real product stats — no invented numbers; the counts are read from the product (app/page.tsx) ─── */
-const statsFor = (f: HomeFacts) => [
-  ...(f.problems ? [{ value: String(f.problems), label: "Practice Problems" }] : []),
-  { value: String(f.chapters), label: "Academy Chapters" },
-  { value: "100%", label: "Browser-Based" },
-];
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-phosphor";
+const PRIMARY = `inline-block px-6 py-3 rounded-md bg-phosphor text-void text-body font-semibold hover:bg-phosphor-glow transition-colors ${FOCUS}`;
 
-/* ── Why BitFlow cards ─────────────────────────────────────────────── */
-const WHY_CARDS = [
+/* ── The bench: three small modules, each with the waveform it produces ───────────────────────────── */
+
+interface Signal {
+  name: string;
+  /** clk is drawn as a clock; inputs are what you drive, outputs what the module answers with. */
+  role: "clk" | "in" | "out";
+  /** A multi-bit value, drawn as labelled cells instead of a high/low line. */
+  bus?: boolean;
+  /** One value per clock cycle. */
+  v: number[];
+}
+
+const EXAMPLES: { tab: string; code: string; signals: Signal[] }[] = [
   {
-    title: "Browser-based Verilog IDE",
-    badge: "Zero Setup",
-    body: "Full write-to-simulate pipeline runs in your browser. No Vivado, no ModelSim — open a problem and start writing Verilog.",
-    icon: (
-      <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-      </svg>
-    ),
+    tab: "4-bit counter",
+    code: `module counter(
+  input            clk, rst,
+  output reg [3:0] q
+);
+  always @(posedge clk)
+    if (rst) q <= 0;
+    else     q <= q + 1;
+endmodule`,
+    signals: [
+      { name: "clk", role: "clk", v: [] },
+      { name: "rst", role: "in", v: [1, 0, 0, 0, 0, 0, 0, 0] },
+      { name: "q[3:0]", role: "out", bus: true, v: [0, 1, 2, 3, 4, 5, 6, 7] },
+    ],
   },
   {
-    title: "Real-time Waveform Viewer",
-    badge: "Live Debug",
-    body: "Every simulation generates an interactive VCD waveform. Inspect signals and catch timing issues, inline.",
-    icon: (
-      <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h4l3 8 4-16 3 8h4" />
-      </svg>
-    ),
+    tab: "2-to-1 mux",
+    code: `module mux2(
+  input  a, b, sel,
+  output y
+);
+  assign y = sel ? b : a;
+endmodule`,
+    signals: [
+      { name: "a", role: "in", v: [0, 1, 1, 0, 1, 0, 0, 1] },
+      { name: "b", role: "in", v: [1, 1, 0, 0, 1, 1, 0, 0] },
+      { name: "sel", role: "in", v: [0, 0, 0, 0, 1, 1, 1, 1] },
+      { name: "y", role: "out", v: [0, 1, 1, 0, 1, 1, 0, 0] },
+    ],
   },
   {
-    title: "Structured Learning Path",
-    badge: "Guided",
-    body: "From number systems to FSMs, each Academy module builds on the last — with problems tied to every concept.",
-    icon: (
-      <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M12 6.25v13M12 6.25C10.83 5.48 9.25 5 7.5 5S4.17 5.48 3 6.25v13C4.17 18.48 5.75 18 7.5 18s3.33.48 4.5 1.25m0-13C13.17 5.48 14.75 5 16.5 5c1.75 0 3.33.48 4.5 1.25v13C19.83 18.48 18.25 18 16.5 18c-1.75 0-3.33.48-4.5 1.25"
-        />
-      </svg>
-    ),
+    tab: "Rising-edge detector",
+    code: `module rise(
+  input  clk, d,
+  output pulse
+);
+  reg q;
+  always @(posedge clk) q <= d;
+  assign pulse = d & ~q;
+endmodule`,
+    signals: [
+      { name: "clk", role: "clk", v: [] },
+      { name: "d", role: "in", v: [0, 0, 1, 1, 1, 0, 1, 1] },
+      { name: "q", role: "out", v: [0, 0, 0, 1, 1, 1, 0, 1] },
+      { name: "pulse", role: "out", v: [0, 0, 1, 0, 0, 0, 1, 0] },
+    ],
   },
 ];
 
-/* ── Academy categories — match the real content folder names ────── */
-const CATEGORIES = [
-  { title: "Number Systems", tags: "Binary · Hex · BCD" },
-  { title: "Boolean Algebra", tags: "K-Maps · SOP · POS" },
-  { title: "Logic Gates", tags: "AND · OR · XOR" },
-  { title: "Combinational Logic", tags: "Mux · Decoder · Adder" },
-  { title: "Sequential Logic", tags: "Flip-Flops · Latches" },
-  { title: "FSMs", tags: "Mealy · Moore" },
-  { title: "Memory", tags: "RAM · ROM · FIFO" },
-  { title: "Timing", tags: "Setup · Hold · Skew" },
-];
+const CODE_TOKEN = /(\b(?:module|endmodule|input|output|reg|always|posedge|assign|if|else)\b|\b\d+\b)/;
 
-/* ── 12 traces radiating from the die to the canvas edges ─────────── */
-const TRACES = [
-  { d: "M170,180 L170,20" }, { d: "M210,180 L210,20" }, { d: "M250,180 L250,20" },
-  { d: "M170,320 L170,480" }, { d: "M210,320 L210,480" }, { d: "M250,320 L250,480" },
-  { d: "M140,210 L20,210" }, { d: "M140,250 L20,250" }, { d: "M140,290 L20,290" },
-  { d: "M280,210 L400,210" }, { d: "M280,250 L400,250" }, { d: "M280,290 L400,290" },
-];
-const PADS = [
-  { cx: 170, cy: 20 }, { cx: 210, cy: 20 }, { cx: 250, cy: 20 },
-  { cx: 170, cy: 480 }, { cx: 210, cy: 480 }, { cx: 250, cy: 480 },
-  { cx: 20, cy: 210 }, { cx: 20, cy: 250 }, { cx: 20, cy: 290 },
-  { cx: 400, cy: 210 }, { cx: 400, cy: 250 }, { cx: 400, cy: 290 },
-];
-const DIE_CELLS = [
-  { x: 151.4, y: 216.2, delay: "0s" },
-  { x: 176.2, y: 265.8, delay: ".3s" },
-  { x: 201, y: 191.4, delay: ".6s" },
-  { x: 201, y: 290.6, delay: ".9s" },
-  { x: 225.8, y: 241, delay: "1.2s" },
-  { x: 250.6, y: 216.2, delay: "1.5s" },
-  { x: 176.2, y: 216.2, delay: "1.8s" },
-  { x: 225.8, y: 290.6, delay: "2.1s" },
-];
-const GR_RINGS = [
-  { x: 180, y: 220, s: 60 },
-  { x: 162.7, y: 202.7, s: 94.6 },
-  { x: 134.9, y: 174.9, s: 150.2 },
-  { x: 88.5, y: 128.5, s: 243 },
-  { x: 10.8, y: 50.8, s: 398.4 },
-];
-
-/* ── The 2D chip: signals flow outward from the die to 12 pads ────── */
-function ChipVisual() {
+/** Verilog with its keywords and numbers picked out. */
+function Code({ source }: { source: string }) {
   return (
-    <div className="relative h-[560px] w-full">
-      {/* ambient glow to keep the column filled, no dead space */}
-      <div
-        className="absolute -inset-[12%] pointer-events-none blur-[8px]"
-        style={{
-          background:
-            "radial-gradient(circle at 50% 46%, rgba(0,232,122,.18), rgba(0,232,122,.05) 45%, transparent 72%)",
-        }}
+    <pre className="font-mono text-small leading-[1.7] text-pale overflow-x-auto">
+      <code>
+        {source.split(CODE_TOKEN).map((part, i) =>
+          i % 2 === 0 ? part : <span key={i} className={/^\d/.test(part) ? "text-warn" : "text-phosphor"}>{part}</span>,
+        )}
+      </code>
+    </pre>
+  );
+}
+
+// Waveform geometry, in the SVG's own units.
+const CYCLES = 8, CYCLE_W = 44, LEFT = 84, ROW = 38, HIGH = 9, LOW = 27;
+const WAVE_W = LEFT + CYCLES * CYCLE_W + 10;
+const level = (bit: number) => (bit ? HIGH : LOW);
+
+/** A one-bit signal as a path: a clock ticks every cycle, anything else holds its value for the cycle. */
+function trace({ role, v }: Signal) {
+  let d = "";
+  for (let i = 0; i < CYCLES; i++) {
+    const x = LEFT + i * CYCLE_W, to = i ? "L" : "M";
+    d += role === "clk"
+      ? `${to}${x},${LOW} L${x},${HIGH} L${x + CYCLE_W / 2},${HIGH} L${x + CYCLE_W / 2},${LOW} L${x + CYCLE_W},${LOW} `
+      : `${to}${x},${level(v[i])} L${x + CYCLE_W},${level(v[i])} `;
+  }
+  return d;
+}
+
+function Waveform({ signals, label }: { signals: Signal[]; label: string }) {
+  const bottom = signals.length * ROW;
+  return (
+    <svg viewBox={`0 0 ${WAVE_W} ${bottom + 20}`} className="w-full min-w-[400px] h-auto font-mono" role="img" aria-label={label}>
+      {Array.from({ length: CYCLES + 1 }, (_, i) => (
+        <line key={i} x1={LEFT + i * CYCLE_W} x2={LEFT + i * CYCLE_W} y1={0} y2={bottom} stroke="#22232d" strokeDasharray="2 4" />
+      ))}
+      {signals.map((s, row) => {
+        const color = s.role === "out" ? "#00e87a" : s.role === "clk" ? "#80839d" : "#b0b3cc";
+        return (
+          <g key={s.name} transform={`translate(0 ${row * ROW})`}>
+            <text x={LEFT - 12} y={23} textAnchor="end" fontSize={12} fill={color}>{s.name}</text>
+            {s.bus ? s.v.map((value, i) => {
+              const x = LEFT + i * CYCLE_W, mid = (HIGH + LOW) / 2;
+              return (
+                <g key={i}>
+                  <polygon
+                    points={`${x},${mid} ${x + 5},${HIGH} ${x + CYCLE_W - 5},${HIGH} ${x + CYCLE_W},${mid} ${x + CYCLE_W - 5},${LOW} ${x + 5},${LOW}`}
+                    fill="none" stroke={color} strokeWidth={1.5}
+                  />
+                  <text x={x + CYCLE_W / 2} y={mid + 4} textAnchor="middle" fontSize={11} fill={color}>{value.toString(16)}</text>
+                </g>
+              );
+            }) : <path d={trace(s)} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />}
+          </g>
+        );
+      })}
+      {Array.from({ length: CYCLES }, (_, i) => (
+        <text key={i} x={LEFT + (i + 0.5) * CYCLE_W} y={bottom + 15} textAnchor="middle" fontSize={10} fill="#80839d">{i}</text>
+      ))}
+      <line
+        x1={LEFT} x2={LEFT} y1={0} y2={bottom} stroke="#00ff88" strokeWidth={1} opacity={0.7}
+        className="animate-scan" style={{ ["--scan" as string]: `${CYCLES * CYCLE_W}px` }}
       />
+    </svg>
+  );
+}
 
-      {/* golden-ratio concentric rings, each scaled by phi */}
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 420 500" preserveAspectRatio="xMidYMid meet">
-        <g>
-          {GR_RINGS.map((r, i) => (
-            <rect
-              key={i}
-              x={r.x}
-              y={r.y}
-              width={r.s}
-              height={r.s}
-              fill="none"
-              stroke="rgba(0,232,122,.15)"
-              strokeWidth={1}
-              className="animate-pulse_glow"
-              style={{ animationDelay: `${i * 0.3}s` }}
-            />
-          ))}
-        </g>
-      </svg>
-
-      {/* the chip: die + 12 traces to pads at the edges */}
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 420 500" preserveAspectRatio="xMidYMid meet">
-        {TRACES.map((t, i) => (
-          <g key={i}>
-            <path d={t.d} fill="none" stroke="rgba(0,232,122,.22)" strokeWidth={1.4} />
-            <path
-              d={t.d}
-              pathLength={100}
-              fill="none"
-              stroke="#00ff88"
-              strokeWidth={2.6}
-              strokeLinecap="round"
-              strokeDasharray="16 84"
-              className="animate-trace_flow"
-              style={{ animationDelay: `${i * 0.15}s` }}
-            />
-            <circle r={3.2} fill="#00ff88" style={{ filter: "drop-shadow(0 0 4px rgba(0,255,136,.85))" }}>
-              <animateMotion
-                path={t.d}
-                dur={`${1.5 + (i % 3) * 0.35}s`}
-                begin={`${i * 0.14}s`}
-                repeatCount="indefinite"
-              />
-            </circle>
-          </g>
+function Bench() {
+  const [picked, setPicked] = useState(0);
+  const example = EXAMPLES[picked];
+  return (
+    <div className="rounded-lg border border-rim bg-pit overflow-hidden">
+      <div className="flex gap-1 border-b border-rim bg-shaft px-2 pt-2 overflow-x-auto">
+        {EXAMPLES.map((e, i) => (
+          <button
+            key={e.tab}
+            type="button"
+            aria-pressed={i === picked}
+            onClick={() => setPicked(i)}
+            className={`shrink-0 px-4 py-2 rounded-t-md font-mono text-caption transition-colors ${FOCUS} ${
+              i === picked ? "bg-pit text-bright border border-rim border-b-pit -mb-px" : "text-ghost hover:text-bright border border-transparent"
+            }`}
+          >
+            {e.tab}
+          </button>
         ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[5fr_7fr]">
+        <div className="p-5 md:p-7 border-b lg:border-b-0 lg:border-r border-rim">
+          <Code source={example.code} />
+        </div>
+        <div className="p-5 md:p-7 flex items-center overflow-x-auto">
+          <Waveform signals={example.signals} label={`Waveform of the ${example.tab} over eight clock cycles`} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
-        {PADS.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.cx} cy={p.cy} r={5} fill="#0d0e11" stroke="#00e87a" strokeWidth={1.4} />
-            <circle
-              cx={p.cx}
-              cy={p.cy}
-              r={2}
-              fill="#00e87a"
-              className="animate-pulse_glow"
-              style={{ animationDelay: `${i * 0.15}s` }}
-            />
-          </g>
-        ))}
+/* ── What you work with ────────────────────────────────────────────────────────────────────────── */
+const TOOLS = [
+  {
+    title: "A Verilog IDE in your browser",
+    body: "Write, compile and simulate without leaving the page. There is no Vivado or ModelSim to install: open a problem and start typing.",
+  },
+  {
+    title: "A waveform for every run",
+    body: "Each simulation produces a waveform you can step through, so you can inspect signals and find the cycle where things went wrong.",
+  },
+  {
+    title: "A path that builds on itself",
+    body: "From number systems to state machines, each Academy chapter leans on the one before it, with problems tied to every concept.",
+  },
+];
 
-        <rect x={140} y={180} width={140} height={140} rx={8} fill="#0d0e11" stroke="rgba(0,232,122,.5)" strokeWidth={1.5} />
-        <g stroke="rgba(0,232,122,.15)" strokeWidth={1}>
-          <line x1={172.8} y1={188} x2={172.8} y2={312} />
-          <line x1={197.6} y1={188} x2={197.6} y2={312} />
-          <line x1={222.4} y1={188} x2={222.4} y2={312} />
-          <line x1={247.2} y1={188} x2={247.2} y2={312} />
-          <line x1={148} y1={212.8} x2={272} y2={212.8} />
-          <line x1={148} y1={237.6} x2={272} y2={237.6} />
-          <line x1={148} y1={262.4} x2={272} y2={262.4} />
-          <line x1={148} y1={287.2} x2={272} y2={287.2} />
-        </g>
-        {DIE_CELLS.map((c, i) => (
-          <rect
-            key={i}
-            x={c.x}
-            y={c.y}
-            width={18}
-            height={18}
-            rx={2}
-            fill="#00e87a"
-            className="animate-cell_pulse"
-            style={{ animationDelay: c.delay }}
-          />
-        ))}
-        <circle cx={210} cy={250} r={6} fill="#00e87a" className="animate-pulse_soft" />
-      </svg>
+/* ── The Academy's topics, as the eight pins of a chip (1 to 4 down the left, 5 to 8 up the right) ── */
+const TOPICS = [
+  { title: "Number systems", tags: "binary, hex, BCD" },
+  { title: "Boolean algebra", tags: "K-maps, SOP, POS" },
+  { title: "Logic gates", tags: "AND, OR, XOR" },
+  { title: "Combinational logic", tags: "mux, decoder, adder" },
+  { title: "Sequential logic", tags: "flip-flops, latches" },
+  { title: "State machines", tags: "Mealy, Moore" },
+  { title: "Memory", tags: "RAM, ROM, FIFO" },
+  { title: "Timing", tags: "setup, hold, skew" },
+];
+
+function Pin({ n, side }: { n: number; side: "left" | "right" }) {
+  const topic = TOPICS[n - 1];
+  return (
+    <li>
+      <Link
+        href="/academy"
+        className={`group flex items-center gap-3 ${side === "left" ? "md:flex-row-reverse md:text-right" : ""} ${FOCUS}`}
+      >
+        <span aria-hidden className="h-2.5 w-6 shrink-0 bg-phosphor-dim group-hover:bg-phosphor-glow transition-colors" />
+        <span className="font-mono text-caption text-dim w-4 shrink-0">{n}</span>
+        <span>
+          <span className="block text-lead text-bright group-hover:text-phosphor transition-colors">{topic.title}</span>
+          <span className="block text-small text-ghost">{topic.tags}</span>
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+function Pinout({ chapters }: { chapters: number }) {
+  const pins = "flex flex-col justify-between gap-6 md:py-6";
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-y-6">
+      <ol className={pins}>{[1, 2, 3, 4].map((n) => <Pin key={n} n={n} side="left" />)}</ol>
+      <div aria-hidden className="hidden md:flex relative w-44 lg:w-56 flex-col items-center justify-center rounded-md border border-rim bg-shaft">
+        <span className="absolute top-0 left-1/2 -translate-x-1/2 h-4 w-8 rounded-b-full border border-t-0 border-rim bg-void" />
+        <span className="absolute top-5 left-4 h-2 w-2 rounded-full bg-warn" />
+        <span className="font-pixel text-pixel-2 text-pale">ACADEMY</span>
+        <span className="mt-2 font-mono text-caption text-dim">{chapters} chapters</span>
+      </div>
+      <ol start={5} className={`${pins} md:flex-col-reverse`}>{[5, 6, 7, 8].map((n) => <Pin key={n} n={n} side="right" />)}</ol>
     </div>
   );
 }
@@ -242,8 +289,11 @@ const SOCIAL_LINKS = [
   },
 ];
 
+const WRAP = "max-w-[1200px] mx-auto px-6 md:px-10";
+const H2 = "text-heading-sm md:text-heading text-balance text-bright";
+
 export default function LandingPage({ facts }: { facts: HomeFacts }) {
-  const STATS = statsFor(facts), PATH = homePath(facts);
+  const path = homePath(facts);
   const { user, loading } = useAuth();   // the full page renders while loading so crawlers and link previews see it
   const router = useRouter();
 
@@ -264,211 +314,150 @@ export default function LandingPage({ facts }: { facts: HomeFacts }) {
     );
   }
 
-  return (
-    <main className="min-h-screen bg-void text-bright overflow-x-hidden selection:bg-phosphor/30">
-      {/* Navigation — 3-column grid, links always centered between logo and Sign In */}
-      <nav className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
-        <Link href="/" className="justify-self-start flex items-center gap-2 group">
-          <img
-            src="/bitflow_logo_64.png"
-            alt="BitFlow"
-            className="w-8 h-8 object-contain transition-transform group-hover:scale-105"
-          />
-          <span className="font-display font-bold text-lg text-bright">BitFlow</span>
-        </Link>
+  // Only counts that were read: the problem count needs the database.
+  const counts = [
+    ...(facts.problems ? [`${facts.problems} practice problems`] : []),
+    `${facts.chapters} Academy chapters`,
+    `${facts.lessons} Board Lab lessons`,
+  ].join(", ");
 
-        <div className="hidden md:flex items-center gap-8 text-[13px] text-ghost justify-self-center">
+  return (
+    <main className="min-h-screen bg-void text-bright font-ui overflow-x-hidden selection:bg-phosphor/30">
+      <nav className="relative z-20 grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 border-b border-rim/50 bg-void/80 backdrop-blur-md">
+        <Link href="/" className={`justify-self-start flex items-center gap-2 ${FOCUS}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/bitflow_logo_64.png" alt="" className="w-8 h-8 object-contain" />
+          <span className="font-bold text-lg text-bright">BitFlow</span>
+        </Link>
+        <div className="hidden md:flex items-center gap-8 text-body text-ghost justify-self-center">
           {NAV_LINKS.map((link) => (
-            <Link key={link.label} href={link.href} className="hover:text-bright transition-colors">
-              {link.label}
-            </Link>
+            <Link key={link.label} href={link.href} className={`hover:text-bright transition-colors ${FOCUS}`}>{link.label}</Link>
           ))}
         </div>
-
-        <div className="flex items-center gap-5 justify-self-end">
-          <Link href="/login" className="px-4 py-2 rounded-md border border-rim text-[13px] text-pale hover:text-bright hover:border-muted transition-colors">
-            Sign in
-          </Link>
-        </div>
+        <Link href="/login" className={`justify-self-end px-4 py-2 rounded-md border border-rim text-body text-pale hover:text-bright hover:border-muted transition-colors ${FOCUS}`}>
+          Sign in
+        </Link>
       </nav>
 
-      {/* Hero — golden-ratio split (61.8% text / 38.2% visual) */}
-      <section className="max-w-[1400px] mx-auto px-6 md:px-10 pt-16 pb-12 grid grid-cols-1 lg:grid-cols-[1.618fr_1fr] gap-10 items-center animate-fade_up">
-        <div>
-          <span className="inline-block px-3.5 py-1.5 border border-phosphor/40 rounded text-[11px] tracking-[0.18em] text-phosphor uppercase mb-6">
-            HDL Engineering Platform
-          </span>
-          <h1 className="font-serif text-4xl md:text-5xl leading-[1.12] mb-6">
-            Design. <span className="text-phosphor">Learn.</span>
-            <br />
-            Build.
+      {/* Hero: the claim, then the thing itself. Chips drift in the space to the right of the words and pass under the bench. */}
+      <div className="relative">
+        <AsciiChips className="absolute inset-0 opacity-60 [mask-image:linear-gradient(90deg,transparent_52%,black_76%)]" />
+        <section className={`relative z-10 ${WRAP} pt-12 md:pt-16 pb-20`}>
+          <h1 className="font-pixel text-pixel-3 sm:text-pixel-4 lg:text-pixel-6 text-bright max-w-[24ch]">
+            {SITE_TAGLINE}.
           </h1>
-          <p className="text-[15px] text-ghost leading-relaxed max-w-md mb-8">
-            BitFlow is an online Verilog and SystemVerilog simulator and learning platform for RTL design,
-            verification and digital electronics: write, simulate and debug right in your browser, with nothing to install.
-          </p>
-          <div className="flex flex-wrap gap-3.5 mb-10">
-            <Link
-              href="/login?mode=register"
-              className="px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors hover:-translate-y-0.5"
-            >
-              Start learning free →
-            </Link>
-            <Link
-              href="/about"
-              className="px-7 py-3.5 rounded-lg text-pale text-[13px] font-semibold hover:text-bright transition-colors"
-            >
-              See how it works
-            </Link>
+          <div className="mt-8 flex flex-col gap-7">
+            <p className="text-lead text-pretty text-pale max-w-[58ch]">
+              BitFlow is an online Verilog and SystemVerilog simulator and learning platform for RTL design,
+              verification and digital electronics: write, simulate and debug right in your browser, with nothing to install.
+            </p>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              <Link href="/login?mode=register" className={PRIMARY}>Create a free account</Link>
+              <Link href="/sandbox" className={`text-body text-pale underline underline-offset-4 decoration-rim hover:text-bright hover:decoration-phosphor transition-colors ${FOCUS}`}>
+                Open the sandbox
+              </Link>
+            </div>
           </div>
-          <div className="flex gap-14 border-t border-rim pt-6 max-w-md">
-            {STATS.map((s) => (
-              <div key={s.label}>
-                <div className="font-serif text-2xl text-bright">{s.value}</div>
-                <div className="text-[10px] text-dim uppercase tracking-wider mt-1">{s.label}</div>
-              </div>
-            ))}
+          <div className="mt-14">
+            <Bench />
+            <p className="mt-4 text-body text-ghost">
+              Three small modules and what each one does over eight clock cycles. {counts}, all in the browser.
+            </p>
           </div>
-        </div>
+        </section>
+      </div>
 
-        <ChipVisual />
-      </section>
-
-      {/* Why BitFlow */}
-      <section className="max-w-[1400px] mx-auto px-6 md:px-10 py-20">
-        <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Why BitFlow</div>
-        <h2 className="font-serif text-3xl md:text-4xl mb-10 leading-tight">
-          The Ultimate
-          <br />
-          HDL Workbench.
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {WHY_CARDS.map((c) => (
-            <div key={c.title} className="border border-rim rounded-xl p-6 bg-pit">
-              <div className="w-9 h-9 border border-phosphor/35 rounded-lg flex items-center justify-center text-phosphor mb-5">
-                {c.icon}
-              </div>
-              <div className="flex items-center gap-2.5 mb-2.5 flex-wrap">
-                <span className="font-serif text-lg text-bright">{c.title}</span>
-                <span className="text-[10px] uppercase tracking-wide text-phosphor border border-phosphor/30 rounded-full px-2.5 py-0.5">
-                  {c.badge}
-                </span>
-              </div>
-              <p className="text-[13px] text-ghost leading-relaxed">{c.body}</p>
+      <section className={`${WRAP} py-20 grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-x-16 gap-y-8 border-t border-rim/60`}>
+        <h2 className={H2}>What you work with</h2>
+        <dl className="divide-y divide-rim/60">
+          {TOOLS.map((tool) => (
+            <div key={tool.title} className="py-6 first:pt-0 last:pb-0 grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-x-10 gap-y-2">
+              <dt className="text-subhead text-bright">{tool.title}</dt>
+              <dd className="text-body text-ghost">{tool.body}</dd>
             </div>
           ))}
-        </div>
+        </dl>
       </section>
 
       {/* The path: where to start and where it leads. The same list is in the page's structured data (app/page.tsx). */}
-      <section aria-labelledby="path-title" className="max-w-[1400px] mx-auto px-6 md:px-10 pb-20">
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Your path</div>
-          <h2 id="path-title" className="font-serif text-2xl md:text-3xl text-pale">From your first bit to a verified design.</h2>
-        </div>
-        <ol className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {PATH.map((st, i) => (
-            <li key={st.title} className="relative">
-              <Link href={st.href} className="group block h-full border border-rim rounded-xl p-5 bg-pit hover:border-phosphor/50 transition-colors">
-                <span className="font-mono text-[11px] text-phosphor">Step {i + 1}</span>
-                <span className="block font-serif text-lg text-bright mt-1 mb-2 group-hover:text-phosphor transition-colors">{st.title}</span>
-                <span className="block text-[12.5px] text-ghost leading-relaxed">{st.body}</span>
+      <section aria-labelledby="path-title" className={`${WRAP} py-20 border-t border-rim/60`}>
+        <h2 id="path-title" className={H2}>From your first bit to a verified design</h2>
+        <ol className="mt-12 grid grid-cols-1 md:grid-cols-5">
+          {path.map((step, i) => (
+            <li key={step.title} className="relative border-l md:border-l-0 md:border-t border-rim pl-6 md:pl-0 md:pr-6 pb-8 md:pb-0 md:pt-7">
+              <span aria-hidden className="absolute -left-[5px] top-0 md:left-0 md:-top-[5px] h-[9px] w-[9px] bg-phosphor" />
+              <Link href={step.href} className={`group block ${FOCUS}`}>
+                <span className="font-mono text-caption text-dim">{i + 1}</span>
+                <span className="block text-subhead text-bright mt-1 mb-2 group-hover:text-phosphor transition-colors">{step.title}</span>
+                <span className="block text-body text-ghost">{step.body}</span>
               </Link>
             </li>
           ))}
         </ol>
-        <div className="text-center mt-5">
-          <Link href="/academy/roadmap" className="text-[12px] text-ghost hover:text-bright underline underline-offset-4">See the VLSI career roadmap →</Link>
-        </div>
+        <p className="mt-10 text-body">
+          <Link href="/academy/roadmap" className={`text-pale underline underline-offset-4 decoration-rim hover:text-bright hover:decoration-phosphor transition-colors ${FOCUS}`}>
+            See the VLSI career roadmap
+          </Link>
+        </p>
       </section>
 
-      {/* Categories — hover pop animation */}
-      <section className="max-w-[1400px] mx-auto px-6 md:px-10 pb-20">
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="text-[11px] tracking-[0.18em] text-phosphor uppercase mb-2">Built for HDL learners</div>
-          <h2 className="font-serif text-2xl md:text-3xl text-pale">
-            Everything you need to go from Verilog to verified design.
-          </h2>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-rim border border-rim rounded-xl overflow-hidden">
-          {CATEGORIES.map((cat) => (
-            <div
-              key={cat.title}
-              className="group relative bg-void hover:bg-pit p-6 cursor-pointer
-                         transition-[background-color,transform,box-shadow] duration-300
-                         ease-[cubic-bezier(0.34,1.56,0.64,1)]
-                         hover:scale-[1.07] hover:-translate-y-1.5 hover:z-10
-                         hover:shadow-[0_14px_26px_rgba(0,0,0,.35),0_0_0_1px_rgba(0,232,122,.4),0_0_22px_rgba(0,232,122,.18)]"
-            >
-              <div className="font-serif text-base text-bright mb-1.5 group-hover:text-phosphor transition-colors">
-                {cat.title}
-              </div>
-              <div className="text-[11px] text-dim group-hover:text-pale transition-colors">{cat.tags}</div>
-            </div>
-          ))}
-        </div>
+      <section aria-labelledby="topics-title" className={`${WRAP} py-20 border-t border-rim/60`}>
+        <h2 id="topics-title" className={H2}>What the Academy covers</h2>
+        <p className="mt-3 mb-10 text-body text-ghost max-w-[58ch]">Eight areas, in the order they build on each other. Every one opens the Academy.</p>
+        <Pinout chapters={facts.chapters} />
       </section>
 
       {/* Questions people ask: the same list feeds the FAQPage data in app/page.tsx */}
-      <section aria-labelledby="faq-title" className="max-w-3xl mx-auto px-6 pb-20">
-        <h2 id="faq-title" className="font-serif text-2xl md:text-3xl text-pale mb-6">Questions</h2>
-        <div className="divide-y divide-rim/50 border-y border-rim/50">
+      <section aria-labelledby="faq-title" className={`${WRAP} py-20 grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-x-16 gap-y-8 border-t border-rim/60`}>
+        <h2 id="faq-title" className={H2}>Questions</h2>
+        <div className="divide-y divide-rim/60 border-y border-rim/60">
           {HOME_FAQ.map((f) => (
             <details key={f.q} className="group py-4">
-              <summary className="cursor-pointer list-none flex items-center justify-between gap-4 text-[14px] text-bright">
+              <summary className={`cursor-pointer list-none flex items-center justify-between gap-4 text-lead text-bright ${FOCUS}`}>
                 {f.q}
-                <span aria-hidden className="text-phosphor group-open:rotate-45 transition-transform">+</span>
+                <span aria-hidden className="text-phosphor text-xl leading-none group-open:rotate-45 transition-transform">+</span>
               </summary>
-              <p className="mt-3 text-[13px] text-ghost leading-relaxed">{f.a}</p>
+              <p className="mt-3 text-body text-pretty text-ghost max-w-[68ch]">{f.a}</p>
             </details>
           ))}
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="max-w-xl mx-auto text-center px-6 pb-28 pt-10">
-        <h2 className="font-serif text-3xl md:text-4xl mb-4">
-          Ready to compile
-          <br />
-          your first design?
-        </h2>
-        <p className="text-sm text-ghost leading-relaxed mb-8">
-          Join BitFlow and start writing Verilog in your browser — no installs, no waiting.
+      <section className={`${WRAP} py-24 border-t border-rim/60`}>
+        <h2 className="font-pixel text-pixel-3 sm:text-pixel-4 text-bright max-w-[14ch]">Ready to compile your first design?</h2>
+        <p className="mt-6 mb-8 text-lead text-pretty text-pale max-w-[52ch]">
+          Make an account and write Verilog in your browser. There is nothing to install and nothing to wait for.
         </p>
-        <Link
-          href="/login?mode=register"
-          className="inline-block px-7 py-3.5 rounded-lg bg-phosphor text-void text-[13px] font-bold hover:bg-phosphor-glow transition-colors"
-        >
-          Start learning free →
-        </Link>
+        <Link href="/login?mode=register" className={PRIMARY}>Create a free account</Link>
       </section>
 
-      {/* Footer — everything centered: Follow us + socials, About, copyright, credit */}
       <footer className="border-t border-rim/50">
-        <div className="max-w-[1400px] mx-auto px-6 py-10 flex flex-col items-center gap-5 text-center">
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] tracking-[0.14em] text-bright uppercase">Follow us</span>
-            {SOCIAL_LINKS.map((s) => (
-              <a
-                key={s.name}
-                href={s.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={s.name}
-                className="w-8 h-8 rounded-full border border-rim flex items-center justify-center text-bright hover:text-phosphor hover:border-phosphor/50 hover:-translate-y-0.5 transition-all"
-              >
-                {s.icon}
+        <div className={`${WRAP} py-12 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-10`}>
+          <div className="space-y-5">
+            <div className="flex items-center gap-3">
+              <span className="text-body text-pale">Follow BitFlow</span>
+              {SOCIAL_LINKS.map((s) => (
+                <a
+                  key={s.name}
+                  href={s.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={s.name}
+                  className={`w-8 h-8 rounded-full border border-rim flex items-center justify-center text-bright hover:text-phosphor hover:border-phosphor/50 transition-colors ${FOCUS}`}
+                >
+                  {s.icon}
+                </a>
+              ))}
+            </div>
+            <p className="text-small text-ghost">© 2026 BitFlow. All rights reserved.</p>
+            <p className="text-small text-ghost">
+              Designed by{" "}
+              <a href="https://www.linkedin.com/company/naviel-corporation/?viewAsMember=true" target="_blank" rel="noopener noreferrer" className={`text-phosphor hover:underline ${FOCUS}`}>
+                NAVIEL Advanced Engineering &amp; Technology
               </a>
-            ))}
+            </p>
           </div>
-
           <SiteLinks />
-
-          <div className="text-[11px] text-bright">© 2026 BitFlow. All rights reserved.</div>
-
-          <div className="text-[11px] tracking-[0.14em] text-bright uppercase">
-            Designed by <a href="https://www.linkedin.com/company/naviel-corporation/?viewAsMember=true" target="_blank" rel="noopener noreferrer" className="text-phosphor hover:underline font-bold transition-colors">NAVIEL Advanced Engineering & Technology</a>
-          </div>
         </div>
       </footer>
     </main>
