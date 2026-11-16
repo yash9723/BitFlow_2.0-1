@@ -175,9 +175,9 @@ export const chips: Animal<Chip> = {
     trailFade: 0.9,
     detail: 1.7,
   },
-  area: 150000,
+  area: 95000,
   max: 60,
-  scale: 1.35,
+  scale: 1.15,
   speed: 26,
   trail: PIN,
 
