@@ -11,6 +11,7 @@ import ReportIssueLink from "@/components/feedback/ReportIssueLink";
 import { getSessionUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
 import { GATED, SITE_URL, breadcrumbs, jsonLd, pageMeta } from "@/lib/site";
+import { problemFaq } from "@/lib/problem-faq";
 
 const listOf = (json: string): string[] => { try { const v = JSON.parse(json); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
 const examplesOf = (json: string): { input?: string; output?: string; explanation?: string }[] => { try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; } };
@@ -32,13 +33,14 @@ export default async function Layout({ children, params }: { children: React.Rea
 
   const q = await prisma.question.findUnique({
     where: { slug: params.slug },
-    select: { title: true, difficulty: true, category: true, statement: true, constraints: true, examples: true, xpReward: true, archived: true, unlockAfter: true },
+    select: { title: true, difficulty: true, category: true, tags: true, statement: true, constraints: true, examples: true, xpReward: true, archived: true, unlockAfter: true },
   });
   if (!q || !readable(q)) return <AuthGate>{children}</AuthGate>;   // sends the visitor to sign in
 
   const statement = q.statement.replace(/^#{1,3}\s*/gm, "").trim();
   const constraints = listOf(q.constraints);
   const examples = examplesOf(q.examples);
+  const faq = problemFaq({ title: q.title, statement, category: q.category, tags: listOf(q.tags), constraints, examples });
   const login = `/login?mode=register&next=${encodeURIComponent(`/problems/${params.slug}`)}`;
   const schema = {
     "@context": "https://schema.org", "@type": "LearningResource", name: q.title,
@@ -51,6 +53,12 @@ export default async function Layout({ children, params }: { children: React.Rea
     <div className="min-h-screen bg-void text-bright">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(schema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(breadcrumbs([["Problems", "/problems"], [q.title, `/problems/${params.slug}`]])) }} />
+      {faq.length > 0 && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd({
+          "@context": "https://schema.org", "@type": "FAQPage",
+          mainEntity: faq.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
+        }) }} />
+      )}
       <SiteHeader />
       <main className="max-w-3xl mx-auto px-6 py-10 space-y-6">
         <nav aria-label="Breadcrumb" className="font-mono text-[11px] text-dim">
@@ -91,6 +99,20 @@ export default async function Layout({ children, params }: { children: React.Rea
                 {e.explanation && <p className="text-ghost">{e.explanation}</p>}
               </div>
             ))}
+          </section>
+        )}
+
+        {faq.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="font-display text-lg">Common questions</h2>
+            <dl className="space-y-3 text-[14px]">
+              {faq.map((f) => (
+                <div key={f.q}>
+                  <dt className="text-bright">{f.q}</dt>
+                  <dd className="text-ghost leading-relaxed">{f.a}</dd>
+                </div>
+              ))}
+            </dl>
           </section>
         )}
       </main>
