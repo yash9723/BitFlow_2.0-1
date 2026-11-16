@@ -37,7 +37,7 @@ const GR_RINGS = [
 function PageBackground() {
   return (
     <svg
-      className="bf-bg absolute inset-0 w-full h-full opacity-70"
+      className="bf-bg absolute inset-0 w-full h-full opacity-40"
       viewBox="0 0 420 500"
       preserveAspectRatio="xMidYMid slice"
       aria-hidden="true"
@@ -124,7 +124,7 @@ export default function LoginBackground() {
   return (
     <>
       <PageBackground />
-      <AsciiChips className="absolute inset-0 opacity-70" direction={35} />
+      <AsciiChips className="absolute inset-0 opacity-80" direction={35} density={0.8} detail={2} size={1.3} />
     </>
   );
 }

@@ -57,4 +57,20 @@ const c = flock.creatures[0];
 flock.reenter(c);
 assert.ok(c.x < 0 || c.y > 800, "re-enters from an upstream edge");
 
+// Detail: a lead has a dim shoulder and a bright foot, and a package a lighter rim than its face.
+// Each row: a kind, then a point on a lead's foot, its shoulder, the package rim and the package face.
+for (const [name, foot, shoulder, rim, face] of [
+  ["dip", [0.05125, 0.24], [0.05125, 0.17], [0, 0.14], [0, 0]],
+  ["qfp", [0.37, 0.03125], [0.3, 0.03125], [0.265, 0.1], [0.08, 0.08]],
+  ["soic", [0.0625, 0.19], [0.0625, 0.13], [0, 0.11], [0.2, 0]],
+] as const) {
+  const kind = KINDS.find((k) => k.name === name)!;
+  const green = ([u, v]: readonly [number, number]) => {
+    assert.ok(kind.sample(u, v, out, 0, 1), name + ": something is drawn at (" + u + ", " + v + ")");
+    return out.g;
+  };
+  assert.ok(green(foot) > green(shoulder), name + ": the foot of a lead is brighter than its shoulder");
+  assert.ok(green(rim) > green(face), name + ": the rim is lighter than the face");
+}
+
 console.log("ascii-chips: ok");

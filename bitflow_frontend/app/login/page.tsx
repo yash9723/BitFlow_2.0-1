@@ -8,7 +8,7 @@ import ConsentFields, { type ConsentValue } from "@/components/ConsentFields";
 import LoginBackground from "@/components/login/LoginBackground";
 import Bitzy, { type Mood } from "@/components/login/Bitzy";
 import PasswordInput from "@/components/login/PasswordInput";
-import { safeNext } from "@/lib/site";
+import { SITE_TAGLINE, safeNext } from "@/lib/site";
 
 type Field = "username" | "password" | "secret" | null;
 type Status = "idle" | "loading" | "success" | "error";
@@ -25,6 +25,15 @@ const OAUTH_ERRORS: Record<string, string> = {
 };
 
 const PROVIDER_LABEL: Record<string, string> = { google: "Google", github: "GitHub" };
+
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-phosphor";
+/** Both panels: a hairline phosphor border and a faint highlight along the top edge, like the lip of a pane. */
+const GLASS = "rounded-2xl border border-phosphor/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_30px_80px_rgba(0,0,0,0.45)]";
+/** A browser's autofill paints its own pale background; this holds the field to the glass's dark tone. */
+const AUTOFILL =
+  ".bf-input:-webkit-autofill, .bf-input:-webkit-autofill:hover, .bf-input:-webkit-autofill:focus, .bf-input:-webkit-autofill:active { " +
+  "-webkit-text-fill-color: #e8eaf6; -webkit-box-shadow: 0 0 0 1000px #0b0e0d inset; box-shadow: 0 0 0 1000px #0b0e0d inset; " +
+  "transition: background-color 9999s ease-in-out 0s; caret-color: #e8eaf6; }";
 
 function ProviderMark({ provider }: { provider: string }) {
   return provider === "google" ? (
@@ -148,174 +157,169 @@ export default function LoginPage() {
 
   const busy = status === "loading" || status === "success";
   const tab = (active: boolean) =>
-    `flex-1 py-1.5 rounded-md text-center text-caption font-semibold tracking-wider uppercase transition-colors duration-150 ${
-      active ? "bg-phosphor/10 text-phosphor border border-phosphor/30" : "text-ghost hover:text-pale border border-transparent"
-    }`;
+    "flex-1 py-2 rounded-md text-center font-mono text-caption font-semibold tracking-wider uppercase transition-colors duration-150 " + FOCUS + " " +
+    (active ? "bg-phosphor/10 text-phosphor border border-phosphor/30" : "text-ghost hover:text-pale border border-transparent");
 
   return (
-    <div className="relative min-h-screen bg-void overflow-hidden font-ui flex flex-col items-center justify-center px-4 sm:px-6 py-12 text-bright">
-      <style>{`
-        .bf-input:-webkit-autofill,
-        .bf-input:-webkit-autofill:hover,
-        .bf-input:-webkit-autofill:focus,
-        .bf-input:-webkit-autofill:active {
-          -webkit-text-fill-color: #e8eaf6;
-          -webkit-box-shadow: 0 0 0px 1000px #141a15 inset;
-          box-shadow: 0 0 0px 1000px #141a15 inset;
-          transition: background-color 9999s ease-in-out 0s;
-          caret-color: #e8eaf6;
-        }
-      `}</style>
+    <div className="relative min-h-screen bg-void overflow-hidden font-ui text-bright">
+      <style>{AUTOFILL}</style>
       <LoginBackground />
 
-      <Link href="/" className="relative z-10 font-display font-bold text-lg text-bright hover:text-phosphor transition-colors mb-8">
-        BitFlow
-      </Link>
+      <div className="relative z-10 min-h-screen grid grid-cols-1 lg:grid-cols-[1.1fr_minmax(420px,0.9fr)] gap-4 p-4">
+        {/* The stage: light glass with no blur, so the traces and drifting chips stay sharp behind Bitzy */}
+        <div className={GLASS + " relative flex flex-col min-h-[320px] overflow-hidden bg-void/20 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),transparent_38%)]"}>
+          <Link href="/" className={"absolute top-5 left-6 z-10 font-display font-bold text-lg text-bright hover:text-phosphor transition-colors " + FOCUS}>
+            BitFlow
+          </Link>
+          <Bitzy mood={mood} lookX={username.length / 12 - 1} caption={caption} />
+          <p className="hidden lg:block px-6 pb-6 font-pixel text-pixel-2 text-pale max-w-[17ch]">{SITE_TAGLINE}.</p>
+        </div>
 
-      <div className="relative z-10 w-full max-w-4xl grid grid-cols-1 md:grid-cols-[0.85fr_1fr] bg-pit/90 backdrop-blur-xl border border-phosphor/25 rounded-[20px] overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.6),0_0_60px_rgba(0,232,122,0.08)]">
-        <Bitzy mood={mood} lookX={username.length / 12 - 1} caption={caption} />
+        {/* The form: heavier glass, so the words stay legible over whatever drifts behind */}
+        <div className={GLASS + " flex flex-col justify-center px-6 py-10 sm:px-10 bg-pit/60 backdrop-blur-xl"}>
+          <div className="w-full max-w-[400px] mx-auto">
+            <nav aria-label="Sign in or register" className="flex bg-void/50 border border-rim/60 rounded-lg p-1 mb-8">
+              <Link href={tabHref(false)} scroll={false} aria-current={!isSignUp ? "page" : undefined} className={tab(!isSignUp)}>
+                Sign in
+              </Link>
+              <Link href={tabHref(true)} scroll={false} aria-current={isSignUp ? "page" : undefined} className={tab(isSignUp)}>
+                Register
+              </Link>
+            </nav>
 
-        <div className="p-6 sm:p-8 md:p-10 flex flex-col">
-          <nav aria-label="Sign in or register" className="flex bg-shaft border border-rim/60 rounded-lg p-1 mb-6">
-            <Link href={tabHref(false)} scroll={false} aria-current={!isSignUp ? "page" : undefined} className={tab(!isSignUp)}>
-              Sign in
-            </Link>
-            <Link href={tabHref(true)} scroll={false} aria-current={isSignUp ? "page" : undefined} className={tab(isSignUp)}>
-              Register
-            </Link>
-          </nav>
+            <h1 className="text-heading-sm text-bright mb-1">
+              {asAdmin ? "Admin registration" : isSignUp ? "Create your account" : "Welcome back!"}
+            </h1>
+            <p className="text-small text-ghost mb-6">
+              {asAdmin ? "Initialise admin credentials with the system key" : isSignUp ? "Set up a new BitFlow profile" : "Enter your login details to continue to BitFlow"}
+            </p>
 
-          <h1 className="text-heading-sm text-bright mb-1">
-            {asAdmin ? "Admin registration" : isSignUp ? "Create your account" : "Welcome back!"}
-          </h1>
-          <p className="text-small text-ghost mb-6">
-            {asAdmin ? "Initialise admin credentials with the system key" : isSignUp ? "Set up a new BitFlow profile" : "Enter your login details to continue to BitFlow"}
-          </p>
-
-          {errorMsg && (
-            <div role="alert" className="p-3 rounded-lg border border-danger/30 bg-danger/10 text-danger text-small mb-5 flex gap-2">
-              <span className="font-bold">⚠ ERROR:</span>
-              <span className="flex-1">{errorMsg}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="username" className="block text-caption text-pale mb-1.5">Username</label>
-              <input
-                id="username"
-                type="text"
-                required
-                autoComplete="username"
-                {...(isSignUp && {
-                  minLength: 3,
-                  maxLength: 24,
-                  pattern: "(?:[A-Za-z0-9_.]|-){3,24}",   // = usernameProblem(); no "-" inside the class (v-flag rules)
-                  title: "3–24 characters: letters, numbers, dots, dashes and underscores",
-                })}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onFocus={() => setFocus("username")}
-                onBlur={() => setFocus(null)}
-                placeholder="e.g. system_operator"
-                className="bf-input w-full bg-[#141a15] border border-rim rounded-lg px-3.5 py-2.5 text-body text-bright placeholder-dim/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] focus:outline-none focus:border-phosphor transition-colors"
-              />
-            </div>
-
-            <div>
-              <PasswordInput
-                id="password"
-                label="Password"
-                required
-                autoComplete={isSignUp ? "new-password" : "current-password"}
-                {...(isSignUp && { minLength: 8, maxLength: 200 })}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onFocus={() => setFocus("password")}
-                onBlur={() => setFocus(null)}
-                onShownChange={(v) => setShown((s) => ({ ...s, password: v }))}
-                onCapsLock={setCapsLock}
-                placeholder="••••••••"
-              />
-              <div className="flex items-center justify-between gap-3 mt-1.5 min-h-[16px] text-caption">
-                <span role="status" className="text-warn">{inPassword && capsLock ? "Caps Lock is on" : ""}</span>
-                {!isSignUp && (
-                  <Link href="/reset-password" className="text-phosphor hover:text-phosphor-glow transition-colors">
-                    Forgot password?
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {asAdmin && (
-              <PasswordInput
-                id="admin-secret"
-                label="Secret Admin Key"
-                admin
-                required
-                value={secretPassword}
-                onChange={(e) => setSecretPassword(e.target.value)}
-                onFocus={() => setFocus("secret")}
-                onBlur={() => setFocus(null)}
-                onShownChange={(v) => setShown((s) => ({ ...s, secret: v }))}
-                onCapsLock={setCapsLock}
-                placeholder="Enter system master password"
-                hint="Required for admin credentials initialization."
-              />
-            )}
-
-            {isSignUp && <ConsentFields value={consent} onChange={setConsent} />}
-
-            {/* Honeypot: hidden from people and screen readers; bots fill it in. */}
-            {isSignUp && (
-              <div aria-hidden="true" className="absolute -left-[9999px] w-px h-px overflow-hidden">
-                <label htmlFor="website">Website</label>
-                <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off"
-                       value={website} onChange={(e) => setWebsite(e.target.value)} />
+            {errorMsg && (
+              <div role="alert" className="p-3 rounded-lg border border-danger/30 bg-danger/10 text-danger font-mono text-small mb-5 flex gap-2">
+                <span className="font-bold">⚠ ERROR:</span>
+                <span className="flex-1">{errorMsg}</span>
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={busy}
-              onMouseEnter={() => setHoverSubmit(true)}
-              onMouseLeave={() => setHoverSubmit(false)}
-              onFocus={() => setHoverSubmit(true)}
-              onBlur={() => setHoverSubmit(false)}
-              className={`w-full py-3 rounded-lg text-small font-semibold tracking-wide uppercase transition-[background-color,transform] duration-150 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed ${
-                asAdmin ? "bg-info text-void hover:bg-info/85" : "bg-phosphor text-void hover:bg-phosphor-glow"
-              }`}
-            >
-              {status === "loading" ? "Decrypting..." : status === "success" ? "Access granted" : isSignUp ? "Create Profile" : "Authorize"}
-            </button>
-            {isSignUp && (
-              <p className="text-caption text-ghost text-center">
-                Using BitFlow also means following the{" "}
-                <Link href="/terms" className="text-phosphor hover:underline">Terms</Link>.
-              </p>
-            )}
-          </form>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="username" className="block font-mono text-caption text-pale mb-1.5">Username</label>
+                <input
+                  id="username"
+                  type="text"
+                  required
+                  autoComplete="username"
+                  {...(isSignUp && {
+                    minLength: 3,
+                    maxLength: 24,
+                    pattern: "(?:[A-Za-z0-9_.]|-){3,24}",   // = usernameProblem(); no "-" inside the class (v-flag rules)
+                    title: "3–24 characters: letters, numbers, dots, dashes and underscores",
+                  })}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onFocus={() => setFocus("username")}
+                  onBlur={() => setFocus(null)}
+                  placeholder="e.g. system_operator"
+                  className="bf-input w-full h-11 bg-void/60 border border-rim rounded-lg px-3.5 font-mono text-body text-bright placeholder-dim/50 focus:outline-none focus:border-phosphor focus:ring-2 focus:ring-phosphor/25 transition-[border-color,box-shadow]"
+                />
+              </div>
 
-          {!asAdmin && providers.length > 0 && (
-            <div className="mt-5">
-              <div className="flex items-center gap-3 text-caption uppercase tracking-[0.14em] text-dim mb-3" aria-hidden="true">
-                <span className="h-px flex-1 bg-rim/60" />or<span className="h-px flex-1 bg-rim/60" />
+              <div>
+                <PasswordInput
+                  id="password"
+                  label="Password"
+                  required
+                  autoComplete={isSignUp ? "new-password" : "current-password"}
+                  {...(isSignUp && { minLength: 8, maxLength: 200 })}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onFocus={() => setFocus("password")}
+                  onBlur={() => setFocus(null)}
+                  onShownChange={(v) => setShown((s) => ({ ...s, password: v }))}
+                  onCapsLock={setCapsLock}
+                  placeholder="••••••••"
+                />
+                <div className="flex items-center justify-between gap-3 mt-1.5 min-h-[16px] font-mono text-caption">
+                  <span role="status" className="text-warn">{inPassword && capsLock ? "Caps Lock is on" : ""}</span>
+                  {!isSignUp && (
+                    <Link href="/reset-password" className={"text-phosphor hover:text-phosphor-glow transition-colors " + FOCUS}>
+                      Forgot password?
+                    </Link>
+                  )}
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {providers.map((p) => (
-                  // A plain link: the browser goes to the provider and back (app/api/auth/oauth).
-                  <a
-                    key={p}
-                    href={oauthHref(p)}
-                    className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-rim bg-[#141a15] text-small font-semibold text-pale hover:text-bright hover:border-phosphor/50 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-phosphor"
-                  >
-                    <ProviderMark provider={p} />
-                    Continue with {PROVIDER_LABEL[p] ?? p}
-                  </a>
-                ))}
+
+              {asAdmin && (
+                <PasswordInput
+                  id="admin-secret"
+                  label="Secret Admin Key"
+                  admin
+                  required
+                  value={secretPassword}
+                  onChange={(e) => setSecretPassword(e.target.value)}
+                  onFocus={() => setFocus("secret")}
+                  onBlur={() => setFocus(null)}
+                  onShownChange={(v) => setShown((s) => ({ ...s, secret: v }))}
+                  onCapsLock={setCapsLock}
+                  placeholder="Enter system master password"
+                  hint="Required for admin credentials initialization."
+                />
+              )}
+
+              {isSignUp && <ConsentFields value={consent} onChange={setConsent} />}
+
+              {/* Honeypot: hidden from people and screen readers; bots fill it in. */}
+              {isSignUp && (
+                <div aria-hidden="true" className="absolute -left-[9999px] w-px h-px overflow-hidden">
+                  <label htmlFor="website">Website</label>
+                  <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off"
+                         value={website} onChange={(e) => setWebsite(e.target.value)} />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={busy}
+                onMouseEnter={() => setHoverSubmit(true)}
+                onMouseLeave={() => setHoverSubmit(false)}
+                onFocus={() => setHoverSubmit(true)}
+                onBlur={() => setHoverSubmit(false)}
+                className={
+                  "w-full h-12 rounded-lg font-mono text-small font-semibold tracking-[0.12em] uppercase transition-[background-color,transform] duration-150 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed " +
+                  FOCUS + " " + (asAdmin ? "bg-info text-void hover:bg-info/85" : "bg-phosphor text-void hover:bg-phosphor-glow")
+                }
+              >
+                {status === "loading" ? "Decrypting..." : status === "success" ? "Access granted" : isSignUp ? "Create Profile" : "Authorize"}
+              </button>
+              {isSignUp && (
+                <p className="text-caption text-ghost text-center">
+                  Using BitFlow also means following the{" "}
+                  <Link href="/terms" className="text-phosphor hover:underline">Terms</Link>.
+                </p>
+              )}
+            </form>
+
+            {!asAdmin && providers.length > 0 && (
+              <div className="mt-6">
+                <div className="flex items-center gap-3 font-mono text-caption uppercase tracking-[0.14em] text-dim mb-3" aria-hidden="true">
+                  <span className="h-px flex-1 bg-rim/60" />or<span className="h-px flex-1 bg-rim/60" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {providers.map((p) => (
+                    // A plain link: the browser goes to the provider and back (app/api/auth/oauth).
+                    <a
+                      key={p}
+                      href={oauthHref(p)}
+                      className={"flex items-center justify-center gap-2 h-11 rounded-lg border border-rim bg-void/60 text-small font-semibold text-pale hover:text-bright hover:border-phosphor/50 transition-colors " + FOCUS}
+                    >
+                      <ProviderMark provider={p} />
+                      Continue with {PROVIDER_LABEL[p] ?? p}
+                    </a>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

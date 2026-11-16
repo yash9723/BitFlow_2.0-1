@@ -14,16 +14,20 @@ interface Props {
   density?: number;
   /** Which way they drift, in degrees: 0 is right, 90 is up. */
   direction?: number;
+  /** ASCII resolution: higher means smaller cells, so more of each chip's detail shows. */
+  detail?: number;
+  /** How big the chips are, relative to the default. */
+  size?: number;
 }
 
-export default function AsciiChips({ className = "", density = 1, direction = 24 }: Props) {
+export default function AsciiChips({ className = "", density = 1, direction = 24, detail = chips.defaults.detail, size = chips.defaults.size }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (!ref.current) return;
-    const engine = new AsciiEngine(ref.current, chips, { density, direction });
+    const engine = new AsciiEngine(ref.current, chips, { density, direction, detail, size });
     return () => engine.destroy();
-  }, [density, direction]);
+  }, [density, direction, detail, size]);
 
   return <canvas ref={ref} aria-hidden className={`w-full h-full font-mono ${className}`} />;
 }

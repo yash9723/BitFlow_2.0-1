@@ -334,7 +334,7 @@ export default function Bitzy({ mood, lookX = 0, caption }: { mood: Mood; lookX?
       ref={panelRef}
       onClick={handleClick}
       onContextMenu={(e) => { e.preventDefault(); handleClick(); }}
-      className="bitzy relative flex flex-col items-center justify-center bg-void min-h-[300px] md:min-h-full overflow-hidden cursor-pointer select-none"
+      className="bitzy relative flex-1 flex flex-col items-center justify-center min-h-[300px] overflow-hidden cursor-pointer select-none"
     >
       <style>{`
         @keyframes bz_float  { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
@@ -386,7 +386,7 @@ export default function Bitzy({ mood, lookX = 0, caption }: { mood: Mood; lookX?
             viewBox="0 0 200 200"
             aria-hidden="true"
             style={{ animation: jumping && !loud ? `bz_jump 0.6s ${EASE_OUT}` : BODY_ANIM[face] ?? "none", transformOrigin: "50% 75%" }}
-            className={`relative w-[200px] h-[200px] overflow-visible transition-[filter,opacity] duration-300 ${GLOW[face] ?? "drop-shadow-[0_0_10px_rgba(0,232,122,0.25)]"}`}
+            className={`relative w-[200px] h-[200px] lg:w-[280px] lg:h-[280px] overflow-visible transition-[filter,opacity] duration-300 ${GLOW[face] ?? "drop-shadow-[0_0_10px_rgba(0,232,122,0.25)]"}`}
           >
             <g style={{ transform: POSE[face] ?? "none", transformOrigin: "100px 110px", transition: "transform .3s ease-out" }}>
               <g ref={leanRef}>
