@@ -6,12 +6,15 @@ import { CircuitTool } from "@/components/studio/loaders";
 import { getSessionUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
 import { challengeById } from "@/lib/studio/circuit-challenges";
+import { pageMeta } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
 export function generateMetadata({ params }: { params: { id: string } }) {
   const c = challengeById(params.id);
-  return c ? { title: `${c.title}: circuit challenge`, description: c.statement, alternates: { canonical: `/studio/challenges/${c.id}` } } : { title: "Challenge not found" };
+  return c
+    ? pageMeta(`/studio/challenges/${c.id}`, `${c.title}: circuit challenge`, c.statement.length < 100 ? `${c.statement} Build it in your browser; BitFlow checks it by simulation.` : c.statement)
+    : { title: "Challenge not found" };
 }
 
 export default async function ChallengePage({ params }: { params: { id: string } }) {

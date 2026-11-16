@@ -6,17 +6,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { LESSONS, lessonBySlug, lessonIndex } from "@/lib/lab/lessons";
-import { SITE_URL, jsonLd, pageMeta } from "@/lib/site";
+import { SITE_URL, breadcrumbs, jsonLd, pageMeta } from "@/lib/site";
 import LabLesson from "@/components/lab/LabLesson";
 import { rich } from "@/components/lab/rich";
 
 interface Props { params: { slug: string } }
 
 export const generateStaticParams = () => LESSONS.map((l) => ({ slug: l.slug }));
+export const dynamicParams = false;   // unknown slugs get a real 404; app/loading.tsx would otherwise stream them with a 200
 
 export function generateMetadata({ params }: Props): Metadata {
   const l = lessonBySlug(params.slug);
-  return l ? pageMeta(`/lab/${l.slug}`, `${l.title}: Board Lab`, l.summary) : { title: "Not found" };
+  return l ? pageMeta(`/lab/${l.slug}`, `${l.title}: Board Lab`, `${l.summary} A free Board Lab lesson: write the Verilog and run it on a virtual FPGA board in your browser.`) : { title: "Not found" };
 }
 
 export default function LabLessonPage({ params }: Props) {
@@ -35,6 +36,7 @@ export default function LabLessonPage({ params }: Props) {
   return (
     <div className="space-y-5">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(schema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(breadcrumbs([["Board Lab", "/lab"], [lesson.title, `/lab/${lesson.slug}`]])) }} />
       <nav aria-label="Breadcrumb" className="font-mono text-[11px] text-dim">
         <Link href="/lab" className="hover:text-bright">Board Lab</Link> <span aria-hidden>/</span> Lesson {i + 1} of {LESSONS.length}
       </nav>

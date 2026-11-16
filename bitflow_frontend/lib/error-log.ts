@@ -44,6 +44,7 @@ export async function reportError(
         prisma.errorLog.deleteMany({ where: { createdAt: { lt: cutoff } } }),
         prisma.auditLog.deleteMany({ where: { createdAt: { lt: cutoff } } }),
         prisma.contactMessage.deleteMany({ where: { resolvedAt: { lt: cutoff } } }),
+        prisma.feedback.deleteMany({ where: { resolvedAt: { lt: cutoff } } }),
       ]);
     }
   } catch {

@@ -256,6 +256,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         onToggleTutor={() => setTutorOpen((v) => !v)}
         onSynthesize={() => setSynthOpen(true)}
         onReport={() => setReportOpen(true)}
+        issueSlug={problem.slug}
       />
 
       {/* ── Main content ─────────────────────────────────────────────── */}
