@@ -14,6 +14,7 @@ import { ACADEMY_TOPIC_META } from "../lib/academy-meta";
 import { LESSONS } from "../lib/lab/lessons";
 import { STUDIO_TOOLS } from "../lib/studio/tools";
 import { ARTICLES } from "../lib/articles";
+import { getProblemBySlug } from "../lib/problems/index";
 import { HOME_FAQ } from "../lib/home-faq";
 import { homePath } from "../lib/home-path";
 import { AI_CRAWLERS, PRIVATE_PATHS, SITE_URL, jsonLd, pageMeta } from "../lib/site";
@@ -130,7 +131,9 @@ const ok = (name: string, fn: () => void | Promise<void>) => Promise.resolve(fn(
       assert.ok(a.title.length <= 70 && a.description.length >= 60 && a.description.length <= 200, `${a.slug}: title/description length`);
       assert.ok(a.sections.length >= 3, `${a.slug}: too thin`);
       for (const f of a.faq ?? []) assert.ok(f.q.endsWith("?") && f.a.length > 30, `${a.slug}: weak FAQ entry`);
-      for (const r of a.related) assert.ok(known.has(r.href) || r.href.startsWith("/academy/") || r.href === "/flash", `${a.slug}: related link ${r.href} is not a public page`);
+      // Problem pages reach the sitemap from the database, which a test run may not have: the code registry decides.
+      const problem = (href: string) => href.startsWith("/problems/") && !!getProblemBySlug(href.slice("/problems/".length));
+      for (const r of a.related) assert.ok(known.has(r.href) || r.href.startsWith("/academy/") || r.href === "/flash" || problem(r.href), `${a.slug}: related link ${r.href} is not a public page`);
     }
   });
 

@@ -4,7 +4,7 @@ import type { Article } from "@/lib/article-types";
 const article: Article = {
   slug: "systemverilog-vs-verilog",
   title: "SystemVerilog vs Verilog: what's the difference?",
-  description: "SystemVerilog is a superset of Verilog. What it adds for RTL design (logic, always_ff, enums, structs, interfaces) and for verification (classes, constrained random, assertions, coverage), and which to learn first.",
+  description: "SystemVerilog is a superset of Verilog. What it adds for RTL design (logic, always_ff, enums, structs, interfaces) and verification (classes, constrained random, assertions), and which to learn first.",
   published: "2026-11-15",
   readMinutes: 7,
   sections: [
