@@ -51,6 +51,7 @@ export default function PrivacyPage() {
           relationship, choices and a keyed hash of their IP address, as evidence of consent.</li>
         <li><strong>Your nominee</strong>, if you name one (below).</li>
         <li><strong>Contact form:</strong> your name, email, subject and message, so we can reply.</li>
+        <li><strong>Feedback</strong> (the Feedback button, the short survey, &ldquo;Was this helpful?&rdquo; and problem reports): your rating or vote, your message, the page you sent it from and, if you&apos;re signed in, your account. No name or email. Whether you&apos;ve already answered the survey is kept only in your browser.</li>
       </ul>
 
       <h2>Who processes it for us</h2>
@@ -93,7 +94,7 @@ export default function PrivacyPage() {
         <li>Logs: error logs and an audit trail of privacy-related actions (consents, exports, deletions, admin changes) are kept for
           one year, as the DPDP Rules require, then deleted. After an account is deleted, the audit trail keeps only that it happened.</li>
         <li>Rate-limit counters: deleted within an hour after they expire.</li>
-        <li>Contact messages: deleted one year after we resolve them.</li>
+        <li>Contact messages and feedback: deleted one year after we resolve them.</li>
         <li>Encrypted database backups: 14 days.</li>
       </ul>
 

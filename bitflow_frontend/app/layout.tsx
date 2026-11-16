@@ -26,6 +26,7 @@ import CelebrationProvider from "@/components/pixel/CelebrationProvider";
 import { OPERATOR, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL, jsonLd } from "@/lib/site";
 import LessonSync from "@/components/LessonSync";
 import SiteChrome from "@/components/SiteChrome";
+import FeedbackWidget from "@/components/feedback/FeedbackWidget";
 import "./globals.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ export default function RootLayout({
             <MockBanner />
             <LessonSync />
             <ConsentGate />
+            <FeedbackWidget />
           </SiteChrome>
         </AuthProvider>
       </body>

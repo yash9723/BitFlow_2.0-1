@@ -499,6 +499,26 @@ model ContactMessage {
   @@index([createdAt])
 }
 
+/// User feedback (POST /api/feedback, lib/feedback.ts): the new-user survey, the Feedback button,
+/// "Was this helpful?" votes and problem issue reports. No email or name is stored.
+model Feedback {
+  id         String    @id @default(uuid())
+  createdAt  DateTime  @default(now())
+  kind       String    // "survey" | "general" | "helpful" | "problem"
+  rating     Int?      // survey: 1–5
+  helpful    Boolean?  // helpful: the vote
+  category   String?   // general: bug | idea | other; problem: wrong-tests | unclear | typo | other
+  message    String?
+  path       String    // the page it was sent from
+  target     String?   // article / chapter / problem slug
+  userId     String?   // set when signed in
+  handled    Boolean   @default(false)
+  resolvedAt DateTime? // set when handled; the row is deleted a year later (lib/error-log.ts)
+
+  @@index([createdAt])
+  @@index([kind, target])
+}
+
 // ============================================================================
 // DPDP — parent/guardian consent for under-18 accounts, an audit trail kept a
 // year (DPDP Rules: logs of processing), and a site-wide notice (breach response).

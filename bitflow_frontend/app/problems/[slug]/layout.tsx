@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import AuthGate from "@/components/AuthGate";
 import SiteHeader from "@/components/SiteHeader";
+import ReportIssueLink from "@/components/feedback/ReportIssueLink";
 import { getSessionUser } from "@/lib/auth-utils";
 import { prisma } from "@/lib/prisma";
 import { GATED, SITE_URL, breadcrumbs, jsonLd, pageMeta } from "@/lib/site";
@@ -58,6 +59,7 @@ export default async function Layout({ children, params }: { children: React.Rea
         <header className="space-y-2">
           <h1 className="font-serif text-3xl leading-tight">{q.title}</h1>
           <p className="font-mono text-[11px] uppercase tracking-widest text-ghost">{q.difficulty} · {q.category} · {q.xpReward} XP</p>
+          <ReportIssueLink slug={params.slug} className="font-mono text-[11px]" />
         </header>
 
         <div className="rounded-xl border border-phosphor/30 bg-phosphor/5 p-5 flex flex-wrap items-center justify-between gap-4">

@@ -8,6 +8,7 @@ import type { Metadata } from "next";
 import ArticleSections from "@/components/academy/ArticleSections";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import HelpfulBlock from "@/components/feedback/HelpfulBlock";
 import { articleBySlug, articleSlugs } from "@/lib/articles";
 import { OPERATOR, SITE_NAME, SITE_URL, jsonLd, pageMeta } from "@/lib/site";
 
@@ -81,6 +82,8 @@ export default function ArticlePage({ params }: Props) {
             </div>
           </section>
         )}
+
+        <HelpfulBlock target={a.slug} what="article" />
 
         <section aria-labelledby="next-title" className="space-y-3">
           <h2 id="next-title" className="font-display text-[19px] font-bold text-bright">Keep going</h2>

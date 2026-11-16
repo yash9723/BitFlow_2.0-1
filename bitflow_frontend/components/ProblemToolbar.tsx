@@ -20,6 +20,7 @@ import type { Difficulty } from "@/lib/problem-types";
 import { NavMenuButton } from "@/components/SiteHeader";
 import { PixelSpinner } from "@/components/pixel/PixelLoader";
 import PixelBar from "@/components/pixel/PixelBar";
+import ReportIssueLink from "@/components/feedback/ReportIssueLink";
 
 const DIFF_DOT: Record<Difficulty, string> = {
   beginner:     "bg-phosphor",
@@ -40,6 +41,8 @@ interface ProblemToolbarProps {
   onToggleTutor?:   () => void;
   onSynthesize?:    () => void;
   onReport?:        () => void;
+  /** Problem slug: shows "Report an issue" (feedback about the problem itself, not the lab report). */
+  issueSlug?:       string;
 }
 
 function SubmittingProgress({
@@ -71,6 +74,7 @@ export default function ProblemToolbar({
   onToggleTutor,
   onSynthesize,
   onReport,
+  issueSlug,
 }: ProblemToolbarProps) {
   const isRunning    = runState === "running";
   const isSubmitting = runState === "submitting";
@@ -108,6 +112,7 @@ export default function ProblemToolbar({
           <span className="font-mono text-[12px] text-bright font-semibold">
             {title}
           </span>
+          {issueSlug && <ReportIssueLink slug={issueSlug} className="hidden sm:inline font-mono text-[10px]" />}
         </div>
       </div>
 
