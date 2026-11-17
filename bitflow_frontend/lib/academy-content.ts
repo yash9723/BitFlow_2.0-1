@@ -28,6 +28,7 @@ import timing           from "@/content/timing/chapter";
 import memory           from "@/content/memory/chapter";
 import adcDac           from "@/content/adc-dac/chapter";
 import gatesToVerilog   from "@/content/gates-to-verilog/chapter";
+import rtlToGds         from "@/content/rtl-to-gds/chapter";
 
 
 const RAW_TOPICS: AcademyTopic[] = [
@@ -35,7 +36,7 @@ const RAW_TOPICS: AcademyTopic[] = [
   gates, booleanAlgebra, karnaughMaps, quineMcCluskey,
   logicFamilies, addersComparators, combinational, arithmeticCircuits,
   sequential, registers, counters, fsms,
-  timing, memory, adcDac, gatesToVerilog,
+  timing, memory, adcDac, gatesToVerilog, rtlToGds,
 ];
 
 /** All topics sorted by curriculum order */

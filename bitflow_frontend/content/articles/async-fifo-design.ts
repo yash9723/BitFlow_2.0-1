@@ -86,6 +86,7 @@ const article: Article = {
     { href: "/problems/fifo-sync", label: "Problem: synchronous FIFO" },
     { href: "/studio/generators", label: "Verilog generators: async FIFO and CDC synchronisers" },
     { href: "/articles/setup-and-hold-time", label: "Setup and hold time explained" },
+    { href: "/articles/clock-domain-crossing", label: "Clock domain crossing (CDC)" },
   ],
 };
 export default article;

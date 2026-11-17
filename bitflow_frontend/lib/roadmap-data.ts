@@ -286,7 +286,9 @@ export const VLSI_ROADMAP_STAGES: RoadmapStage[] = [
         ],
         bitflowModules: [
           { title: "Advanced Counters & Timing", link: "/learn" },
-          { title: "Latch & Flip-Flop Delay Mechanics", link: "/learn" }
+          { title: "Latch & Flip-Flop Delay Mechanics", link: "/learn" },
+          { title: "From RTL to GDS", link: "/academy/rtl-to-gds" },
+          { title: "Static timing analysis basics", link: "/articles/static-timing-analysis-basics" }
         ],
         careerOutlook:
           "High compensation role directly responsible for tape-out success and physical chip yields.",

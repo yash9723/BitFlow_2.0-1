@@ -14,8 +14,13 @@ import fsmInVerilog from "@/content/articles/fsm-in-verilog";
 import setupHold from "@/content/articles/setup-and-hold-time";
 import asyncFifo from "@/content/articles/async-fifo-design";
 import svVsVerilog from "@/content/articles/systemverilog-vs-verilog";
+import rtlToGds from "@/content/articles/rtl-to-gds-flow";
+import cdc from "@/content/articles/clock-domain-crossing";
+import staBasics from "@/content/articles/static-timing-analysis-basics";
+import uvmBasics from "@/content/articles/uvm-basics";
 
 export const ARTICLES: Article[] = [
+  rtlToGds, cdc, staBasics, uvmBasics,
   interviewQuestions, fsmInVerilog, setupHold, asyncFifo, svVsVerilog,
   whatIsVerilog, verilogVsVhdl, blockingVsNonblocking, whatIsAnFpga, combVsSeq, simulateVerilog,
 ];

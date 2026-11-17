@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ACADEMY_TOPICS } from "../lib/academy-content";
 import { ACADEMY_TOPIC_META } from "../lib/academy-meta";
+import { articleBySlug } from "../lib/articles";
 import type { AcademyBlock, AcademyTopic } from "../lib/academy-types";
 import { GateSim, toNumber } from "../lib/gate-sim";
 import { getProblemBySlug } from "../lib/problems/index";
@@ -63,6 +64,7 @@ function checkLink(where: string, href: string) {
   if (area === "problems" && rest) return assert.ok(getProblemBySlug(rest), `${where}: no problem ${href}`);
   if (area === "arena" && rest.includes("/")) return assert.ok(getArenaProblemBySlug(rest.split("/")[1])?.category.toLowerCase() === rest.split("/")[0], `${where}: no arena problem ${href}`);
   if (area === "studio" && rest.startsWith("challenges/")) return assert.ok(challengeById(rest.slice(11)), `${where}: no challenge ${href}`);
+  if (area === "articles" && rest) return assert.ok(articleBySlug(rest), `${where}: no article ${href}`);
   assert.ok(fs.existsSync(path.join(ROOT, "app", area, rest, "page.tsx")), `${where}: no page ${href}`);
 }
 
@@ -123,8 +125,8 @@ for (const t of ACADEMY_TOPICS) {
     });
   }
 }
-assert.equal(ACADEMY_TOPICS.length, 20, "the course has 20 chapters");
-assert.deepEqual(ACADEMY_TOPICS.map((t) => t.order), Array.from({ length: 20 }, (_, i) => i + 1), "numbered 1 to 20 with no gaps");
+assert.equal(ACADEMY_TOPICS.length, 21, "the course has 21 chapters");
+assert.deepEqual(ACADEMY_TOPICS.map((t) => t.order), Array.from({ length: ACADEMY_TOPICS.length }, (_, i) => i + 1), "numbered 1 to N with no gaps");
 assert.ok(circuits >= 35 && kmaps >= 15 && practice >= 100, "chapters lost their circuits or practice questions");
 
 // ── Worked figures in the text are computed here, not trusted ─────────────────

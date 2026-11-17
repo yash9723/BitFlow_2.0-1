@@ -86,6 +86,7 @@ const article: Article = {
   related: [
     { href: "/articles/what-is-verilog", label: "What is Verilog?" },
     { href: "/articles/verilog-vs-vhdl", label: "Verilog vs VHDL" },
+    { href: "/articles/uvm-basics", label: "UVM basics" },
     { href: "/studio/generators", label: "Verilog and SystemVerilog generators" },
     { href: "/studio/testbench", label: "Testbench generator" },
   ],

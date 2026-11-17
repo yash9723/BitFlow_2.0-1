@@ -88,6 +88,8 @@ const article: Article = {
     { href: "/academy/timing", label: "Academy: Timing and Hazards" },
     { href: "/problems/pipelined-multiplier-3stage", label: "Problem: 3-stage pipelined multiplier" },
     { href: "/articles/async-fifo-design", label: "Asynchronous FIFO design" },
+    { href: "/articles/static-timing-analysis-basics", label: "Static timing analysis basics" },
+    { href: "/articles/clock-domain-crossing", label: "Clock domain crossing" },
     { href: "/studio/timing", label: "Timing diagram editor" },
   ],
 };

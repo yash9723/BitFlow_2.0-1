@@ -26,6 +26,7 @@ export const ACADEMY_TOPIC_META: AcademyTopicMeta[] = [
   { slug: "memory", title: "Memories and Programmable Logic", summary: "How RAM and ROM store and find data, why DRAM forgets, sizing memories, and PLAs, PALs and FPGAs.", icon: "▦", difficulty: "core", order: 18, estimatedMinutes: 45 },
   { slug: "adc-dac", title: "ADC and DAC: Meeting the Analog World", summary: "How digital systems measure and produce real voltages: sampling, aliasing, quantization, and the main converter designs.", icon: "∿", difficulty: "core", order: 19, estimatedMinutes: 35 },
   { slug: "gates-to-verilog", title: "From Gates to Verilog", summary: "Stop drawing and start describing: how every circuit in this course is written in Verilog, simulated, and turned into real hardware.", icon: "</>", difficulty: "core", order: 20, estimatedMinutes: 40 },
+  { slug: "rtl-to-gds", title: "From RTL to GDS", summary: "How your Verilog becomes a manufacturable chip: synthesis, floorplan, placement, clock tree, routing, signoff and the GDS file sent to the foundry.", icon: "▦", difficulty: "advanced", order: 21, estimatedMinutes: 45 },
 ];
 
 export const DIFFICULTY_LABELS: Record<string, string> = {
