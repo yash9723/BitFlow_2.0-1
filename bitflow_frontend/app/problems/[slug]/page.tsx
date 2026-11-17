@@ -35,6 +35,8 @@ import type { RunState }      from "@/lib/types";
 import { useMemo }            from "react";
 import { parseDiagnostics }   from "@/lib/diagnostics";
 import PixelLoader from "@/components/pixel/PixelLoader";
+import { useCelebrate }       from "@/components/pixel/CelebrationProvider";
+import { rewardMoments }      from "@/lib/pixel/rewards";
 
 // Monaco — browser only
 const Editor = dynamic(() => import("@/components/Editor"), {
@@ -118,11 +120,13 @@ function ProblemSolverInner({ problem }: { problem: any }) {
     catch { setParsedVcd(null); }
   }, [runResult?.waveform.vcd_base64]);
 
-  // ── Record submission result → progress ────────────────────────────────────
+  // ── Record submission result → progress, and celebrate a first solve ───────
+  const celebrate = useCelebrate();
   useEffect(() => {
     if (!submission) return;
     if (submission.accepted) {
       recordSolve(submission, problem.moduleId);
+      celebrate(...rewardMoments(submission));   // ACCEPTED, +XP, LEVEL n! — nothing on a re-solve
     } else {
       recordAttempt(problem.id);
     }
