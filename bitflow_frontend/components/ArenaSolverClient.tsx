@@ -18,8 +18,6 @@ import Terminal from "@/components/Terminal";
 import WaveformPanel, { CounterexampleView, FailingWaveformView } from "@/components/WaveformPanel";
 import { WaveformPanelWrapper } from "./WaveformPanelWrapper";
 import PixelLoader from "@/components/pixel/PixelLoader";
-import { useCelebrate } from "@/components/pixel/CelebrationProvider";
-import { rewardMoments } from "@/lib/pixel/rewards";
 
 // Monaco is browser-only; the panels start closed, so they load after the page.
 const Editor = dynamic(() => import("@/components/Editor"), {
@@ -129,11 +127,7 @@ interface Props {
 
 export function ArenaSolverClient({ problem }: Props) {
   const hook = useArenaProblem(problem);
-  // A first solve plays ACCEPTED, +XP and LEVEL n! if one was crossed; re-solves earn nothing and play nothing.
-  const celebrate = useCelebrate();
-  useEffect(() => {
-    if (hook.submission) celebrate(...rewardMoments(hook.submission));
-  }, [hook.submission, celebrate]);
+  // Solve celebrations play from useArenaProblem's submit (one per first solve).
   const diagnostics = useMemo(() => parseDiagnostics(hook.runResult?.stdout), [hook.runResult]);
   const [aiAsk, setAiAsk] = useState<{ id: number; prompt: string } | null>(null);
   const isTestbench = problem.problemType === "testbench";
