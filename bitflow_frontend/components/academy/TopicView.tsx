@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ScrollUnlock from "@/components/ScrollUnlock";
 import ArticleSections from "@/components/academy/ArticleSections";
@@ -56,6 +56,15 @@ export default function TopicView({ topic, prev, next }: Props) {
     ...(topic.videos.length ? [{ id: "videos" as Tab, label: "Videos", count: topic.videos.length }] : []),
   ];
 
+  // The active-tab underline slides to the new tab as a phosphor trace (transform only; tabs are
+  // switched often, so it stays subtle). Measured from the buttons, so labels can be any width.
+  const tabEls = useRef(new Map<string, HTMLButtonElement>());
+  const [bar, setBar] = useState<{ x: number; w: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = tabEls.current.get(tab);
+    if (el) setBar({ x: el.offsetLeft, w: el.offsetWidth });
+  }, [tab]);
+
   return (
     <div className="min-h-screen bg-void text-bright">
       <ScrollUnlock />
@@ -101,15 +110,20 @@ export default function TopicView({ topic, prev, next }: Props) {
       </div>
 
       <div className="sticky top-12 z-[9] bg-void/95 border-b border-rim/40 backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto px-6 flex gap-1 overflow-x-auto">
+        <div className="relative max-w-3xl mx-auto px-6 flex gap-1 overflow-x-auto">
+          {bar && (
+            <span aria-hidden className="absolute bottom-0 left-0 h-[2px] w-px origin-left bg-info shadow-[0_0_6px_rgba(77,184,255,.7)] transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
+                  style={{ transform: `translateX(${bar.x}px) scaleX(${bar.w})` }} />
+          )}
           {tabs.map((t) => (
             <button
               key={t.id}
+              ref={(el) => { if (el) tabEls.current.set(t.id, el); }}
               type="button"
               onClick={() => setTab(t.id)}
               className={`font-display font-medium text-[13px] px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
                 tab === t.id
-                  ? "border-info text-info"
+                  ? `${bar ? "border-transparent" : "border-info"} text-info`
                   : "border-transparent text-dim hover:text-ghost"
               }`}
             >

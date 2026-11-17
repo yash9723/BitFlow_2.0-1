@@ -19,6 +19,7 @@ import { PixelIcon, badgeIcon } from "@/components/pixel/PixelIcon";
 import { levelFromXp, tierFromXp } from "@/lib/levels";
 import { useCelebrate } from "@/components/pixel/CelebrationProvider";
 import BitzyWatcher from "@/components/pixel/BitzyWatcher";
+import LogicToggle from "@/components/signal/LogicToggle";
 import PixelFire from "@/components/PixelFire";
 import { signal } from "@/lib/signalfx";
 import type { Animation } from "@/lib/pixel/bitzy";
@@ -114,10 +115,7 @@ function PublicProfileCard({ username, initial }: { username: string; initial: b
           <div className="text-[11px] font-bold uppercase tracking-wider text-bright">Public profile</div>
           <div className="text-[10.5px] text-ghost mt-1">{on ? "Anyone with the link can see your stats, badges and certificates." : "Only you can see this page."}</div>
         </div>
-        <button role="switch" aria-checked={on} aria-label="Public profile" onClick={toggle} disabled={busy}
-                className={`relative w-10 h-6 rounded-full shrink-0 transition-colors disabled:opacity-50 ${on ? "bg-phosphor" : "bg-rim"}`}>
-          <span className={`absolute top-1 w-4 h-4 rounded-full bg-void transition-all ${on ? "left-5" : "left-1"}`} />
-        </button>
+        <LogicToggle on={on} onChange={toggle} label="Public profile" disabled={busy} />
       </div>
       {on && (
         <div className="mt-3 flex items-center gap-2">

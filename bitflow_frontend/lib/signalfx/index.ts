@@ -68,6 +68,11 @@ export const signal = {
       if (fx.glitch) l.flash(el, "sig-glitch", 260);
     });
   },
+  /** A switch flipped by hand: a pulse and HIGH (on) or LOW (off). */
+  level(el: Element | null, high: boolean) {
+    if (!el) return;
+    go(([e, l]) => { const p = l.at(el, 0.5, 0.5); l.play(e.pulse(p, high ? e.GLOW : e.DANGER, 22, 0.35), e.word(high ? "HIGH" : "LOW", l.at(el, 0.5, -0.9), high ? e.PHOSPHOR : e.DANGER, 18, 0.6)); });
+  },
   glint(el: Element | null) {
     if (!el) return;
     go(([e, l]) => l.play(e.kira(l.at(el, 0.78, 0.22))));
