@@ -15,8 +15,7 @@
  */
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
-import { signal } from "@/lib/signalfx";
+import { useSubmitFx } from "@/hooks/useSubmitFx";
 import type { ProblemRunState } from "@/hooks/useProblem";
 import type { Difficulty } from "@/lib/problem-types";
 import { NavMenuButton } from "@/components/SiteHeader";
@@ -84,18 +83,7 @@ export default function ProblemToolbar({
   const isRunning    = runState === "running";
   const isSubmitting = runState === "submitting";
   const isBusy       = isRunning || isSubmitting;
-  // Signal FX: only clicks react (Ctrl+Enter, used many times a day, stays quiet).
-  const runRef = useRef<HTMLButtonElement>(null), submitRef = useRef<HTMLButtonElement>(null), xpRef = useRef<HTMLSpanElement>(null);
-  const clickedSubmit = useRef(false);
-  useEffect(() => {
-    if (!submission || !clickedSubmit.current) return;
-    clickedSubmit.current = false;
-    if (submission.accepted) {
-      signal.pass(submitRef.current);
-      const r = submitRef.current?.getBoundingClientRect();
-      signal.xp(r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null, xpRef.current);
-    } else signal.fail(submitRef.current, submission.passed, submission.total);
-  }, [submission]);
+  const { runRef, submitRef, xpRef, onRunClick, onSubmitClick } = useSubmitFx(submission);   // Signal FX on clicks
 
   return (
     <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-surface border-b border-rim z-10">
@@ -180,7 +168,7 @@ export default function ProblemToolbar({
         {/* Run Code button */}
         <button
           ref={runRef}
-          onClick={() => { signal.run(runRef.current); onRun(); }}
+          onClick={() => { onRunClick(); onRun(); }}
           disabled={isBusy}
           className={[
             "flex items-center gap-1.5 px-3 py-1.5 rounded",
@@ -210,7 +198,7 @@ export default function ProblemToolbar({
         {/* Submit button */}
         <button
           ref={submitRef}
-          onClick={() => { clickedSubmit.current = true; onSubmit(); }}
+          onClick={() => { onSubmitClick(); onSubmit(); }}
           disabled={isBusy}
           className={[
             "flex items-center gap-1.5 px-3 py-1.5 rounded",

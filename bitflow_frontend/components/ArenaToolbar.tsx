@@ -8,6 +8,7 @@
  */
 
 import Link from "next/link";
+import { useSubmitFx } from "@/hooks/useSubmitFx";
 import type { ArenaRunState, UseArenaProblemReturn } from "@/hooks/useArenaProblem";
 import type { ArenaSubmissionResult } from "@/lib/arena/types";
 import { NavMenuButton } from "@/components/SiteHeader";
@@ -50,6 +51,7 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, on
   const { isRunning, isSubmitting, run, submit, submission, submittingIndex, submittingTotal } = hook;
 
   const busy = isRunning || isSubmitting;
+  const { runRef, submitRef, onRunClick, onSubmitClick } = useSubmitFx(submission);   // Signal FX on clicks
 
   return (
     <header className="h-11 flex items-center justify-between px-4 bg-surface/90 border-b border-rim backdrop-blur-sm shrink-0">
@@ -139,7 +141,8 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, on
 
         {/* Run */}
         <button
-          onClick={run}
+          ref={runRef}
+          onClick={() => { onRunClick(); run(); }}
           disabled={busy}
           className="flex items-center gap-1.5 font-mono text-[10px] text-bright border border-rim/60 hover:border-rim bg-surface/60 hover:bg-surface px-3 py-1.5 rounded transition-all disabled:opacity-50"
         >
@@ -160,7 +163,8 @@ export function ArenaToolbar({ title, category, hook, onReset, onToggleTutor, on
 
         {/* Submit */}
         <button
-          onClick={() => submit()}
+          ref={submitRef}
+          onClick={() => { onSubmitClick(); submit(); }}
           disabled={busy}
           className="flex items-center gap-1.5 font-mono text-[10px] text-void font-semibold bg-phosphor hover:bg-phosphor/90 px-3 py-1.5 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
