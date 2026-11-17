@@ -248,6 +248,7 @@ function ProblemSolverInner({ problem }: { problem: any }) {
         title={problem.title}
         difficulty={problem.difficulty}
         xp={progress.totalXp}
+        submission={submission}
         runState={runState}
         submittingIndex={submittingIndex}
         submittingTotal={submittingTotal}

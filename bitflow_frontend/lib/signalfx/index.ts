@@ -44,7 +44,8 @@ export const signal = {
     go(([e, l]) => { const p = l.at(el, 0.5, 0.5); l.play(e.sparks(p, e.DANGER, 10), e.word(failLabel(passed, total), l.at(el, 0.5, -0.6), e.DANGER)); l.flash(panel ?? el, "sig-glitch", 260); });
   },
   xp(from: Pt | null, to: Element | null, onArrive?: () => void) {
-    if (!to || reduced()) { onArrive?.(); return; }
+    // No target, a hidden one (e.g. the toolbar's XP on a phone), or reduced motion: just arrive.
+    if (!to || reduced() || to.getBoundingClientRect().width === 0) { onArrive?.(); return; }
     load().then(([e, l]) => {
       const start = from ?? { x: innerWidth / 2, y: innerHeight / 2 }, end = l.at(to);
       l.play(e.trace(start, end, 6, 0.9, () => { l.play(e.pulse(end, e.GOLD, 22, 0.35)); onArrive?.(); }));

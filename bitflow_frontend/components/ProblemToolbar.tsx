@@ -15,6 +15,8 @@
  */
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
+import { signal } from "@/lib/signalfx";
 import type { ProblemRunState } from "@/hooks/useProblem";
 import type { Difficulty } from "@/lib/problem-types";
 import { NavMenuButton } from "@/components/SiteHeader";
@@ -43,6 +45,8 @@ interface ProblemToolbarProps {
   onReport?:        () => void;
   /** Problem slug: shows "Report an issue" (feedback about the problem itself, not the lab report). */
   issueSlug?:       string;
+  /** The latest graded submission: the toolbar reacts to it (PASS, or FAIL n/m) after a clicked Submit. */
+  submission?:      { accepted: boolean; passed: number; total: number } | null;
 }
 
 function SubmittingProgress({
@@ -75,10 +79,23 @@ export default function ProblemToolbar({
   onSynthesize,
   onReport,
   issueSlug,
+  submission,
 }: ProblemToolbarProps) {
   const isRunning    = runState === "running";
   const isSubmitting = runState === "submitting";
   const isBusy       = isRunning || isSubmitting;
+  // Signal FX: only clicks react (Ctrl+Enter, used many times a day, stays quiet).
+  const runRef = useRef<HTMLButtonElement>(null), submitRef = useRef<HTMLButtonElement>(null), xpRef = useRef<HTMLSpanElement>(null);
+  const clickedSubmit = useRef(false);
+  useEffect(() => {
+    if (!submission || !clickedSubmit.current) return;
+    clickedSubmit.current = false;
+    if (submission.accepted) {
+      signal.pass(submitRef.current);
+      const r = submitRef.current?.getBoundingClientRect();
+      signal.xp(r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null, xpRef.current);
+    } else signal.fail(submitRef.current, submission.passed, submission.total);
+  }, [submission]);
 
   return (
     <header className="h-toolbar shrink-0 flex items-center justify-between px-4 bg-surface border-b border-rim z-10">
@@ -121,7 +138,7 @@ export default function ProblemToolbar({
         {/* XP display */}
         <div className="hidden sm:flex items-center gap-1 font-mono text-[10px]">
           <span className="text-phosphor/60">◈</span>
-          <span className="text-ghost tabular-nums">{xp.toLocaleString()}</span>
+          <span ref={xpRef} className="text-ghost tabular-nums">{xp.toLocaleString()}</span>
           <span className="text-dim">XP</span>
         </div>
 
@@ -162,7 +179,8 @@ export default function ProblemToolbar({
 
         {/* Run Code button */}
         <button
-          onClick={onRun}
+          ref={runRef}
+          onClick={() => { signal.run(runRef.current); onRun(); }}
           disabled={isBusy}
           className={[
             "flex items-center gap-1.5 px-3 py-1.5 rounded",
@@ -191,7 +209,8 @@ export default function ProblemToolbar({
 
         {/* Submit button */}
         <button
-          onClick={onSubmit}
+          ref={submitRef}
+          onClick={() => { clickedSubmit.current = true; onSubmit(); }}
           disabled={isBusy}
           className={[
             "flex items-center gap-1.5 px-3 py-1.5 rounded",
