@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { signal } from "@/lib/signalfx";
 import type { AcademyQuizQuestion } from "@/lib/academy-types";
 import { quizPassed } from "@/lib/academy-progress-storage";
 import { useCelebrate } from "@/components/pixel/CelebrationProvider";
@@ -14,6 +15,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
   const celebrate = useCelebrate();
+  const opts = useRef(new Map<string, HTMLButtonElement>());
 
   const score = questions.reduce((acc, q) => {
     return acc + (answers[q.id] === q.correctIndex ? 1 : 0);
@@ -21,6 +23,12 @@ export default function QuizPanel({ questions, onComplete }: Props) {
 
   const handleSubmit = () => {
     setSubmitted(true);
+    // Correctness shows only now, so the reactions play only now: HIGH for a right answer, LOW for a
+    // wrong one, staggered down the quiz. Answers scrolled out of view are skipped.
+    questions.forEach((q, i) => {
+      const el = opts.current.get(`${q.id}:${answers[q.id]}`), r = el?.getBoundingClientRect();
+      if (el && r && r.bottom > 0 && r.top < innerHeight) setTimeout(() => signal.answer(el, answers[q.id] === q.correctIndex), i * 90);
+    });
     if (score === questions.length) celebrate({ kind: "win" });
     onComplete?.(score, questions.length);
   };
@@ -57,6 +65,7 @@ export default function QuizPanel({ questions, onComplete }: Props) {
                 return (
                   <button
                     key={oi}
+                    ref={(el) => { if (el) opts.current.set(`${q.id}:${oi}`, el); }}
                     type="button"
                     disabled={submitted}
                     onClick={() => setAnswers((a) => ({ ...a, [q.id]: oi }))}

@@ -1,5 +1,6 @@
 "use client";
 
+import { signal } from "@/lib/signalfx";
 import { useEffect, useRef, useState } from "react";
 import { levelFromXp } from "@/lib/levels";
 import { unseenBadges } from "@/lib/pixel/rewards";
@@ -602,12 +603,14 @@ function QuestsCard({ onXp }: { onXp: (xp: number) => void }) {
   useEffect(() => {
     fetch("/api/quests").then((r) => (r.ok ? r.json() : null)).then((j) => setQuests(j?.quests ?? null)).catch(() => setQuests(null));
   }, []);
-  const claim = async (id: string) => {
+  const celebrate = useCelebrate();
+  const claim = async (id: string, el: HTMLElement) => {
+    const box = el.closest("li") ?? el;   // the button is replaced once claimed; react on its row
     setBusy(id);
     try {
       const j = await fetch("/api/quests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).then((r) => r.json());
       if (Array.isArray(j?.quests)) setQuests(j.quests);
-      if (j?.xp > 0) onXp(j.xp);
+      if (j?.xp > 0) { onXp(j.xp); signal.quest(box); celebrate({ kind: "xp", xp: j.xp }); }
     } finally {
       setBusy(null);
     }
@@ -622,7 +625,7 @@ function QuestsCard({ onXp }: { onXp: (xp: number) => void }) {
               <div className="flex items-center justify-between gap-2 mb-1">
                 <span className={`text-xs min-w-0 ${q.claimed ? "text-dim" : "text-pale"}`}>{q.title}</span>
                 {q.claimed ? <span className="text-[11px] text-phosphor shrink-0">✓ +{q.xp} XP</span>
-                  : q.done ? <button onClick={() => claim(q.id)} disabled={busy === q.id}
+                  : q.done ? <button onClick={(e) => claim(q.id, e.currentTarget)} disabled={busy === q.id}
                                      className="shrink-0 px-2 py-0.5 rounded-md border border-phosphor/60 text-phosphor text-[11px] font-semibold hover:bg-phosphor/10 disabled:opacity-50">Claim +{q.xp} XP</button>
                   : <span className="text-[11px] text-dim shrink-0">+{q.xp} XP</span>}
               </div>
