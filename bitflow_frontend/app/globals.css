@@ -284,3 +284,18 @@
 .bf-pair-head { position: relative; border-left: 2px solid #9ca3af; margin-left: -1px; }
 .bf-pair-head::after { position: absolute; top: -1.2em; left: -2px; padding: 0 3px; border-radius: 2px; font-size: 10px; line-height: 1.2;
   white-space: nowrap; color: #0b0f0c; pointer-events: none; z-index: 10; }
+
+/* ── Signal FX (lib/signalfx): press squash, failure glitch, heatmap boot. Transform/opacity only. ── */
+.sig-press { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+.sig-press:active:not(:disabled) { transform: scale(0.96); }
+@keyframes sig_glitch {
+  0%   { transform: translate(0, 0); text-shadow: none; }
+  20%  { transform: translate(-2px, 1px); text-shadow: 2px 0 #ff4f4f, -2px 0 #00e87a; }
+  40%  { transform: translate(2px, -1px); text-shadow: -2px 0 #ff4f4f, 2px 0 #00e87a; }
+  60%  { transform: translate(-1px, 0); text-shadow: 1px 0 #ff4f4f, -1px 0 #00e87a; }
+  100% { transform: translate(0, 0); text-shadow: none; }
+}
+.sig-glitch { animation: sig_glitch 240ms steps(5, end); }
+@keyframes sig_boot { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+.sig-boot { animation: sig_boot 260ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@media (prefers-reduced-motion: reduce) { .sig-press:active:not(:disabled) { transform: none; } }
