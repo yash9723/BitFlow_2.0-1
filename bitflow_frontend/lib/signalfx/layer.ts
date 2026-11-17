@@ -3,7 +3,7 @@
  * modals and under the solve celebration (PixelBurst), aria-hidden, ignores the pointer. One
  * requestAnimationFrame loop that stops when nothing is playing. Loaded on first use only.
  */
-import type { Fx, Pt } from "./effects";
+import { setWordFont, type Fx, type Pt } from "./effects";
 
 const Z = 55;   // above page content and the sticky header, below modals (z-60+) and PixelBurst
 let canvas: HTMLCanvasElement | null = null, ctx: CanvasRenderingContext2D | null = null;
@@ -17,6 +17,9 @@ function ensure() {
   Object.assign(canvas.style, { position: "fixed", inset: "0", width: "100vw", height: "100vh", pointerEvents: "none", zIndex: String(Z) });
   document.body.appendChild(canvas);
   ctx = canvas.getContext("2d");
+  // The site's pixel font under its generated next/font name (see effects.ts setWordFont).
+  const probe = Object.assign(document.createElement("span"), { className: "font-pixel", hidden: true });
+  document.body.appendChild(probe); setWordFont(getComputedStyle(probe).fontFamily); probe.remove();
   const size = () => { const d = Math.min(2, devicePixelRatio || 1); canvas!.width = innerWidth * d; canvas!.height = innerHeight * d; ctx!.setTransform(d, 0, 0, d, 0, 0); };
   size(); addEventListener("resize", size);
 }

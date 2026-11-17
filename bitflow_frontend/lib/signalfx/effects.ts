@@ -12,6 +12,11 @@ export interface Fx { step(dt: number): void; draw(ctx: CanvasRenderingContext2D
 export const PHOSPHOR = "#00e87a", GLOW = "#00ff88", DANGER = "#ff4f4f", GOLD = "#ffb84d";
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
 
+/** The pixel font for words. next/font gives Jersey 10 a generated family name, so layer.ts reads the
+ *  real one from a .font-pixel element and sets it here; this is only the fallback. */
+let wordFont = '"Jersey 10", monospace';
+export const setWordFont = (family: string) => { if (family) wordFont = family; };
+
 /** A small seeded random, so tests are repeatable. */
 export function rng(seed = 1) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32); }
 
@@ -111,7 +116,7 @@ export function word(text: string, at: Pt, color = PHOSPHOR, base = 34, life = 0
     const pop = k < 0.2 ? 0.6 + (k / 0.2) * 0.55 : 1.15 - Math.min(0.15, (k - 0.2) * 0.6);
     ctx.save(); ctx.translate(at.x, at.y - k * 18); ctx.scale(pop, pop);
     ctx.globalAlpha = k > 0.6 ? 1 - (k - 0.6) / 0.4 : 1;
-    ctx.font = `${size}px "Jersey 10", monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = `${size}px ${wordFont}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.lineWidth = 4; ctx.strokeStyle = "#07080a"; ctx.strokeText(text, 0, 0);
     ctx.shadowColor = color; ctx.shadowBlur = 10; ctx.fillStyle = color; ctx.fillText(text, 0, 0);
     ctx.restore();
