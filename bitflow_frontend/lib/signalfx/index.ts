@@ -24,6 +24,10 @@ export const failLabel = (passed?: number | null, total?: number | null) =>
 /** Which reaction an answered quiz option gets. */
 export const answerFx = (right: boolean) => (right ? { word: "HIGH", glitch: false } : { word: "LOW", glitch: true });
 
+/** Where a word goes: above the control, or below it when the control sits near the top of the window
+ *  (the problem toolbar does), so the word never lands off-screen. */
+export const wordSpot = (top: number, height: number, room = 56) => (top < room ? 1 + 28 / Math.max(1, height) + 0.4 : -0.6);
+
 function go(f: (m: Awaited<ReturnType<typeof load>>) => void) { if (!reduced()) load().then(f).catch(() => {}); }
 
 export const signal = {
@@ -33,15 +37,15 @@ export const signal = {
   },
   result(el: Element | null, ok: boolean) {
     if (!el) return;
-    go(([e, l]) => l.play(e.word(ok ? "OK" : "ERR", l.at(el, 0.5, -0.4), ok ? e.PHOSPHOR : e.DANGER, 20, 0.6)));
+    go(([e, l]) => l.play(e.word(ok ? "OK" : "ERR", l.at(el, 0.5, wordSpot(el.getBoundingClientRect().top, el.getBoundingClientRect().height)), ok ? e.PHOSPHOR : e.DANGER, 20, 0.6)));
   },
   pass(el: Element | null) {
     if (!el) return;
-    go(([e, l]) => { const p = l.at(el, 0.5, 0.5); l.play(e.burst(p), e.pulse(p, e.GLOW, 48), e.word("PASS", l.at(el, 0.5, -0.6))); });
+    go(([e, l]) => { const p = l.at(el, 0.5, 0.5); l.play(e.burst(p), e.pulse(p, e.GLOW, 48), e.word("PASS", l.at(el, 0.5, wordSpot(el.getBoundingClientRect().top, el.getBoundingClientRect().height)))); });
   },
   fail(el: Element | null, passed?: number | null, total?: number | null, panel?: Element | null) {
     if (!el) return;
-    go(([e, l]) => { const p = l.at(el, 0.5, 0.5); l.play(e.sparks(p, e.DANGER, 10), e.word(failLabel(passed, total), l.at(el, 0.5, -0.6), e.DANGER)); l.flash(panel ?? el, "sig-glitch", 260); });
+    go(([e, l]) => { const p = l.at(el, 0.5, 0.5); l.play(e.sparks(p, e.DANGER, 10), e.word(failLabel(passed, total), l.at(el, 0.5, wordSpot(el.getBoundingClientRect().top, el.getBoundingClientRect().height)), e.DANGER)); l.flash(panel ?? el, "sig-glitch", 260); });
   },
   xp(from: Pt | null, to: Element | null, onArrive?: () => void) {
     // No target, a hidden one (e.g. the toolbar's XP on a phone), or reduced motion: just arrive.

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { along, bitSpray, burst, clockSweep, kira, parseXpDetail, pulse, route, sparks, trace, word, wordSize } from "../lib/signalfx/effects";
-import { answerFx, failLabel } from "../lib/signalfx";
+import { answerFx, failLabel, wordSpot } from "../lib/signalfx";
 import { directionFor } from "../lib/pixel/bitzy";
 
 // every effect ends within its life
@@ -48,5 +48,8 @@ assert.deepEqual(directionFor(0, 300), { look: 0, down: true });
 assert.deepEqual(directionFor(0, -300), { look: 0, dy: -1 });
 assert.deepEqual(directionFor(200, 200), { look: 1, down: true });
 assert.deepEqual(directionFor(-200, -200), { look: -1, dy: -1 });
+
+// words never go above a control at the top of the window
+assert.ok(wordSpot(8, 28) > 1, "below a toolbar button"); assert.equal(wordSpot(300, 28), -0.6);
 
 console.log("signalfx: ok");
