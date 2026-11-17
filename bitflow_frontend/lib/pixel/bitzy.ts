@@ -163,3 +163,15 @@ export function runs(rows: string[]): [number, number, number, string][] {
   });
   return out;
 }
+
+/**
+ * Where Bitzy looks for a pointer at (dx, dy) from its centre: one of 9 directions (idea after
+ * nilbuild/page-mascot, MIT). Within `dead` px it looks straight ahead. Up raises the body a pixel,
+ * down drops the eyes; left and right shift them.
+ */
+export function directionFor(dx: number, dy: number, dead = 40): Pose {
+  if (Math.hypot(dx, dy) < dead) return {};
+  const a = Math.atan2(dy, dx), sx = Math.cos(a), sy = Math.sin(a);
+  const look = (sx > 0.38 ? 1 : sx < -0.38 ? -1 : 0) as -1 | 0 | 1;
+  return { look, ...(sy > 0.38 ? { down: true } : sy < -0.38 ? { dy: -1 } : {}) };
+}

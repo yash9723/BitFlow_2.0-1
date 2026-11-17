@@ -6,7 +6,7 @@
  * without it this is the public page /u/<username>.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import AccountSecurity from "@/components/AccountSecurity";
 import AccountData from "@/components/AccountData";
@@ -18,6 +18,34 @@ import PixelEmpty from "@/components/pixel/PixelEmpty";
 import { PixelIcon, badgeIcon } from "@/components/pixel/PixelIcon";
 import { levelFromXp, tierFromXp } from "@/lib/levels";
 import { useCelebrate } from "@/components/pixel/CelebrationProvider";
+import BitzyWatcher from "@/components/pixel/BitzyWatcher";
+import PixelFire from "@/components/PixelFire";
+import { signal } from "@/lib/signalfx";
+import type { Animation } from "@/lib/pixel/bitzy";
+
+/** Days since the last day with any activity (Infinity if none). Keys are YYYY-MM-DD. */
+function daysSinceActive(activity: Record<string, number>, now = Date.now()) {
+  const last = Object.keys(activity).filter((k) => activity[k] > 0).sort().pop();
+  return last ? Math.floor((now - Date.parse(last + "T00:00:00Z")) / 86_400_000) : Infinity;
+}
+/** Bitzy's mood: cheering after a solve this week; asleep after two idle weeks, but only on your own page. */
+export function companionMood(days: number, own: boolean): Animation {
+  if (days <= 7) return "cheer";
+  return own && days > 14 ? "sleep" : "idle";
+}
+
+/** An anime "scouter" readout: the number counts up once, in the pixel font. Still with reduced motion. */
+function PowerLevel({ value }: { value: number }) {
+  const [shown, setShown] = useState(value);
+  useEffect(() => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || value <= 0) return;
+    let raf = 0; const t0 = performance.now(), dur = 900;
+    const tick = (t: number) => { const k = Math.min(1, (t - t0) / dur); setShown(Math.round(value * (1 - (1 - k) ** 3))); if (k < 1) raf = requestAnimationFrame(tick); };
+    setShown(0); raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <span className="font-pixel text-[26px] leading-none text-phosphor tabular-nums" aria-label={`${value} XP`}>{shown.toLocaleString()}</span>;
+}
 
 // lib/profile.ts folds beginner/intermediate/advanced into Easy/Medium/Hard
 const DIFF_ORDER = ["Easy", "Medium", "Hard", "Expert"];
@@ -204,6 +232,19 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
             )}
           </div>
 
+          <div className="border border-rim rounded-xl p-5 bg-pit flex items-center gap-4">
+            <BitzyWatcher size={72} rest={companionMood(daysSinceActive(data.activity), own)} />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-dim">Power level</div>
+              <PowerLevel value={data.totalXp} />
+              {data.dailyStreak >= 3 && (
+                <div className="flex items-center gap-1.5 mt-1 text-[11px] text-warn">
+                  <PixelFire cell={3} className="w-4 h-5" /> {data.dailyStreak}-day streak
+                </div>
+              )}
+            </div>
+          </div>
+
           {own && <PublicProfileCard username={data.user.username} initial={data.publicProfile} />}
 
           <div className="border border-rim rounded-xl p-5 bg-pit">
@@ -240,6 +281,7 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
             <ul className="grid grid-cols-2 gap-2">
               {data.badges.map((b) => (
                 <li key={b.id} title={b.description}
+                    onMouseEnter={b.earned ? (e) => { if (matchMedia("(hover: hover) and (pointer: fine)").matches) signal.glint(e.currentTarget); } : undefined}
                     className={`rounded-lg border px-2.5 py-2 ${b.earned ? "border-phosphor/40 bg-phosphor/10" : "border-rim opacity-50"}`}>
                   <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${b.earned ? "text-phosphor" : "text-ghost"}`}>
                     <PixelIcon name={badgeIcon(b.id)} size={24} className={b.earned ? "" : "grayscale opacity-60"} />
@@ -342,7 +384,8 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
                       <div
                         key={di}
                         title={`${day.key}: ${day.count} submission${day.count === 1 ? "" : "s"}`}
-                        className={`w-[10px] h-[10px] rounded-[2px] ${levelForCount(day.count)}`}
+                        className={`w-[10px] h-[10px] rounded-[2px] sig-boot ${levelForCount(day.count)}`}
+                        style={{ animationDelay: `${wi * 12}ms` }}
                       />
                     ))}
                   </div>

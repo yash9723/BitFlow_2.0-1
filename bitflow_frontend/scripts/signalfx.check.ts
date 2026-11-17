@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { along, bitSpray, burst, clockSweep, kira, parseXpDetail, pulse, route, sparks, trace, word, wordSize } from "../lib/signalfx/effects";
 import { answerFx, failLabel } from "../lib/signalfx";
+import { directionFor } from "../lib/pixel/bitzy";
 
 // every effect ends within its life
 const a = { x: 10, y: 20 }, b = { x: 200, y: 90 };
@@ -38,5 +39,14 @@ assert.deepEqual(answerFx(true), { word: "HIGH", glitch: false }); assert.deepEq
 // a first solve celebrates once: only the hooks call celebrate(), not the pages
 for (const f of ["app/problems/[slug]/page.tsx", "components/ArenaSolverClient.tsx"])
   assert.ok(!/celebrate\(/.test(fs.readFileSync(f, "utf8")), `${f} must not celebrate; its hook does`);
+
+// Bitzy looks the right way: 9 directions, straight ahead inside the dead zone
+assert.deepEqual(directionFor(5, 5), {});
+assert.deepEqual(directionFor(300, 0), { look: 1 });
+assert.deepEqual(directionFor(-300, 0), { look: -1 });
+assert.deepEqual(directionFor(0, 300), { look: 0, down: true });
+assert.deepEqual(directionFor(0, -300), { look: 0, dy: -1 });
+assert.deepEqual(directionFor(200, 200), { look: 1, down: true });
+assert.deepEqual(directionFor(-200, -200), { look: -1, dy: -1 });
 
 console.log("signalfx: ok");
