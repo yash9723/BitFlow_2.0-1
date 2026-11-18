@@ -15,7 +15,7 @@
  * Zero simulation logic lives here.
  */
 
-import React, { useState, memo } from "react";
+import React from "react";
 import type { Problem, SubmissionResult, Hint } from "@/lib/problem-types";
 import type { ProgressRecord } from "@/lib/problem-types";
 import SubmissionHistory from "./SubmissionHistory";
@@ -23,7 +23,7 @@ import OptimizationBoard from "./OptimizationBoard";
 import { designReviewPrompt, type DesignScores } from "@/lib/ai-prompts";
 import Discussion from "./Discussion";
 import { CounterexampleView, FailingWaveformView } from "./WaveformPanel";
-import PixelBar from "@/components/pixel/PixelBar";
+import SubmissionReceipt from "./SubmissionReceipt";
 
 interface ProblemStatementProps {
   problem:    Problem;
@@ -56,77 +56,6 @@ function DiffBadge({ difficulty }: { difficulty: string }) {
     </span>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Verdict panel — shown after submission
-// ─────────────────────────────────────────────────────────────────────────────
-
-const VerdictPanel = memo(function VerdictPanel({
-  result,
-}: {
-  result: SubmissionResult;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className={`rounded border ${result.accepted ? "border-phosphor/40 bg-phosphor/5" : "border-danger/40 bg-danger/5"} overflow-hidden`}>
-      {/* Summary row */}
-      <div className="flex items-center justify-between px-3 py-2">
-        <div className="flex items-center gap-2">
-          <span className={`font-mono text-[11px] font-bold ${result.accepted ? "text-phosphor" : "text-danger"}`}>
-            {result.accepted ? "✓ ACCEPTED" : "✗ WRONG ANSWER"}
-          </span>
-          {result.xpEarned > 0 && (
-            <span className="font-mono text-[9px] text-phosphor/70 bg-phosphor/10 border border-phosphor/20 px-1.5 py-0.5 rounded">
-              +{result.xpEarned} XP
-            </span>
-          )}
-        </div>
-        {result.verdicts.length > 0 && (
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="font-mono text-[9px] text-dim hover:text-ghost transition-colors"
-          >
-            {expanded ? "▲ hide" : "▼ details"}
-          </button>
-        )}
-      </div>
-
-      {/* Progress bar */}
-      <PixelBar value={result.passed} max={result.total} tone={result.accepted ? "phosphor" : "danger"} label="Tests passed" height={4} className="px-3 mb-2" />
-
-      <div className="px-3 pb-2 font-mono text-[9px] text-ghost">
-        {result.passed}/{result.total} testcases passed · {Math.round(result.totalDurationMs)}ms
-      </div>
-
-      {/* Testcase breakdown */}
-      {expanded && result.verdicts.length > 0 && (
-        <div className="border-t border-rim/40 px-3 py-2 space-y-1.5">
-          {result.verdicts.map((v, i) => (
-            <div key={v.testcaseId} className="flex items-start gap-2">
-              <span className={`shrink-0 font-mono text-[9px] mt-0.5 ${v.passed ? "text-phosphor" : "text-danger"}`}>
-                {v.passed ? "✓" : "✗"}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="font-mono text-[9px] text-pale truncate">
-                  Testcase {i + 1}: {v.description}
-                </div>
-                {!v.passed && v.error && (
-                  <div className="font-mono text-[8px] text-danger/70 mt-0.5 break-all">
-                    {v.error}
-                  </div>
-                )}
-              </div>
-              <span className="shrink-0 font-mono text-[8px] text-dim">
-                {Math.round(v.durationMs)}ms
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hint block
@@ -273,7 +202,7 @@ export default function ProblemStatement({
         {/* Submission result — shown prominently at top after submit */}
         {submission && (
           <Section title="Last Submission">
-            <VerdictPanel result={submission} />
+            <SubmissionReceipt result={submission} title={problem.title} />
             {!submission.accepted && onExplainFailure && <ExplainFailureButton onClick={onExplainFailure} />}
             {submission.accepted && onReviewDesign && history && <ReviewDesignButton slug={history.slug} submission={submission} onAsk={onReviewDesign} />}
             {submission.counterexample && <CounterexampleView data={submission.counterexample} />}
