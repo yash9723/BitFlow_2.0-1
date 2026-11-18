@@ -26,3 +26,5 @@ import { topicsByCount } from "../components/ProblemIndex";
 assert.deepEqual(parseSaved(null), []); assert.deepEqual(parseSaved("{bad"), []); assert.deepEqual(parseSaved('["a",2,"b"]'), ["a", "b"]);
 assert.deepEqual(topicsByCount([{ category: "fsm" }, { category: "alu" }, { category: "fsm" }, { category: "mux" }]), ["fsm", "alu", "mux"]);
 console.log("revamp saved/topics: ok");
+import { band } from "../components/ProblemIndex";
+assert.equal(band("Beginner"), "easy"); assert.equal(band("medium"), "medium"); assert.equal(band("Advanced"), "hard"); assert.equal(band("arena"), "expert");

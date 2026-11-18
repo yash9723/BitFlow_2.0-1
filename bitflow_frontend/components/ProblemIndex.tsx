@@ -19,13 +19,17 @@ export interface IndexProblem {
   lockedBy: { title: string; href: string } | null;
 }
 
-const DIFFICULTY_ORDER = ["beginner", "easy", "intermediate", "medium", "advanced", "hard", "expert"];
-const DIFF_DOT: Record<string, string> = { beginner: "bg-phosphor", easy: "bg-phosphor", intermediate: "bg-info", medium: "bg-info", advanced: "bg-warn", hard: "bg-warn", expert: "bg-danger", arena: "bg-danger" };
+/** The data mixes two scales (beginner/easy, intermediate/medium, advanced/hard): fold them into four bands, as lib/profile.ts does. */
+const BANDS = ["easy", "medium", "hard", "expert"] as const;
+const BAND_OF: Record<string, string> = { beginner: "easy", easy: "easy", intermediate: "medium", medium: "medium", advanced: "hard", hard: "hard", expert: "expert", arena: "expert" };
+export const band = (d: string) => BAND_OF[d.toLowerCase()] ?? d.toLowerCase();
+const DIFF_DOT: Record<string, string> = { easy: "bg-phosphor", medium: "bg-info", hard: "bg-warn", expert: "bg-danger" };
 const field = "bg-void border border-rim rounded-lg px-2 py-1.5 text-[12px] text-pale focus:outline-none focus:border-phosphor/60";
 const chip = (on: boolean) => `shrink-0 rounded-full px-3 py-1 text-[12px] transition-colors ${on ? "bg-phosphor text-void font-semibold" : "bg-surface border border-rim text-ghost hover:text-bright"}`;
 const side = (on: boolean) => `w-full shrink-0 lg:shrink flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] text-left whitespace-nowrap transition-colors ${on ? "bg-surface text-bright" : "text-ghost hover:text-bright"}`;
 const uniq = (xs: string[]) => [...new Set(xs)];
-const label = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const NAMES: Record<string, string> = { riscv: "RISC-V", fsm: "FSM", alu: "ALU" };
+const label = (s: string) => NAMES[s.toLowerCase()] ?? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 const TOPIC_CHIPS = 3;
 const VIEW_KEY = "bf:problems-view";
 
@@ -60,8 +64,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
   // In the order the page lists them (app/problems/page.tsx).
   const levels = useMemo(() => uniq(problems.map((p) => p.level)), [problems]);
   const topics = useMemo(() => topicsByCount(problems), [problems]);
-  const difficulties = useMemo(() => uniq(problems.map((p) => p.difficulty))
-    .sort((a, b) => DIFFICULTY_ORDER.indexOf(a.toLowerCase()) - DIFFICULTY_ORDER.indexOf(b.toLowerCase())), [problems]);
+  const difficulties = useMemo(() => BANDS.filter((b) => problems.some((p) => band(p.difficulty) === b)), [problems]);
   const tags = useMemo(() => {
     const count = new Map<string, number>();
     for (const p of problems) for (const t of p.tags) count.set(t, (count.get(t) ?? 0) + 1);
@@ -74,7 +77,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
       (!needle || p.title.toLowerCase().includes(needle) || p.slug.includes(needle) || p.tags.some((t) => t.toLowerCase().includes(needle))) &&
       (!level || p.level === level) &&
       (!category || p.category.toLowerCase() === category.toLowerCase()) &&
-      (!difficulty || p.difficulty.toLowerCase() === difficulty.toLowerCase()) &&
+      (!difficulty || band(p.difficulty) === band(difficulty)) &&
       (!tag || p.tags.includes(tag)) &&
       (!onlySaved || saved.includes(p.slug)) &&
       (!status || (status === "solved" ? p.solved : !p.solved)));
@@ -84,7 +87,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
   const shownTopics = topics.slice(0, TOPIC_CHIPS);
   const moreTopics = topics.slice(TOPIC_CHIPS);
   const count = (f: (p: IndexProblem) => boolean) => problems.filter(f).length;
-  const dot = (d: string) => DIFF_DOT[d.toLowerCase()] ?? "bg-ghost";
+  const dot = (d: string) => DIFF_DOT[band(d)] ?? "bg-ghost";
 
   return (
     <div className="lg:grid lg:grid-cols-[210px_1fr] lg:gap-8 font-mono">
@@ -136,7 +139,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
         <div className="flex flex-wrap gap-1.5 items-center">
           <button onClick={() => setParams({ difficulty: "", category: "" })} className={chip(!difficulty && !category)}>All</button>
           {difficulties.map((d) => (
-            <button key={d} onClick={() => setParam("difficulty", difficulty === d ? "" : d)} className={chip(difficulty === d)}>
+            <button key={d} onClick={() => setParam("difficulty", band(difficulty) === d ? "" : d)} className={chip(!!difficulty && band(difficulty) === d)}>
               <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle ${dot(d)}`} />{label(d)}
             </button>
           ))}
@@ -174,7 +177,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
               <li key={p.slug} className="group relative flex flex-col gap-2 rounded-xl border border-rim bg-pit p-4 hover:border-phosphor/40 transition-colors">
                 <div className="flex items-center gap-2 text-[11px] text-ghost">
                   <span className={`w-1.5 h-1.5 rounded-full ${dot(p.difficulty)}`} />
-                  <span>{label(p.difficulty)}</span><span className="text-dim">·</span><span className="truncate">{label(p.category)}</span>
+                  <span>{label(band(p.difficulty))}</span><span className="text-dim">·</span><span className="truncate">{label(p.category)}</span>
                   <SaveStar kind="problems" id={p.slug} title={p.title} className="ml-auto text-[15px] relative z-10" />
                 </div>
                 {p.lockedBy
@@ -208,7 +211,7 @@ export default function ProblemIndex({ problems, signedIn }: { problems: IndexPr
                   {p.lockedBy && <div className="text-[10px] text-dim mt-1">Opens after <Link href={p.lockedBy.href} className="text-info hover:underline">{p.lockedBy.title}</Link></div>}
                 </div>
                 <span className="text-[11px] text-ghost w-28">{label(p.category)}</span>
-                <span className="text-[11px] text-pale w-24">{label(p.difficulty)}</span>
+                <span className="text-[11px] text-pale w-24">{label(band(p.difficulty))}</span>
                 <span className="text-[11px] text-dim w-14 text-right">{p.xp} XP</span>
                 <SaveStar kind="problems" id={p.slug} title={p.title} className="text-[15px] w-5" />
               </li>
