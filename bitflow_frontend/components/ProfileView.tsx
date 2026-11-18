@@ -2,8 +2,11 @@
 /**
  * components/ProfileView.tsx — a learner's profile: stats, badges, solved ring,
  * activity heatmap, recent solves and certificates. `own` adds the account
- * controls (public-profile switch, logout, security, certificate claiming);
- * without it this is the public page /u/<username>.
+ * controls (public-profile switch, logout, security, certificate claiming) on a separate
+ * Settings tab (#settings); without it this is the public page /u/<username>.
+ * Layout ideas from portfolios on designeer.xyz: a dotted-leader index for the stats,
+ * month counts beside the heatmap, dated rows for recent solves, and certificate tracks
+ * drawn as a disk scan (one cell per problem).
  */
 
 import { useEffect, useState } from "react";
@@ -46,6 +49,41 @@ function PowerLevel({ value }: { value: number }) {
     return () => cancelAnimationFrame(raf);
   }, [value]);
   return <span className="font-pixel text-[26px] leading-none text-phosphor tabular-nums" aria-label={`${value} XP`}>{shown.toLocaleString()}</span>;
+}
+
+/** A table-of-contents row: label, dotted leader, value. */
+function Leader({ label, value, tone = "text-bright" }: { label: string; value: React.ReactNode; tone?: string }) {
+  return (
+    <div className="flex items-baseline gap-2 font-term text-[11px] uppercase">
+      <span className="text-ghost shrink-0">{label}</span>
+      <span aria-hidden className="flex-1 min-w-4 border-b border-dotted border-dim/60 translate-y-[-3px]" />
+      <span className={`shrink-0 tabular-nums ${tone}`}>{value}</span>
+    </div>
+  );
+}
+
+/** A track as a disk scan: one cell per problem, solved cells lit. */
+function ScanCells({ solved, total, label }: { solved: number; total: number; label: string }) {
+  return (
+    <div role="img" aria-label={`${label}: ${solved} of ${total} solved`} className="flex flex-wrap gap-[3px] mt-1.5">
+      {Array.from({ length: total }, (_, i) => (
+        <span key={i} className={`w-[9px] h-[9px] rounded-[1px] sig-boot ${i < solved ? "bg-phosphor shadow-[0_0_4px_rgba(0,232,122,0.6)]" : "bg-rim/70"}`}
+              style={{ animationDelay: `${Math.min(i, 40) * 15}ms` }} />
+      ))}
+    </div>
+  );
+}
+
+/** Submissions per month for the last 12 months, oldest first. Keys are YYYY-MM-DD. */
+export function monthTotals(activity: Record<string, number>, now = new Date()): { key: string; label: string; count: number }[] {
+  const out: { key: string; label: string; count: number }[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const key = d.toISOString().slice(0, 7);
+    out.push({ key, label: MONTH_NAMES[d.getUTCMonth()], count: 0 });
+  }
+  for (const [day, n] of Object.entries(activity)) { const m = out.find((o) => o.key === day.slice(0, 7)); if (m) m.count += n; }
+  return out;
 }
 
 // lib/profile.ts folds beginner/intermediate/advanced into Easy/Medium/Hard
@@ -158,9 +196,9 @@ function CertificatesCard({ tracks, own }: { tracks: ProfileData["tracks"]; own:
                   <span className={`text-[12.5px] ${id ? "text-phosphor" : "text-bright"}`}>{id ? "★ " : ""}{t.name}</span>
                   {own && <span className="text-[10.5px] text-ghost font-mono shrink-0">{t.solved}/{t.total}</span>}
                 </div>
-                {own && (
-                  <PixelBar value={t.solved} max={t.total} label={`${t.name} progress`} height={6} className="mt-1.5" />
-                )}
+                {own && (t.total <= 60
+                  ? <ScanCells solved={t.solved} total={t.total} label={`${t.name} progress`} />
+                  : <PixelBar value={t.solved} max={t.total} label={`${t.name} progress`} height={6} className="mt-1.5" />)}
               </div>
               {id ? (
                 <Link href={`/c/${id}`} className="text-[11px] px-3 py-1.5 rounded-lg border border-phosphor/40 text-phosphor hover:bg-phosphor/10 shrink-0">View</Link>
@@ -179,6 +217,12 @@ function CertificatesCard({ tracks, own }: { tracks: ProfileData["tracks"]; own:
 export default function ProfileView({ data, own }: { data: ProfileData; own: boolean }) {
   const { logout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+  // Own profile: Overview or Settings (#settings), so account controls don't bury the stats.
+  const [tab, setTab] = useState<"overview" | "settings">("overview");
+  useEffect(() => { if (own && location.hash === "#settings") setTab("settings"); }, [own]);
+  const pick = (t: "overview" | "settings") => { setTab(t); history.replaceState(null, "", t === "settings" ? "#settings" : location.pathname); };
+  const months = monthTotals(data.activity);
+  const busiest = Math.max(1, ...months.map((m) => m.count));
 
   // Known bands first, then any tier the mapping doesn't know, so the ring always sums to totalSolved
   const diffs = [...DIFF_ORDER, ...Object.keys(data.totalByDifficulty).filter((d) => !DIFF_ORDER.includes(d))];
@@ -202,6 +246,42 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
       {/* Nav */}
       <SiteHeader />
 
+      {own && (
+        <div role="tablist" aria-label="Profile" className="max-w-6xl mx-auto px-6 pt-6 flex gap-1 font-term text-[11px] uppercase">
+          {(["overview", "settings"] as const).map((t) => (
+            <button key={t} role="tab" aria-selected={tab === t} onClick={() => pick(t)}
+                    className={`px-3 py-1.5 rounded-md border transition-colors ${tab === t ? "border-phosphor/50 text-phosphor bg-phosphor/10" : "border-rim text-ghost hover:text-bright"}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {own && tab === "settings" ? (
+        <div className="max-w-3xl mx-auto px-6 py-8 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+          <div className="space-y-6">
+            <PublicProfileCard username={data.user.username} initial={data.publicProfile} />
+            <AccountSecurity />
+          </div>
+          <div className="space-y-6">
+            <AccountData />
+            <div className="border border-rim rounded-xl p-5 bg-pit">
+            {own && (
+              <button
+                onClick={async () => {
+                  setLoggingOut(true);
+                  await logout();
+                }}
+                disabled={loggingOut}
+                className="w-full py-2 rounded-lg border border-danger/30 text-[11px] font-semibold uppercase tracking-wider text-danger hover:bg-danger/10 transition-colors disabled:opacity-50"
+              >
+                {loggingOut ? "Logging out…" : "Logout"}
+              </button>
+            )}
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
         {/* ── Left sidebar ─────────────────────────────────────────── */}
         <aside className="space-y-6">
@@ -216,18 +296,6 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
               </div>
             </div>
             <div className="text-[11px] text-dim">Member since {memberSince}</div>
-            {own && (
-              <button
-                onClick={async () => {
-                  setLoggingOut(true);
-                  await logout();
-                }}
-                disabled={loggingOut}
-                className="w-full mt-4 py-2 rounded-lg border border-danger/30 text-[11px] font-semibold uppercase tracking-wider text-danger hover:bg-danger/10 transition-colors disabled:opacity-50"
-              >
-                {loggingOut ? "Logging out…" : "Logout"}
-              </button>
-            )}
           </div>
 
           <div className="border border-rim rounded-xl p-5 bg-pit flex items-center gap-4">
@@ -243,31 +311,14 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
             </div>
           </div>
 
-          {own && <PublicProfileCard username={data.user.username} initial={data.publicProfile} />}
-
           <div className="border border-rim rounded-xl p-5 bg-pit">
             <div className="text-[11px] font-bold uppercase tracking-wider text-bright mb-4">Stats</div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-ghost">Total XP</span>
-                <span className="text-phosphor font-semibold">{data.totalXp.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-ghost">Problems Solved</span>
-                <span className="text-bright font-semibold">{data.totalSolved}</span>
-              </div>
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-ghost">Active Days</span>
-                <span className="text-bright font-semibold">{data.totalActiveDays}</span>
-              </div>
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-ghost">Max Streak</span>
-                <span className="text-bright font-semibold">{data.maxStreak} {data.maxStreak === 1 ? "day" : "days"}</span>
-              </div>
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-ghost">Daily Challenge Streak</span>
-                <span className="text-warn font-semibold">{data.dailyStreak} {data.dailyStreak === 1 ? "day" : "days"}</span>
-              </div>
+            <div className="space-y-2.5">
+              <Leader label="Total XP" value={data.totalXp.toLocaleString()} tone="text-phosphor" />
+              <Leader label="Solved" value={`${data.totalSolved}/${data.totalProblems}`} />
+              <Leader label="Active days" value={data.totalActiveDays} />
+              <Leader label="Max streak" value={`${data.maxStreak}d`} />
+              <Leader label="Daily streak" value={`${data.dailyStreak}d`} tone="text-warn" />
             </div>
           </div>
 
@@ -292,8 +343,6 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
             </ul>
           </div>
 
-          {own && <AccountSecurity />}
-          {own && <AccountData />}
         </aside>
 
         {/* ── Main content ─────────────────────────────────────────── */}
@@ -390,6 +439,19 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
                 ))}
               </div>
             </div>
+            {/* Month rail: submissions per month, last 12 months */}
+            <ol className="mt-4 grid grid-cols-6 sm:grid-cols-12 gap-1.5 font-term text-[11px]" aria-label="Submissions per month">
+              {months.map((m, i) => (
+                <li key={m.key} title={`${m.key}: ${m.count} submission${m.count === 1 ? "" : "s"}`} className="flex flex-col items-center gap-1">
+                  <span className="relative w-full h-8 rounded-sm bg-rim/40 overflow-hidden">
+                    <span className={`absolute inset-x-0 bottom-0 origin-bottom ${m.count ? "bg-phosphor/70" : ""}`}
+                          style={{ height: `${(m.count / busiest) * 100}%` }} />
+                  </span>
+                  <span className={i === 11 ? "text-phosphor" : "text-dim"}>{m.label}</span>
+                  <span className="text-ghost tabular-nums">{m.count}</span>
+                </li>
+              ))}
+            </ol>
           </div>
 
           {/* Recent AC */}
@@ -403,19 +465,18 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
                   <Link
                     key={i}
                     href={s.href}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-void/60 transition-colors group"
+                    className="flex items-baseline gap-3 px-3 py-2 rounded-lg hover:bg-void/60 transition-colors group"
                   >
+                    <span className="w-14 shrink-0 font-term text-[11px] uppercase text-dim tabular-nums">
+                      {new Date(s.submittedAt).toLocaleDateString("en-US", { month: "short", day: "2-digit" })}
+                    </span>
                     <span className="text-[12.5px] text-pale group-hover:text-bright transition-colors truncate">
                       {s.title}
                     </span>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className={`text-[10px] uppercase tracking-wide ${diffColor(s.difficulty).text}`}>
-                        {s.difficulty}
-                      </span>
-                      <span className="text-[10px] text-dim">
-                        {new Date(s.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
-                    </div>
+                    <span aria-hidden className="flex-1 min-w-4 border-b border-dotted border-rim translate-y-[-3px]" />
+                    <span className={`shrink-0 font-term text-[11px] uppercase ${diffColor(s.difficulty).text}`}>
+                      {s.difficulty}
+                    </span>
                   </Link>
                 ))}
               </div>
@@ -423,6 +484,7 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
           </div>
         </main>
       </div>
+      )}
     </div>
   );
 }
