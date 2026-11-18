@@ -117,7 +117,7 @@ function NetworkError({ message }: { message: string }) {
 function StdoutLine({ line, index }: { line: string; index: number }) {
   return (
     <div
-      className={`font-mono text-[12px] leading-[1.6] animate-slide_up whitespace-pre-wrap break-all ${getLineClass(line)}`}
+      className={`font-term text-[11px] leading-[1.7] animate-slide_up whitespace-pre-wrap break-all ${getLineClass(line)}`}
       style={{ animationDelay: `${Math.min(index * 8, 200)}ms` }}
     >
       {line || "\u00A0"} {/* nbsp preserves blank lines */}
@@ -129,7 +129,7 @@ function StdoutLine({ line, index }: { line: string; index: number }) {
 function StderrLine({ line }: { line: string }) {
   if (!line.trim()) return null;
   return (
-    <div className="font-mono text-[12px] leading-[1.6] text-danger/80 whitespace-pre-wrap break-all">
+    <div className="font-term text-[11px] leading-[1.7] text-danger/80 whitespace-pre-wrap break-all">
       {line}
     </div>
   );
@@ -173,7 +173,7 @@ export default function Terminal({
             <polyline points="1,4 5,7 1,10" />
             <line x1="6" y1="10" x2="13" y2="10" />
           </svg>
-          <span className="font-mono text-[11px] text-ghost tracking-widest uppercase">
+          <span className="font-term text-[11px] text-ghost tracking-widest uppercase">
             Output
           </span>
           <StatusBadge runState={runState} status={result?.status} />

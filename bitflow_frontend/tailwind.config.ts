@@ -63,6 +63,8 @@ const config: Config = {
         ui:      ["var(--font-ui)", "sans-serif"],
         // Blocky pixel lettering for the pixel UI (components/pixel)
         pixel:   ["var(--font-pixel)", "monospace"],
+        // Departure Mono: pixel monospace for terminal-style output, labels and the receipt
+        term:    ["var(--font-term)", "monospace"],
         // Headings, branding, body copy — Inter, site-wide
         display: ["var(--font-display)", "sans-serif"],
         // Legacy class name used for big headings across pages — also Inter now

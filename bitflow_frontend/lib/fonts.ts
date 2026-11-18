@@ -9,6 +9,7 @@
  */
 
 import { Inter, JetBrains_Mono, Jersey_10 } from "next/font/google";
+import localFont from "next/font/local";
 
 /** Blocky pixel lettering: the APEX title (app/announcements) and the pixel UI (components/pixel, `font-pixel`). */
 export const pixel = Jersey_10({ subsets: ["latin"], weight: "400", display: "swap", adjustFontFallback: false, variable: "--font-pixel" });
@@ -21,3 +22,7 @@ export const mono = JetBrains_Mono({
   display: "swap",
   variable: "--font-jetbrains",
 });
+
+/** Departure Mono (Helena Zhang, SIL OFL 1.1, lib/fonts-files): pixel monospace for terminal-style
+ *  output, labels and the submission receipt (`font-term`). The editor and the PNG card stay on `mono`. */
+export const term = localFont({ src: "./fonts-files/DepartureMono-Regular.woff2", display: "swap", variable: "--font-term", fallback: ["monospace"] });
