@@ -5,7 +5,8 @@
  * and the word "delete"). PrivacyRights shows your consent record, the nominee who may act
  * for you (DPDP s.14), and how to ask for a correction or raise a grievance.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import HoldButton from "@/components/HoldButton";
 import Link from "next/link";
 import { downloadBlob } from "@/lib/api";
 import { GuardianPanel } from "@/components/ConsentGate";
@@ -85,6 +86,7 @@ export default function AccountData() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [password, setPassword] = useState("");
   const [typed, setTyped] = useState("");
   const [delMsg, setDelMsg] = useState<string | null>(null);
@@ -134,7 +136,7 @@ export default function AccountData() {
         {!deleting ? (
           <button onClick={() => setDeleting(true)} className={`${button} border-danger/30 text-danger hover:bg-danger/10`}>Delete my account…</button>
         ) : (
-          <form onSubmit={remove} className="space-y-2">
+          <form ref={formRef} onSubmit={remove} className="space-y-2">
             <p className="text-[11px] text-danger leading-relaxed">
               This deletes your account and everything in it, for good: progress, XP, submissions, projects, share links,
               certificates, comments, and any classes you teach. Download your data first if you want a copy.
@@ -145,7 +147,8 @@ export default function AccountData() {
               aria-label='Type "delete" to confirm' className={field} required />
             <div className="flex gap-2">
               <button type="button" onClick={() => { setDeleting(false); setPassword(""); setTyped(""); setDelMsg(null); }} className={`${button} border-rim text-ghost hover:text-bright`}>Cancel</button>
-              <button disabled={busy || typed !== "delete" || !password} className={`${button} border-danger/60 text-danger hover:bg-danger/10`}>Delete for good</button>
+              <HoldButton disabled={busy || typed !== "delete" || !password} onConfirm={() => formRef.current?.requestSubmit()}
+                          label="Hold to delete your account for good" className={`${button} border-danger/60 text-danger hover:bg-danger/10`}>Hold to delete for good</HoldButton>
             </div>
             {delMsg && <p className="text-[11px] text-danger" role="alert">{delMsg}</p>}
           </form>

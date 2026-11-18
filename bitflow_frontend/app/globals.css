@@ -299,3 +299,20 @@
 @keyframes sig_boot { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
 .sig-boot { animation: sig_boot 260ms cubic-bezier(0.23, 1, 0.32, 1) both; }
 @media (prefers-reduced-motion: reduce) { .sig-press:active:not(:disabled) { transform: none; } }
+
+/* ── Submission receipt (components/SubmissionReceipt.tsx): torn bottom edge, stepped feed out of the slot. ── */
+.receipt-paper {
+  -webkit-mask: linear-gradient(#000 0 0) top / 100% calc(100% - 6px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 12px 6px repeat-x;
+          mask: linear-gradient(#000 0 0) top / 100% calc(100% - 6px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 12px 6px repeat-x;
+}
+@keyframes receipt_feed { from { transform: translateY(-100%); } to { transform: none; } }
+@media (prefers-reduced-motion: no-preference) { .receipt-feed { animation: receipt_feed 700ms steps(14, end) 250ms both; } }
+
+/* ── Simulator wake bar (components/SimulatorWakeNotice.tsx): a conveyor of chips under Bitzy. Constant motion: linear. ── */
+.wake-belt {
+  background:
+    repeating-linear-gradient(90deg, #00e87a 0 6px, transparent 6px 16px) top / 100% 3px no-repeat,
+    linear-gradient(#22232d 0 0) bottom / 100% 2px no-repeat;
+}
+@keyframes wake_belt { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: no-preference) { .wake-belt { animation: wake_belt 2.4s linear infinite; } }

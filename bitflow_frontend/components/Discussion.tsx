@@ -4,6 +4,7 @@
  * who solved it (GET/POST /api/problems/[slug]/discussion; lib/discussion.ts).
  * Comments are shown as plain text. Used by ProblemStatement and the Arena.
  */
+import HoldButton from "@/components/HoldButton";
 import { useCallback, useEffect, useState } from "react";
 import { renderMarkdown } from "@/components/ArenaProblemStatement";
 import PixelEmpty from "@/components/pixel/PixelEmpty";
@@ -39,7 +40,6 @@ export default function Discussion({ slug, refreshKey }: { slug: string; refresh
     setBusy(false);
   };
   const act = async (c: Comment, how: "report" | "delete") => {
-    if (how === "delete" && !window.confirm("Delete your comment?")) return;
     if (how === "report" && !window.confirm("Report this comment to the admins?")) return;
     const r = await fetch(`${url}/${c.id}${how === "report" ? "/report" : ""}`, { method: how === "report" ? "POST" : "DELETE" });
     if (!r.ok) { setError((await r.json().catch(() => ({}))).error ?? "Couldn't do that."); return; }
@@ -62,7 +62,7 @@ export default function Discussion({ slug, refreshKey }: { slug: string; refresh
             <span>{new Date(c.createdAt).toLocaleDateString()}</span>
             <span className="ml-auto flex gap-2">
               {c.mine
-                ? <button onClick={() => act(c, "delete")} className="hover:text-danger">Delete</button>
+                ? <HoldButton onConfirm={() => act(c, "delete")} ms={900} label="Hold to delete your comment" className="hover:text-danger" >Hold to delete</HoldButton>
                 : c.reported ? <span>Reported</span> : <button onClick={() => act(c, "report")} className="hover:text-warn">Report</button>}
             </span>
           </div>
