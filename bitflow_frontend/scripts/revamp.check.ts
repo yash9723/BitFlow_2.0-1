@@ -19,3 +19,10 @@ assert.equal(m[0].key, "2025-12"); assert.equal(m.find((x) => x.key === "2026-01
 assert.equal(m.reduce((s, x) => s + x.count, 0), 6, "older than 12 months is left out");
 
 console.log("revamp: ok");
+
+// starred items: malformed storage counts as empty; topics biggest first
+import { parseSaved } from "../lib/saved";
+import { topicsByCount } from "../components/ProblemIndex";
+assert.deepEqual(parseSaved(null), []); assert.deepEqual(parseSaved("{bad"), []); assert.deepEqual(parseSaved('["a",2,"b"]'), ["a", "b"]);
+assert.deepEqual(topicsByCount([{ category: "fsm" }, { category: "alu" }, { category: "fsm" }, { category: "mux" }]), ["fsm", "alu", "mux"]);
+console.log("revamp saved/topics: ok");

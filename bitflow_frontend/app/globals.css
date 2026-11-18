@@ -316,3 +316,8 @@
 }
 @keyframes wake_belt { to { transform: translateX(-50%); } }
 @media (prefers-reduced-motion: no-preference) { .wake-belt { animation: wake_belt 2.4s linear infinite; } }
+
+/* ── Dashed hairline frame (after designeer.xyz) on list pages: problems, academy, articles. ── */
+@media (min-width: 768px) {
+  .bf-frame { border-inline: 1px dashed rgba(149, 152, 172, 0.18); }
+}

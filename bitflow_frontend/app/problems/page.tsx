@@ -46,7 +46,7 @@ export default async function ProblemsPage() {
   return (
     <div className="min-h-screen bg-void text-bright flex flex-col">
       <SiteHeader />
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6 bf-frame">
         <div>
           <h1 className="font-display text-3xl font-bold">All problems</h1>
           <p className="text-[13px] text-ghost mt-1">

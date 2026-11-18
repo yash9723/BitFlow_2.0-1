@@ -2,6 +2,7 @@
  * app/articles/[slug]/page.tsx — one article. Public, statically generated; the text, the questions at the end and
  * the structured data (Article, BreadcrumbList, FAQPage) are all server-rendered from content/articles/<slug>.ts.
  */
+import SaveStar from "@/components/SaveStar";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -56,7 +57,10 @@ export default function ArticlePage({ params }: Props) {
           <Link href="/articles" className="hover:text-bright">Articles</Link> <span aria-hidden>/</span> {a.title}
         </nav>
         <header className="space-y-3">
-          <h1 className="font-serif text-3xl sm:text-4xl leading-tight">{a.title}</h1>
+          <div className="flex items-start gap-3">
+            <h1 className="flex-1 font-serif text-3xl sm:text-4xl leading-tight">{a.title}</h1>
+            <SaveStar kind="articles" id={a.slug} title={a.title} className="mt-2 text-[22px]" />
+          </div>
           <p className="text-[15px] text-ghost leading-relaxed">{a.description}</p>
           <p className="font-mono text-[11px] text-dim">
             By {SITE_NAME} · <time dateTime={a.published}>{date(a.published)}</time>

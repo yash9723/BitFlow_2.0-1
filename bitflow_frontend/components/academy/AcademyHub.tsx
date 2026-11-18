@@ -17,6 +17,9 @@ import SiteHeader from "@/components/SiteHeader";
 
 export default function AcademyHub() {
   const [activeTab, setActiveTab] = useState<"topics" | "roadmap">("topics");
+  const [level, setLevel] = useState("");   // difficulty filter chip; "" = all
+  const levels = [...new Set(ACADEMY_TOPIC_META.map((t) => t.difficulty))];
+  const topics = ACADEMY_TOPIC_META.filter((t) => !level || t.difficulty === level);
 
   return (
     <div className="min-h-screen bg-void text-bright flex flex-col">
@@ -78,7 +81,7 @@ export default function AcademyHub() {
       </div>
 
       {/* Main Content */}
-      <main className="relative z-[1] max-w-5xl w-full mx-auto px-6 py-8 flex-1">
+      <main className="relative z-[1] max-w-5xl w-full mx-auto px-6 py-8 flex-1 bf-frame">
         {activeTab === "topics" ? (
           <div className="space-y-6 max-w-4xl mx-auto">
             {/* Featured Banner for Roadmap */}
@@ -107,9 +110,20 @@ export default function AcademyHub() {
               </span>
             </div>
 
+            {/* Difficulty chips */}
+            <div role="group" aria-label="Filter chapters by level" className="flex flex-wrap items-center gap-1.5 font-mono">
+              {["", ...levels].map((d) => (
+                <button key={d || "all"} onClick={() => setLevel(d)} aria-pressed={level === d}
+                        className={`rounded-full px-3 py-1 text-[12px] transition-colors ${level === d ? "bg-phosphor text-void font-semibold" : "bg-surface border border-rim text-ghost hover:text-bright"}`}>
+                  {d ? DIFFICULTY_LABELS[d] : "All"}
+                  <span className="ml-1.5 font-term text-[11px] opacity-70">{d ? ACADEMY_TOPIC_META.filter((t) => t.difficulty === d).length : ACADEMY_TOPIC_META.length}</span>
+                </button>
+              ))}
+            </div>
+
             {/* Academy Topics Grid */}
             <div className="grid gap-4">
-              {ACADEMY_TOPIC_META.map((topic) => (
+              {topics.map((topic) => (
                 <Link
                   key={topic.slug}
                   href={`/academy/${topic.slug}`}
