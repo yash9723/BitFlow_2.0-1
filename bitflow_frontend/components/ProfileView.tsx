@@ -57,7 +57,7 @@ function Leader({ label, value, tone = "text-bright" }: { label: string; value: 
     <div className="flex items-baseline gap-2 font-term text-[11px] uppercase">
       <span className="text-ghost shrink-0">{label}</span>
       <span aria-hidden className="flex-1 min-w-4 border-b border-dotted border-dim/60 translate-y-[-3px]" />
-      <span className={`shrink-0 tabular-nums ${tone}`}>{value}</span>
+      <span className={`shrink-0 tabular-nums normal-case ${tone}`}>{value}</span>
     </div>
   );
 }
@@ -317,8 +317,8 @@ export default function ProfileView({ data, own }: { data: ProfileData; own: boo
               <Leader label="Total XP" value={data.totalXp.toLocaleString()} tone="text-phosphor" />
               <Leader label="Solved" value={`${data.totalSolved}/${data.totalProblems}`} />
               <Leader label="Active days" value={data.totalActiveDays} />
-              <Leader label="Max streak" value={`${data.maxStreak}d`} />
-              <Leader label="Daily streak" value={`${data.dailyStreak}d`} tone="text-warn" />
+              <Leader label="Max streak" value={`${data.maxStreak} ${data.maxStreak === 1 ? "day" : "days"}`} />
+              <Leader label="Daily streak" value={`${data.dailyStreak} ${data.dailyStreak === 1 ? "day" : "days"}`} tone="text-warn" />
             </div>
           </div>
 
