@@ -11,5 +11,5 @@ docker run --rm --network none --user 1000:1000 -v "$R":/r -v "$S":/s:ro -e RESU
 # Icarus from Ubuntu in a throwaway container (spike only)
 docker run --rm -v "$R":/r -v "$S":/s:ro -v "$M":/m:ro -w /r ubuntu:26.04 bash -c "
   apt-get update -qq >/dev/null && apt-get install -y -qq iverilog >/dev/null 2>&1; iverilog -V 2>&1 | head -1
-  iverilog -g2012 -gspecify -DHALF=$HALF -DW=$WIDTH -o /tmp/sim /m/primitives.v /m/hd.v /r/6_final.v /s/tb_counter.v 2>&1 | grep -v -i 'warning: .*timescale' | head -8
+  iverilog -g2012 -gspecify -DHALF=$HALF -DW=$WIDTH -o /tmp/sim /m/primitives.v /m/hd.v /r/6_final.v /s/tb_counter.v 2>&1 | grep -v -iE 'warning: .*timescale|Choosing typ expression' | sort | uniq -c | sort -rn | head -12
   timeout 120 vvp -n /tmp/sim 2>&1 | grep -vE '^\s*$' | head -40"
