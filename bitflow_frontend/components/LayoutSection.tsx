@@ -10,8 +10,14 @@ import { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 interface Results {
   area_um2: number | null; utilization_pct: number | null; wns_ns: number | null; tns_ns: number | null; slack_ns?: number | null;
-  cells: number | null; drc_violations: number; core_um: number; seconds: number;
+  cells: number | null; drc_violations: number | null; core_um: number; seconds: number;
+  // sign-off checks (older cached jobs lack them: shown as not checked)
+  antenna_violations?: number | null; lec?: boolean | null;
+  corners?: Record<"ss" | "tt" | "ff", { setup: number; hold: number } | null> | null;
 }
+const CORNERS: [keyof NonNullable<Results["corners"]>, string][] = [
+  ["ss", "slow · −40 °C, 1.40 V"], ["tt", "typical · 25 °C, 1.80 V"], ["ff", "fast · −40 °C, 1.95 V"],
+];
 interface Job {
   id: string; state: "queued" | "running" | "done" | "failed"; stage: string | null; message: string | null;
   results: Results | null; position?: number | null; files?: string[]; periodNs?: number; clock?: string | null;
@@ -102,9 +108,11 @@ export default function LayoutSection({ designCode, top, clock, periodNs, langua
             <Stat k="Slack after routing" v={slack != null ? `${slack} ns` : "—"}
                   tone={slack != null && slack < 0 ? "text-danger" : "text-phosphor"}
                   sub={slack != null && slack < 0 ? `misses ${job.periodNs ?? periodNs} ns` : `meets ${job.periodNs ?? periodNs} ns`} />
-            <Stat k="DRC" v={r.drc_violations === 0 ? "clean" : `${r.drc_violations} violations`} tone={r.drc_violations ? "text-danger" : "text-phosphor"}
+            <Stat k="Routing DRC" v={r.drc_violations == null ? "not checked" : r.drc_violations === 0 ? "clean" : `${r.drc_violations} violations`}
+                  tone={r.drc_violations == null ? "text-dim" : r.drc_violations ? "text-danger" : "text-phosphor"}
                   sub={`${r.seconds} s run`} />
           </dl>
+          <SignOff r={r} />
           <div role="tablist" aria-label="Layout views" className="flex flex-wrap gap-1">
             {VIEWS.filter(([f]) => job.files?.includes(f)).map(([f, label]) => (
               <button key={f} role="tab" aria-selected={view === f} onClick={() => setView(f)}
@@ -122,6 +130,40 @@ export default function LayoutSection({ designCode, top, clock, periodNs, langua
         </div>
       )}
     </section>
+  );
+}
+
+/** Sign-off: timing of the finished chip at three process corners, plus the netlist and antenna checks. */
+function SignOff({ r }: { r: Results }) {
+  const ns = (x: number) => `${x.toFixed(2)} ns`;
+  const tone = (x: number) => (x < 0 ? "text-danger" : "text-phosphor");
+  const check = (v: boolean | null | undefined, ok: string, bad: string) =>
+    v == null ? <span className="text-dim">not checked</span> : v ? <span className="text-phosphor">{ok}</span> : <span className="text-danger">{bad}</span>;
+  return (
+    <div className="space-y-1.5 rounded border border-rim bg-void/50 px-2 py-2 font-term text-[11px]">
+      <p className="text-dim uppercase">Sign-off</p>
+      {r.corners ? (
+        <table className="w-full text-left">
+          <caption className="sr-only">Worst slack after routing at each process corner</caption>
+          <thead className="text-dim"><tr><th className="font-normal">corner</th><th className="font-normal">setup slack</th><th className="font-normal">hold slack</th></tr></thead>
+          <tbody>
+            {CORNERS.map(([c, label]) => {
+              const s = r.corners?.[c];
+              return (
+                <tr key={c}>
+                  <td className="text-ghost">{label}</td>
+                  {s ? <><td className={tone(s.setup)}>{ns(s.setup)}</td><td className={tone(s.hold)}>{ns(s.hold)}</td></>
+                     : <td colSpan={2} className="text-dim">not checked</td>}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : <p className="text-dim">Corner timing: not checked for this run.</p>}
+      <p className="text-ghost">Netlist equivalence: {check(r.lec, "the routed netlist matches synthesis", "the routed netlist differs from synthesis")}</p>
+      <p className="text-ghost">Antenna: {check(r.antenna_violations == null ? null : r.antenna_violations === 0, "no violations", `${r.antenna_violations} nets at risk`)}</p>
+      <p className="text-dim">The flow optimised at the typical corner only, so a miss at slow or fast is a real finding: lengthen the clock or shorten the path.</p>
+    </div>
   );
 }
 

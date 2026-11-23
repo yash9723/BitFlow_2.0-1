@@ -50,6 +50,20 @@ def test_reports_and_errors():
         assert (r["area_um2"], r["utilization_pct"], r["cells"], r["wns_ns"], r["tns_ns"], r["slack_ns"]) == (503, 8, 37, -1.26, -56.04, -1.26), r
         (rep / "6_finish.rpt").write_text("wns max 0.00\ntns max 0.00\nworst slack max 8.95\n")   # met: wns clamps at 0
         assert flow.read_results(pathlib.Path(t), "sky130hd", "c")["slack_ns"] == 8.95
+        # no route or LEC log yet: the checks read as not run, never as clean
+        r = flow.read_results(pathlib.Path(t), "sky130hd", "c")
+        assert (r["drc_violations"], r["antenna_violations"], r["lec"]) == (None, None, None), r
+        # lines as written by the pinned ORFS image (counter run on the layout server, 2026-11-23)
+        (log / "5_2_route.log").write_text("[INFO DRT-0199]   Number of violations = 1.\n[INFO ANT-0002] Found 3 net violations.\n"
+                                           "[INFO DRT-0199]   Number of violations = 0.\n[INFO ANT-0002] Found 0 net violations.\n")
+        (log / "6_final_lec_check.log").write_text("[2026-11-23 16:10:36.597] [miter_logger] [info] Circuits are IDENTICAL\n")
+        (rep / "synth_stat.txt").write_text("      172 1.46E+03      172 1.46E+03 cells\n")
+        r = flow.read_results(pathlib.Path(t), "sky130hd", "c")
+        assert (r["drc_violations"], r["antenna_violations"], r["lec"], r["cells"]) == (0, 0, True, 172), r
+        (log / "6_final_lec_check.log").write_text("[info] Circuits are NOT IDENTICAL\n")
+        assert flow.read_results(pathlib.Path(t), "sky130hd", "c")["lec"] is False
+    assert flow.worst_slack("OpenROAD v\nworst slack max -0.785\nworst slack min 0.352\n") == {"setup": -0.785, "hold": 0.352}
+    assert flow.worst_slack("[ERROR ORD-2010] no technology has been read.\n") is None
     assert flow.synth_area("   Chip area for module '\\counter': 339.075200\n") == 339.0752
     assert "power grid" in flow.explain("[ERROR PDN-0185] Insufficient width")
     assert flow.explain("ERROR: syntax error, unexpected TOK_ID").startswith("Synthesis failed")

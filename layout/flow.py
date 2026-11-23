@@ -124,13 +124,22 @@ def _num(rx: str, text: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
+def _last_int(rx: str, text: str) -> int | None:
+    m = re.findall(rx, text)
+    return int(m[-1]) if m else None
+
+
 def read_results(base: Path, platform: str, top: str) -> dict:
-    """Numbers from an ORFS work dir (WORK_HOME); missing files give None, not errors."""
+    """Numbers from an ORFS work dir (WORK_HOME). A check whose report is missing gives None ("not run"), never a
+    pass: the UI shows None as unchecked."""
     rep, log = base / "reports" / platform / top / "base", base / "logs" / platform / top / "base"
     read = lambda p: p.read_text(errors="replace") if p.exists() else ""
-    fin, rpt, drc = read(rep / "6_finish.rpt"), read(log / "6_report.log"), read(rep / "5_route_drc.rpt")
+    fin, rpt, route = read(rep / "6_finish.rpt"), read(log / "6_report.log"), read(log / "5_2_route.log")
+    lec = read(log / "6_final_lec_check.log")
     m = re.search(r"Design area ([0-9.]+) um\^2 ([0-9.]+)% utilization", rpt)
-    cells = _num(r"^\s*([0-9]+)\s+[0-9.]+(?:\s+[0-9]+\s+[0-9.]+)?\s+cells\s*$", read(rep / "synth_stat.txt"))   # "  37  339.075  37  339.075 cells"
+    # "  37  339.075  37  339.075 cells", bigger designs "  172 1.46E+03  172 1.46E+03 cells"
+    num = r"[0-9.]+(?:[eE][+-]?[0-9]+)?"
+    cells = _num(rf"^\s*([0-9]+)\s+{num}(?:\s+[0-9]+\s+{num})?\s+cells\s*$", read(rep / "synth_stat.txt"))
     return {
         "area_um2": float(m.group(1)) if m else None,
         "utilization_pct": float(m.group(2)) if m else None,
@@ -139,8 +148,27 @@ def read_results(base: Path, platform: str, top: str) -> dict:
         # wns stops at 0 once timing is met; worst slack is the real margin (ORFS report_worst_slack)
         "slack_ns": _num(r"^worst slack(?: max)?\s+(-?[0-9.]+)", fin),
         "cells": int(cells) if cells is not None else None,
-        "drc_violations": len(re.findall(r"violation type:", drc, flags=re.I)),
+        # the detailed router's own check (5_route_drc.rpt is empty when clean); last count is after the final pass
+        "drc_violations": _last_int(r"Number of violations = (\d+)", route),
+        "antenna_violations": _last_int(r"Found (\d+) net violations", route),
+        # the finished netlist proven equivalent to the synthesized one (ORFS 6_final_lec_check)
+        "lec": None if "Circuits are" not in lec else "Circuits are IDENTICAL" in lec,
     }
+
+
+# Sign-off timing corners for sky130hd: ORFS ships tt; ss/ff come from the OpenROAD repo's test/sky130hd libraries
+# (installed into LIBS_DIR by user-data.sh). Label shown to learners.
+CORNERS = {
+    "ss": ("sky130_fd_sc_hd__ss_n40C_1v40.lib", "slow: −40 °C, 1.40 V"),
+    "tt": ("sky130_fd_sc_hd__tt_025C_1v80.lib", "typical: 25 °C, 1.80 V"),
+    "ff": ("sky130_fd_sc_hd__ff_n40C_1v95.lib", "fast: −40 °C, 1.95 V"),
+}
+
+
+def worst_slack(sta_out: str) -> dict | None:
+    """OpenSTA's report_worst_slack lines -> {"setup": ns, "hold": ns}, None if either is missing."""
+    setup, hold = _num(r"^worst slack max\s+(-?[0-9.]+)", sta_out), _num(r"^worst slack min\s+(-?[0-9.]+)", sta_out)
+    return None if setup is None or hold is None else {"setup": setup, "hold": hold}
 
 
 # ORFS error codes we have seen -> what the learner should do. Anything else falls back to the raw line.
