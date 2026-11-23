@@ -12,7 +12,7 @@ interface Results {
   area_um2: number | null; utilization_pct: number | null; wns_ns: number | null; tns_ns: number | null; slack_ns?: number | null;
   cells: number | null; drc_violations: number | null; core_um: number; seconds: number;
   // sign-off checks (older cached jobs lack them: shown as not checked)
-  antenna_violations?: number | null; lec?: boolean | null;
+  antenna_violations?: number | null; lec?: boolean | null; drc_deck_violations?: number | null; lvs?: boolean | null;
   corners?: Record<"ss" | "tt" | "ff", { setup: number; hold: number } | null> | null;
 }
 const CORNERS: [keyof NonNullable<Results["corners"]>, string][] = [
@@ -160,6 +160,8 @@ function SignOff({ r }: { r: Results }) {
           </tbody>
         </table>
       ) : <p className="text-dim">Corner timing: not checked for this run.</p>}
+      <p className="text-ghost">DRC, SkyWater rule deck (KLayout): {check(r.drc_deck_violations == null ? null : r.drc_deck_violations === 0, "clean", `${r.drc_deck_violations} violations`)}</p>
+      <p className="text-ghost">LVS: {check(r.lvs, "the layout matches the netlist", "the layout doesn't match the netlist")}</p>
       <p className="text-ghost">Netlist equivalence: {check(r.lec, "the routed netlist matches synthesis", "the routed netlist differs from synthesis")}</p>
       <p className="text-ghost">Antenna: {check(r.antenna_violations == null ? null : r.antenna_violations === 0, "no violations", `${r.antenna_violations} nets at risk`)}</p>
       <p className="text-dim">The flow optimised at the typical corner only, so a miss at slow or fast is a real finding: lengthen the clock or shorten the path.</p>

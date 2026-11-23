@@ -7,7 +7,7 @@ set -euxo pipefail
 exec > >(tee /var/log/bitflow-layout-setup.log) 2>&1
 
 DOMAIN=layout.bitflowvlsi.tech
-BRANCH=feat/layout-service
+BRANCH=main
 ORFS_IMAGE=openroad/orfs@sha256:d64a1e6edb83726c4816e2ae2144fbd5691f7b67403db0e86789cb30a2763d06
 
 fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
@@ -27,6 +27,9 @@ cd /opt/bitflow-layout
 git clone --depth 1 --branch "$BRANCH" https://github.com/yash9723/BitFlow_2.0-1 repo
 python3 -m venv venv && venv/bin/pip install -q -r repo/layout/requirements.txt
 docker pull "$ORFS_IMAGE"
+# the job image: ORFS plus KLayout for sign-off DRC/LVS (layout/Dockerfile.klayout)
+docker build -q -t bitflow/orfs-klayout:1 -f repo/layout/Dockerfile.klayout repo/layout
+ORFS_IMAGE=bitflow/orfs-klayout:1
 # slow/fast corner libraries for sign-off timing (ORFS ships only tt); SkyWater data, Apache-2.0, ~84 MB
 mkdir -p libs && for c in ss_n40C_1v40 ff_n40C_1v95; do
   curl -fsSL -o "libs/sky130_fd_sc_hd__$c.lib" "https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD/master/test/sky130hd/sky130_fd_sc_hd__$c.lib"

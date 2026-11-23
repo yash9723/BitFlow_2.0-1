@@ -165,6 +165,13 @@ CORNERS = {
 }
 
 
+def read_klayout(drc_log: str, lvs_log: str) -> dict:
+    """ORFS `make drc` / `make lvs` (KLayout, sky130hd decks). make exits 0 even when LVS fails, so read the text:
+    'Total violations: N' and 'Congratulations! Netlists match.' / 'ERROR : Netlists don't match'. Missing -> None."""
+    lvs = True if "Netlists match" in lvs_log else False if "Netlists don't match" in lvs_log else None
+    return {"drc_deck_violations": _last_int(r"Total violations: (\d+)", drc_log), "lvs": lvs}
+
+
 def worst_slack(sta_out: str) -> dict | None:
     """OpenSTA's report_worst_slack lines -> {"setup": ns, "hold": ns}, None if either is missing."""
     setup, hold = _num(r"^worst slack max\s+(-?[0-9.]+)", sta_out), _num(r"^worst slack min\s+(-?[0-9.]+)", sta_out)

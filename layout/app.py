@@ -49,7 +49,7 @@ KEEP_DAYS = float(os.environ.get("KEEP_DAYS", "7"))
 UID = os.environ.get("JOB_UID", "1000:1000")
 PUBLIC_KEY = os.environ.get("JWT_PUBLIC_KEY", "").replace("\\n", "\n")
 LIBS_DIR = Path(os.environ.get("LIBS_DIR", "/opt/bitflow-layout/libs"))      # ss/ff Liberty files for sign-off timing
-CHECKS_VERSION = "signoff-1"      # in the cache key: bump when the checks change so old results are recomputed
+CHECKS_VERSION = "signoff-2"      # in the cache key: bump when the checks change so old results are recomputed
 TT_LIB = "/OpenROAD-flow-scripts/flow/platforms/sky130hd/lib/" + flow.CORNERS["tt"][0]
 
 FILES = {
@@ -171,7 +171,7 @@ def docker(jid: str, target: str, logname: str) -> tuple[int, str]:
     name = f"layout-{jid}"
     cmd = ["docker", "run", "--rm", "--name", name, "--network", "none", "--user", UID,
            "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--read-only",
-           "--tmpfs", "/tmp:rw,size=512m", "--memory", MEMORY, "--memory-swap", MEMORY, "--cpus", CPUS,
+           "--tmpfs", "/tmp:rw,size=512m", "-e", "HOME=/tmp", "--memory", MEMORY, "--memory-swap", MEMORY, "--cpus", CPUS,
            "--pids-limit", "1024", "-v", f"{d}:/work", IMAGE, "bash", "-c",
            f"cd /OpenROAD-flow-scripts/flow && source ../env.sh >/dev/null 2>&1; "
            f"make DESIGN_CONFIG=/work/config.mk WORK_HOME=/work/run {target} > /work/{logname} 2>&1"]
@@ -263,7 +263,12 @@ def run_job(jid: str):
             if src.exists():
                 shutil.copy(src, out / n)
         corners = signoff_timing(jid, plat, top) if rc == 0 else None
-        results = flow.read_results(d / "run", plat, top) | {"corners": corners, "synth_area_um2": area, "core_um": core,
+        if rc == 0 and plat == "sky130hd":     # KLayout DRC + LVS (needs the orfs-klayout image; else they read as not run)
+            docker(jid, "drc", "drc.log")
+            docker(jid, "lvs", "lvs.log")
+        rd = lambda n: (d / n).read_text(errors="replace") if (d / n).exists() else ""
+        results = flow.read_results(d / "run", plat, top) | flow.read_klayout(rd("drc.log"), rd("lvs.log")) | {
+                                                            "corners": corners, "synth_area_um2": area, "core_um": core,
                                                              "seconds": round(time.time() - t0, 1), "image": IMAGE}
         if rc:
             msg = "The layout took too long (over the time limit)." if rc == 124 else flow.explain(text)
