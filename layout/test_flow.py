@@ -45,9 +45,11 @@ def test_reports_and_errors():
         rep.mkdir(parents=True); log.mkdir(parents=True)
         (log / "6_report.log").write_text("Design area 503 um^2 8% utilization.\n")
         (rep / "synth_stat.txt").write_text("      37  339.075       37  339.075 cells\n")
-        (rep / "6_finish.rpt").write_text("wns max -1.26\ntns max -56.04\n")
+        (rep / "6_finish.rpt").write_text("wns max -1.26\ntns max -56.04\nworst slack max -1.26\n")
         r = flow.read_results(pathlib.Path(t), "sky130hd", "c")
-        assert (r["area_um2"], r["utilization_pct"], r["cells"], r["wns_ns"], r["tns_ns"]) == (503, 8, 37, -1.26, -56.04), r
+        assert (r["area_um2"], r["utilization_pct"], r["cells"], r["wns_ns"], r["tns_ns"], r["slack_ns"]) == (503, 8, 37, -1.26, -56.04, -1.26), r
+        (rep / "6_finish.rpt").write_text("wns max 0.00\ntns max 0.00\nworst slack max 8.95\n")   # met: wns clamps at 0
+        assert flow.read_results(pathlib.Path(t), "sky130hd", "c")["slack_ns"] == 8.95
     assert flow.synth_area("   Chip area for module '\\counter': 339.075200\n") == 339.0752
     assert "power grid" in flow.explain("[ERROR PDN-0185] Insufficient width")
     assert flow.explain("ERROR: syntax error, unexpected TOK_ID").startswith("Synthesis failed")

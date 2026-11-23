@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { PixelSpinner } from "@/components/pixel/PixelLoader";
 
 interface Results {
-  area_um2: number | null; utilization_pct: number | null; wns_ns: number | null; tns_ns: number | null;
+  area_um2: number | null; utilization_pct: number | null; wns_ns: number | null; tns_ns: number | null; slack_ns?: number | null;
   cells: number | null; drc_violations: number; core_um: number; seconds: number;
 }
 interface Job {
@@ -58,6 +58,7 @@ export default function LayoutSection({ designCode, top, clock, periodNs, langua
 
   const busy = job?.state === "queued" || job?.state === "running";
   const r = job?.results;
+  const slack = r ? r.slack_ns ?? r.wns_ns : null;   // wns is 0 whenever timing is met; worst slack is the real margin
   const stageIdx = job?.stage ? STAGES.indexOf(job.stage) : 0;
 
   return (
@@ -98,9 +99,9 @@ export default function LayoutSection({ designCode, top, clock, periodNs, langua
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-term text-[11px]">
             <Stat k="Cell area" v={r.area_um2 !== null ? `${r.area_um2} µm²` : "—"} />
             <Stat k="Chip" v={`${r.core_um + 20} × ${r.core_um + 20} µm`} sub={r.utilization_pct !== null ? `${r.utilization_pct}% full` : undefined} />
-            <Stat k="Slack after routing" v={r.wns_ns !== null ? `${r.wns_ns} ns` : "—"}
-                  tone={r.wns_ns !== null && r.wns_ns < 0 ? "text-danger" : "text-phosphor"}
-                  sub={r.wns_ns !== null && r.wns_ns < 0 ? `misses ${job.periodNs ?? periodNs} ns` : `meets ${job.periodNs ?? periodNs} ns`} />
+            <Stat k="Slack after routing" v={slack != null ? `${slack} ns` : "—"}
+                  tone={slack != null && slack < 0 ? "text-danger" : "text-phosphor"}
+                  sub={slack != null && slack < 0 ? `misses ${job.periodNs ?? periodNs} ns` : `meets ${job.periodNs ?? periodNs} ns`} />
             <Stat k="DRC" v={r.drc_violations === 0 ? "clean" : `${r.drc_violations} violations`} tone={r.drc_violations ? "text-danger" : "text-phosphor"}
                   sub={`${r.seconds} s run`} />
           </dl>

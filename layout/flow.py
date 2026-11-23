@@ -136,6 +136,8 @@ def read_results(base: Path, platform: str, top: str) -> dict:
         "utilization_pct": float(m.group(2)) if m else None,
         "wns_ns": _num(r"^wns max\s+(-?[0-9.]+)", fin),
         "tns_ns": _num(r"^tns max\s+(-?[0-9.]+)", fin),
+        # wns stops at 0 once timing is met; worst slack is the real margin (ORFS report_worst_slack)
+        "slack_ns": _num(r"^worst slack(?: max)?\s+(-?[0-9.]+)", fin),
         "cells": int(cells) if cells is not None else None,
         "drc_violations": len(re.findall(r"violation type:", drc, flags=re.I)),
     }
