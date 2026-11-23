@@ -65,6 +65,10 @@ export default function LayoutSection({ designCode, top, clock, periodNs, langua
   const busy = job?.state === "queued" || job?.state === "running";
   const r = job?.results;
   const slack = r ? r.slack_ns ?? r.wns_ns : null;   // wns is 0 whenever timing is met; worst slack is the real margin
+  // the headline is the typical corner; name any other corner that misses so the two never contradict
+  const cornerMiss = r?.corners
+    ? CORNERS.filter(([c]) => { const s = r.corners?.[c]; return s && (s.setup < 0 || s.hold < 0); }).map(([c]) => c === "ss" ? "slow" : c === "ff" ? "fast" : "typical").filter((n) => n !== "typical").join(" and ") || null
+    : null;
   const stageIdx = job?.stage ? STAGES.indexOf(job.stage) : 0;
 
   return (
@@ -105,9 +109,10 @@ export default function LayoutSection({ designCode, top, clock, periodNs, langua
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-term text-[11px]">
             <Stat k="Cell area" v={r.area_um2 !== null ? `${r.area_um2} µm²` : "—"} />
             <Stat k="Chip" v={`${r.core_um + 20} × ${r.core_um + 20} µm`} sub={r.utilization_pct !== null ? `${r.utilization_pct}% full` : undefined} />
-            <Stat k="Slack after routing" v={slack != null ? `${slack} ns` : "—"}
-                  tone={slack != null && slack < 0 ? "text-danger" : "text-phosphor"}
-                  sub={slack != null && slack < 0 ? `misses ${job.periodNs ?? periodNs} ns` : `meets ${job.periodNs ?? periodNs} ns`} />
+            <Stat k="Slack after routing · typical" v={slack != null ? `${slack} ns` : "—"}
+                  tone={slack != null && slack < 0 ? "text-danger" : cornerMiss ? "text-warn" : "text-phosphor"}
+                  sub={slack != null && slack < 0 ? `misses ${job.periodNs ?? periodNs} ns`
+                       : cornerMiss ? `meets ${job.periodNs ?? periodNs} ns here; misses at ${cornerMiss}` : `meets ${job.periodNs ?? periodNs} ns`} />
             <Stat k="Routing DRC" v={r.drc_violations == null ? "not checked" : r.drc_violations === 0 ? "clean" : `${r.drc_violations} violations`}
                   tone={r.drc_violations == null ? "text-dim" : r.drc_violations ? "text-danger" : "text-phosphor"}
                   sub={`${r.seconds} s run`} />
