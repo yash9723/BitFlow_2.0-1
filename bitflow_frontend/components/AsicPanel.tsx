@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
 import TinyTapeoutSection from "@/components/TinyTapeoutSection";
+import LayoutSection from "@/components/LayoutSection";
 import ChipXray from "@/components/ChipXray";
 import type { SrcLoc, YosysNetlist } from "@/lib/hardware-diagrams";
 import { pathCells, slowestCell } from "@/lib/asic-path";
@@ -317,6 +318,10 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
                   <> Built as your testbench configures {result.top}: {Object.entries(result.parameters).map(([k, v]) => `${k} = ${v}`).join(", ")}.</>
                 )}
               </p>
+
+              {result.top && (
+                <LayoutSection designCode={designCode} top={result.top} clock={t.clock} periodNs={t.periodNs} language={language} />
+              )}
 
               {t.setup && t.setup.stages.length > 0 && (
                 <section aria-label="Critical path" className="space-y-1.5">

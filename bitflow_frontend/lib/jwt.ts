@@ -34,6 +34,12 @@ function signingKey(): { key: string; algorithm: "ES256" | "HS256" } {
   return { key: secret, algorithm: "HS256" };
 }
 
+/** A short-lived token for the layout service (layout/app.py): `sub` lets it allow one running job per learner. */
+export function generateLayoutJwt(userId: string): string {
+  const { key, algorithm } = signingKey();
+  return jwt.sign({ iss: "bitflow-frontend", purpose: "layout", sub: userId }, key, { algorithm, expiresIn: "60s" });
+}
+
 /** True when a backend signing key is set (pair mode, lib/pair-server.ts, needs one). */
 export const hasBackendKey = () => !!(process.env.JWT_PRIVATE_KEY || process.env.JWT_SECRET);
 
