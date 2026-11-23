@@ -1,0 +1,10 @@
+# layout/Dockerfile.klayout — the pinned OpenROAD-flow-scripts image plus KLayout, so ORFS's own `make drc` and
+# `make lvs` can run the sky130hd KLayout rule decks (platforms/sky130hd/drc, lvs). Build on the layout server:
+#   docker build -t bitflow/orfs-klayout:1 -f layout/Dockerfile.klayout layout
+# then point ORFS_IMAGE at that tag. Bump the tag when this file changes (the job cache key includes the image).
+FROM openroad/orfs@sha256:d64a1e6edb83726c4816e2ae2144fbd5691f7b67403db0e86789cb30a2763d06
+USER root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends klayout \
+ && rm -rf /var/lib/apt/lists/* \
+ && klayout -v
