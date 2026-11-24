@@ -72,7 +72,7 @@ export async function POST(request: Request, { params }: { params: { slug: strin
   if (error) return error;
   if (!sub) return NextResponse.json({ error: "Solve the problem first: the board lays out your accepted solution." }, { status: 400 });
   if (sub.layoutState === "pending") return NextResponse.json(view(sub));
-  if (sub.layoutState === "done") return NextResponse.json(view(sub));     // this solution is already laid out
+  // a finished entry may be laid out again (e.g. after the scoring changes); the service caches identical jobs
   const { success } = await rateLimit(request, { limit: 6, windowMs: 10 * 60_000, prefix: "layout", key: `user:${user.id}` });
   if (!success) return NextResponse.json({ error: "Too many layouts. Please wait a few minutes." }, { status: 429 });
 
