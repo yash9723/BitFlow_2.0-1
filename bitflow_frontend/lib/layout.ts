@@ -28,8 +28,10 @@ export function layoutVerdict(r: Record<string, unknown> | null | undefined): { 
   if (r.lvs !== true) failed.push(r.lvs == null ? "LVS didn't run" : "LVS: the layout doesn't match the netlist");
   if (r.lec !== true) failed.push(r.lec == null ? "the equivalence check didn't run" : "the routed netlist differs from synthesis");
   if (r.antenna_violations !== 0) failed.push(r.antenna_violations == null ? "the antenna check didn't run" : `${r.antenna_violations} antenna violations`);
-  const area = num(r.area_um2);
-  if (area == null) failed.push("no routed area was reported");
+  // the design's own cells after layout (layout/logic_area.tcl): ORFS's total area is mostly taps and fill on a
+  // small design, so it can't tell two solutions apart
+  const area = num(r.logic_area_um2);
+  if (area == null) failed.push("the cell area wasn't measured (lay it out again)");
   return {
     area, slack: num(r.slack_ns) ?? num(r.wns_ns), clean: failed.length === 0,
     message: failed.length ? `Not ranked: ${failed.join("; ")}.` : null,

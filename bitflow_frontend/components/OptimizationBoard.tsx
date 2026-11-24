@@ -46,8 +46,9 @@ export default function OptimizationBoard({ slug, refreshKey, fastest = false }:
       <LayoutEntry slug={slug} onDone={() => setEntryKey((k) => k + 1)} />
       <p className="text-[9px] text-dim">
         Opt in with your accepted solution: OpenROAD places and routes it on SkyWater 130 nm at a 10 ns clock, then runs
-        sign-off (DRC, LVS, equivalence, antenna). Only layouts that pass every check rank. Smaller routed area wins; ties go
-        to whoever got there first. Slack is the typical corner at 10 ns, shown but not ranked.
+        sign-off (DRC, LVS, equivalence, antenna). Only layouts that pass every check rank. The score is the area of your
+        design&apos;s cells after layout, including the clock tree and buffers the flow adds, but not fill or tap cells.
+        Smaller wins; ties go to whoever got there first. Slack is the typical corner at 10 ns, shown but not ranked.
       </p>
       {board.entries.length > 0 ? (
         <table className="w-full text-[10px]">
