@@ -172,6 +172,11 @@ def read_klayout(drc_log: str, lvs_log: str) -> dict:
     return {"drc_deck_violations": _last_int(r"Total violations: (\d+)", drc_log), "lvs": lvs}
 
 
+def logic_area(out: str) -> float | None:
+    """layout/logic_area.tcl's 'logic area <um2> cells <n>' -> um2, None if missing."""
+    return _num(r"^logic area\s+([0-9.]+)\s+cells", out)
+
+
 def worst_slack(sta_out: str) -> dict | None:
     """OpenSTA's report_worst_slack lines -> {"setup": ns, "hold": ns}, None if either is missing."""
     setup, hold = _num(r"^worst slack max\s+(-?[0-9.]+)", sta_out), _num(r"^worst slack min\s+(-?[0-9.]+)", sta_out)

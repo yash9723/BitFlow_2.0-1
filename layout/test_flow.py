@@ -64,6 +64,9 @@ def test_reports_and_errors():
         assert flow.read_results(pathlib.Path(t), "sky130hd", "c")["lec"] is False
     assert flow.worst_slack("OpenROAD v\nworst slack max -0.785\nworst slack min 0.352\n") == {"setup": -0.785, "hold": 0.352}
     assert flow.worst_slack("[ERROR ORD-2010] no technology has been read.\n") is None
+    # logic_area.tcl output on the 4-bit counter layout (server, 2026-11-24)
+    assert flow.logic_area("OpenROAD v\nlogic area 236.477 cells 25\n") == 236.477
+    assert flow.logic_area("[ERROR ORD-0002] x\n") is None
     # KLayout DRC/LVS lines from the calibration runs (clean counter, then a broken copy)
     assert flow.read_klayout("    1.3s Total violations: 0\n", "INFO : Congratulations! Netlists match.\n") == {"drc_deck_violations": 0, "lvs": True}
     assert flow.read_klayout("    1.4s Total violations: 3\n", "ERROR : Netlists don't match\n") == {"drc_deck_violations": 3, "lvs": False}
