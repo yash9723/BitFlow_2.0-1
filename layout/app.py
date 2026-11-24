@@ -49,7 +49,7 @@ KEEP_DAYS = float(os.environ.get("KEEP_DAYS", "7"))
 UID = os.environ.get("JOB_UID", "1000:1000")
 PUBLIC_KEY = os.environ.get("JWT_PUBLIC_KEY", "").replace("\\n", "\n")
 LIBS_DIR = Path(os.environ.get("LIBS_DIR", "/opt/bitflow-layout/libs"))      # ss/ff Liberty files for sign-off timing
-CHECKS_VERSION = "signoff-2"      # in the cache key: bump when the checks change so old results are recomputed
+CHECKS_VERSION = "signoff-3"      # in the cache key: bump when the checks change so old results are recomputed
 TT_LIB = "/OpenROAD-flow-scripts/flow/platforms/sky130hd/lib/" + flow.CORNERS["tt"][0]
 
 FILES = {
@@ -198,18 +198,32 @@ def signoff_timing(jid: str, plat: str, top: str) -> dict | None:
         if corner != "tt" and not (LIBS_DIR / lib).exists():
             out[corner] = None
             continue
-        cmd = ["docker", "run", "--rm", "--network", "none", "--user", UID, "--cap-drop", "ALL",
-               "--security-opt", "no-new-privileges", "--read-only", "--tmpfs", "/tmp:rw,size=64m",
-               "--memory", MEMORY, "--memory-swap", MEMORY, "--cpus", CPUS, "--pids-limit", "256",
-               "-v", f"{res}:/r:ro", "-v", f"{LIBS_DIR}:/libs:ro", "-v", f"{Path(__file__).parent / 'corners.tcl'}:/corners.tcl:ro",
-               "-e", "RESULTS=/r", "-e", f"LIB={path}", IMAGE, "bash", "-c",
-               "source /OpenROAD-flow-scripts/env.sh >/dev/null 2>&1; openroad -no_init -no_splash -exit /corners.tcl 2>&1"]
-        try:
-            p = subprocess.run(cmd, timeout=120, capture_output=True, text=True)
-            out[corner] = flow.worst_slack(p.stdout)
-        except subprocess.TimeoutExpired:
-            out[corner] = None
+        stdout = openroad_script(res, "corners.tcl", {"LIB": path})
+        out[corner] = flow.worst_slack(stdout) if stdout is not None else None
     return out
+
+
+def logic_area(jid: str, plat: str, top: str) -> float | None:
+    """Routed area of the design's own cells (layout/logic_area.tcl): what the after-layout leaderboard ranks."""
+    res = JOBS / jid / "run" / "results" / plat / top / "base"
+    if not (res / "6_final.odb").exists():
+        return None
+    stdout = openroad_script(res, "logic_area.tcl", {})
+    return flow.logic_area(stdout) if stdout is not None else None
+
+
+def openroad_script(res: Path, script: str, env: dict) -> str | None:
+    """Run one of this directory's OpenROAD scripts on a finished layout, read-only, same lockdown as the flow."""
+    cmd = ["docker", "run", "--rm", "--network", "none", "--user", UID, "--cap-drop", "ALL",
+           "--security-opt", "no-new-privileges", "--read-only", "--tmpfs", "/tmp:rw,size=64m",
+           "--memory", MEMORY, "--memory-swap", MEMORY, "--cpus", CPUS, "--pids-limit", "256",
+           "-v", f"{res}:/r:ro", "-v", f"{LIBS_DIR}:/libs:ro", "-v", f"{Path(__file__).parent / script}:/script.tcl:ro",
+           "-e", "RESULTS=/r", *(a for k, v in env.items() for a in ("-e", f"{k}={v}")), IMAGE, "bash", "-c",
+           "source /OpenROAD-flow-scripts/env.sh >/dev/null 2>&1; openroad -no_init -no_splash -exit /script.tcl 2>&1"]
+    try:
+        return subprocess.run(cmd, timeout=120, capture_output=True, text=True).stdout
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def stage_watch(jid: str, req: dict, stop: threading.Event):
@@ -268,7 +282,8 @@ def run_job(jid: str):
             docker(jid, "lvs", "lvs.log")
         rd = lambda n: (d / n).read_text(errors="replace") if (d / n).exists() else ""
         results = flow.read_results(d / "run", plat, top) | flow.read_klayout(rd("drc.log"), rd("lvs.log")) | {
-                                                            "corners": corners, "synth_area_um2": area, "core_um": core,
+                                                            "corners": corners, "logic_area_um2": logic_area(jid, plat, top) if rc == 0 else None,
+                                                            "synth_area_um2": area, "core_um": core,
                                                              "seconds": round(time.time() - t0, 1), "image": IMAGE}
         if rc:
             msg = "The layout took too long (over the time limit)." if rc == 124 else flow.explain(text)
