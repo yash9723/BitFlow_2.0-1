@@ -221,6 +221,16 @@ model Submission {
   fmaxMhz         Float?   // timing problems (lib/arena/timing.ts): place-and-route Fmax on an iCE40-HX8K
   areaUm2         Float?   // standard-cell area on Sky130 HD (POST /metrics), for the smallest-chip leaderboard
 
+  // Opt-in "after layout" leaderboard (layout/ service, OpenROAD on Sky130 HD): set on an accepted SUBMIT
+  // when its author asks for a layout. Ranked by routed area, only when every sign-off check passed.
+  layoutJobId     String?  // the layout service's job id
+  layoutState     String?  // "pending" | "done" | "failed"
+  layoutMessage   String?  // why it failed or doesn't rank, in plain words
+  layoutAreaUm2   Float?   // routed cell area (ORFS 6_report "Design area")
+  layoutSlackNs   Float?   // worst setup slack after routing, typical corner, at layoutPeriodNs
+  layoutPeriodNs  Float?   // the clock period it was laid out at
+  layoutClean     Boolean? // routing DRC, deck DRC, LVS, equivalence and antenna all passed
+
   // Wrong SUBMITs: shortest differing input sequence vs. the reference, as a text
   // table (lib/grading.ts counterexampleTable). Shown to the AI tutor.
   counterexample  String?
@@ -237,6 +247,7 @@ model Submission {
   @@index([createdAt])
   @@index([accepted])
   @@index([problemId, accepted, gateCount])
+  @@index([problemId, layoutClean, layoutAreaUm2])
 }
 
 // ============================================================================
