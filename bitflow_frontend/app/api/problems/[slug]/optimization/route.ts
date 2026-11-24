@@ -2,6 +2,7 @@
  * GET /api/problems/[slug]/optimization — smallest-design leaderboard.
  * ?sort=fmax — fastest-design leaderboard (timing problems, lib/arena/timing.ts).
  * ?sort=area — smallest-chip leaderboard: Sky130 standard-cell area in µm², then earliest.
+ * ?sort=layout — after-layout leaderboard: routed area in µm² of opted-in, sign-off-clean layouts, then earliest.
  *
  * Each user's best accepted submission, ranked by fewest gates, then lowest
  * logic depth, then earliest (or by highest Fmax, then earliest). Only numbers and usernames are returned, never
@@ -24,14 +25,18 @@ export async function GET(request: Request, { params }: { params: { slug: string
   // ponytail: ranks in memory over at most 5000 scored submissions per problem;
   // move to a GROUP BY query if a problem ever gets more than that.
   const sort = new URL(request.url).searchParams.get("sort");
-  const fastest = sort === "fmax", smallest = sort === "area";
+  const fastest = sort === "fmax", smallest = sort === "area", routed = sort === "layout";
   const rows = await prisma.submission.findMany({
     where:   { problemId: question.id, accepted: true, userId: { not: null },
-               ...(fastest ? { fmaxMhz: { not: null } } : smallest ? { areaUm2: { not: null } } : { gateCount: { not: null } }) },
-    orderBy: fastest  ? [{ fmaxMhz: "desc" }, { createdAt: "asc" }]
+               // after layout: only entries whose every sign-off check passed (app/api/problems/[slug]/layout-entry)
+               ...(routed ? { layoutClean: true, layoutAreaUm2: { not: null } }
+                 : fastest ? { fmaxMhz: { not: null } } : smallest ? { areaUm2: { not: null } } : { gateCount: { not: null } }) },
+    orderBy: routed   ? [{ layoutAreaUm2: "asc" }, { createdAt: "asc" }]
+           : fastest  ? [{ fmaxMhz: "desc" }, { createdAt: "asc" }]
            : smallest ? [{ areaUm2: "asc" }, { createdAt: "asc" }]
            :            [{ gateCount: "asc" }, { logicDepth: "asc" }, { createdAt: "asc" }],
-    select:  { userId: true, gateCount: true, logicDepth: true, ffBits: true, fmaxMhz: true, areaUm2: true, createdAt: true, user: { select: { id: true, username: true, ...PRIVACY_SELECT } } },
+    select:  { userId: true, gateCount: true, logicDepth: true, ffBits: true, fmaxMhz: true, areaUm2: true, layoutAreaUm2: true, layoutSlackNs: true,
+               createdAt: true, user: { select: { id: true, username: true, ...PRIVACY_SELECT } } },
     take:    5000,
   });
 
@@ -44,6 +49,8 @@ export async function GET(request: Request, { params }: { params: { slug: string
     gates:    r.gateCount ?? 0,
     mhz:      r.fmaxMhz ?? null,
     area:     r.areaUm2 ?? null,
+    routedArea: r.layoutAreaUm2 ?? null,
+    routedSlack: r.layoutSlackNs ?? null,
     depth:    r.logicDepth ?? 0,
     ffBits:   r.ffBits ?? 0,
     at:       r.createdAt,
