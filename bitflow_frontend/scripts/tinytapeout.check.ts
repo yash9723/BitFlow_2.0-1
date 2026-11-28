@@ -37,7 +37,7 @@ $enddefinitions $end
   assert.deepEqual(ok.vectors.map((v) => [v.ui, v.rstN, v.uo]), [[0, 0, "--------"], [1, 1, "------00"], [1, 1, "------00"]]);
   // en rises on the edge at 15: the recording can't say which value the flip-flop saw
   const race = recordReplay(vcd(15), m, ctr);
-  assert.ok("error" in race && /exactly on the clock edge at time 15/.test(race.error), JSON.stringify(race));
+  assert.ok("error" in race && /exactly on the clock edge at 15 ns/.test(race.error), JSON.stringify(race));
   assert.match((recordReplay(vcd(12), m, ctr.replace("posedge clk", "negedge clk")) as { error: string }).error, /falling clock edge/);
   assert.match((recordReplay(null, m, ctr) as { error: string }).error, /run your testbench first/);
   assert.match((recordReplay(vcd(12), m, ctr + "\nmodule d (input clk2, output reg y); always @(posedge clk2) y <= ~y; endmodule") as { error: string }).error, /more than one clock/);

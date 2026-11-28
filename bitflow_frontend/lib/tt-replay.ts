@@ -24,6 +24,16 @@ function bits(value: string, width: number): string {
   return pad.repeat(width - value.length) + value;
 }
 
+/** A VCD time in the units people write testbenches in: "25 ns" for #25000 at a 1 ps timescale. */
+function when(t: number, timescale: string): string {
+  const m = /^(\d+)\s*(fs|ps|ns|us|ms|s)$/.exec(timescale.trim());
+  if (!m) return `time ${t}`;
+  const units = ["fs", "ps", "ns", "us", "ms", "s"];
+  let v = t * Number(m[1]), u = units.indexOf(m[2]);
+  while (u < units.length - 1 && v >= 1000 && v % 1000 === 0) { v /= 1000; u++; }
+  return `${v} ${units[u]}`;
+}
+
 /** The value just before `t`; "x" before the first change. */
 function valueBefore(s: VcdSignal, t: number): string {
   let v = "x";
@@ -77,7 +87,7 @@ export function recordReplay(vcd: ParsedVcd | string | null, map: TtMapping, des
     for (const c of sig.get(map.clock)!.changes) { if (c.value === "1" && prev === "0") times.push(c.time); prev = c.value; }
     if (!times.length) return { error: "the clock never rises in the recording" };
     const race = times.find((t) => inputSigs.some((s) => s.changes.some((c) => c.time === t)));
-    if (race !== undefined) return { error: `an input changes exactly on the clock edge at time ${race}: change inputs just after the edge (@(posedge clk); #1;) and run again` };
+    if (race !== undefined) return { error: `an input changes exactly on the clock edge at ${when(race, vcd.timescale)}: change inputs just after the edge (@(posedge clk); #1;) and run again` };
   } else {
     const changes = [...new Set(inputSigs.flatMap((s) => s.changes.map((c) => c.time)))].sort((a, b) => a - b);
     if (!changes.length) return { error: "the inputs never change in the recording" };
