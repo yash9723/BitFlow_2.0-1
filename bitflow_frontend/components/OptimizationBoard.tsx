@@ -8,9 +8,9 @@
 import { useEffect, useState } from "react";
 
 type Entry = { rank: number; username: string; gates: number; depth: number; ffBits: number; mhz: number | null; area: number | null;
-               routedArea?: number | null; routedSlack?: number | null; isMe: boolean };
+               routedArea?: number | null; routedSlack?: number | null; routedMhz?: number | null; routedPeriod?: number | null; isMe: boolean };
 type Board = { solvers: number; entries: Entry[]; me: Entry | null };
-type Mode = "gates" | "area" | "layout";
+type Mode = "gates" | "area" | "layout" | "speed";
 
 /** fastest: rank by clock frequency after place and route (timing problems) instead of size. */
 export default function OptimizationBoard({ slug, refreshKey, fastest = false }: { slug: string; refreshKey?: unknown; fastest?: boolean }) {
@@ -18,7 +18,7 @@ export default function OptimizationBoard({ slug, refreshKey, fastest = false }:
   const [mode, setMode] = useState<Mode>("gates");   // 2-input gates, Sky130 cell area, or routed area after layout
   const [entryKey, setEntryKey] = useState(0);        // bumps when the learner's own layout finishes
   const byArea = mode === "area";
-  const sort = fastest ? "?sort=fmax" : mode === "area" ? "?sort=area" : mode === "layout" ? "?sort=layout" : "";
+  const sort = fastest ? "?sort=fmax" : mode === "area" ? "?sort=area" : mode === "layout" ? "?sort=layout" : mode === "speed" ? "?sort=speed" : "";
 
   useEffect(() => {
     fetch(`/api/problems/${encodeURIComponent(slug)}/optimization${sort}`)
@@ -31,7 +31,7 @@ export default function OptimizationBoard({ slug, refreshKey, fastest = false }:
 
   const tabs = !fastest && (
     <div className="flex gap-1 text-[10px]" role="tablist" aria-label="Rank by">
-      {([["Gates", "gates"], ["Chip area", "area"], ["After layout", "layout"]] as const).map(([label, m]) => (
+      {([["Gates", "gates"], ["Chip area", "area"], ["After layout", "layout"], ["Fastest after layout", "speed"]] as const).map(([label, m]) => (
         <button key={label} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
                 className={`px-2 py-0.5 border ${mode === m ? "border-phosphor/60 text-phosphor" : "border-rim text-dim hover:text-pale"}`}>
           {label}
@@ -64,6 +64,33 @@ export default function OptimizationBoard({ slug, refreshKey, fastest = false }:
           </tbody>
         </table>
       ) : <p className="text-[10px] text-dim">No layouts yet: be the first.</p>}
+    </div>
+  );
+
+  if (mode === "speed" && !fastest) return (
+    <div className="space-y-2 font-mono">
+      {tabs}
+      <SpeedEntry slug={slug} onDone={() => setEntryKey((k) => k + 1)} />
+      <p className="text-[9px] text-dim">
+        Starts from your clean After layout entry: OpenROAD lays the same solution out again at faster clocks, down a fixed
+        ladder of periods (8 to 1 ns), until one misses timing. The score is the clock speed of the fastest layout that met
+        timing at the typical corner with every sign-off check passing. Higher wins; ties go to whoever got there first. The
+        flow upsizes cells to go faster, so this chip is bigger than your After layout one. Up to four layouts, a few minutes.
+      </p>
+      {board.entries.length > 0 ? (
+        <table className="w-full text-[10px]">
+          <thead><tr className="text-dim text-left"><th className="font-normal pr-2">#</th><th className="font-normal">Who</th><th className="font-normal text-right">MHz</th><th className="font-normal text-right">at</th></tr></thead>
+          <tbody>
+            {board.entries.map((e) => (
+              <tr key={e.rank} className={e.isMe ? "text-phosphor" : "text-pale"}>
+                <td className="pr-2">{e.rank}</td><td className="truncate max-w-[10rem]">{e.username}</td>
+                <td className="text-right">{e.routedMhz?.toLocaleString()}</td>
+                <td className="text-right text-dim">{e.routedPeriod != null ? `${e.routedPeriod} ns` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p className="text-[10px] text-dim">No speed runs yet: be the first.</p>}
     </div>
   );
 
@@ -208,6 +235,73 @@ function LayoutEntry({ slug, onDone }: { slug: string; onDone: () => void }) {
                 className="px-2 py-0.5 border border-phosphor/60 text-phosphor hover:bg-phosphor/10 disabled:opacity-50">
           {busy ? "Starting…" : entry.state === "failed" ? "Try the layout again"
             : entry.state === "done" ? "Lay out my latest solution again" : "Lay out my solution (about a minute)"}
+        </button>
+      )}
+      {error && <p role="alert" className="text-danger">{error}</p>}
+    </div>
+  );
+}
+
+type SpeedState = { solved?: boolean; ready?: boolean; state: "pending" | "done" | "failed" | null; message?: string | null; mhz?: number | null;
+                    periodNs?: number | null; runs?: { periodNs: number; pass: boolean | null; slackNs: number | null }[]; maxRuns?: number;
+                    stage?: string | null; position?: number | null; waiting?: boolean };
+
+/** The learner's own speed run: start it, follow each rung, show the result. Each poll also moves the run on. */
+function SpeedEntry({ slug, onDone }: { slug: string; onDone: () => void }) {
+  const [s, setS] = useState<SpeedState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const url = `/api/problems/${encodeURIComponent(slug)}/speed-entry`;
+
+  useEffect(() => {
+    let stop = false, timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      const r = await fetch(url).catch(() => null);
+      const d: SpeedState | null = r?.ok ? await r.json().catch(() => null) : null;
+      if (stop) return;
+      setS(d);
+      if (d?.state === "pending") timer = setTimeout(poll, 5000);
+      else if (d?.state === "done") onDone();
+    };
+    poll();
+    return () => { stop = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-poll only when the run is (re)started
+  }, [url, busy]);
+
+  const start = async () => {
+    setError(null); setBusy(true);
+    const r = await fetch(url, { method: "POST" }).catch(() => null);
+    const d = r ? await r.json().catch(() => ({})) : {};
+    if (!r?.ok) setError(d.error ?? "The speed run couldn't start.");
+    setBusy(false);
+  };
+
+  if (!s) return null;
+  if (s.solved === false) return <p className="text-[10px] text-dim">Solve it to enter the fastest-after-layout board.</p>;
+  if (!s.ready) return <p className="text-[10px] text-dim">Lay out your solution on the After layout tab first: the speed run starts from a clean layout.</p>;
+  const runs = s.runs ?? [];
+  const cur = runs[runs.length - 1];
+  return (
+    <div className="text-[10px] space-y-1" role="status">
+      {s.state === "pending" && cur && (
+        <p className="text-info">
+          Layout {runs.length} of up to {s.maxRuns} at {cur.periodNs} ns
+          {s.waiting ? ": waiting for the layout server" : s.stage ? `: ${s.stage}` : s.position ? ` (queue position ${s.position})` : "…"}
+        </p>
+      )}
+      {runs.some((r) => r.pass !== null) && (
+        <p className="text-dim">
+          {runs.filter((r) => r.pass !== null).map((r) => `${r.periodNs} ns ${r.pass ? "met" : "missed"}`).join(" · ")}
+        </p>
+      )}
+      {s.state === "done" && s.mhz != null && (
+        <p className="text-phosphor">Your speed: {s.mhz.toLocaleString()} MHz (laid out at {s.periodNs} ns){s.message ? <span className="text-warn"> · {s.message}</span> : null}</p>
+      )}
+      {s.state === "failed" && <p className="text-danger">{s.message ?? "The speed run failed."}</p>}
+      {s.state !== "pending" && (
+        <button onClick={start} disabled={busy}
+                className="px-2 py-0.5 border border-phosphor/60 text-phosphor hover:bg-phosphor/10 disabled:opacity-50">
+          {busy ? "Starting…" : s.state ? "Run the speed test again" : "Find my fastest clock (a few minutes)"}
         </button>
       )}
       {error && <p role="alert" className="text-danger">{error}</p>}

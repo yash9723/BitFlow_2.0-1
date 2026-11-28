@@ -3,6 +3,7 @@
  * ?sort=fmax — fastest-design leaderboard (timing problems, lib/arena/timing.ts).
  * ?sort=area — smallest-chip leaderboard: Sky130 standard-cell area in µm², then earliest.
  * ?sort=layout — after-layout leaderboard: routed area in µm² of opted-in, sign-off-clean layouts, then earliest.
+ * ?sort=speed — fastest after layout: MHz from finished speed runs (lib/speed.ts), then earliest.
  *
  * Each user's best accepted submission, ranked by fewest gates, then lowest
  * logic depth, then earliest (or by highest Fmax, then earliest). Only numbers and usernames are returned, never
@@ -25,18 +26,21 @@ export async function GET(request: Request, { params }: { params: { slug: string
   // ponytail: ranks in memory over at most 5000 scored submissions per problem;
   // move to a GROUP BY query if a problem ever gets more than that.
   const sort = new URL(request.url).searchParams.get("sort");
-  const fastest = sort === "fmax", smallest = sort === "area", routed = sort === "layout";
+  const fastest = sort === "fmax", smallest = sort === "area", routed = sort === "layout", speed = sort === "speed";
   const rows = await prisma.submission.findMany({
     where:   { problemId: question.id, accepted: true, userId: { not: null },
-               // after layout: only entries whose every sign-off check passed (app/api/problems/[slug]/layout-entry)
+               // after layout: only entries whose every sign-off check passed (app/api/problems/[slug]/layout-entry);
+               // fastest after layout: only finished speed runs (speed-entry), which start from such an entry
                ...(routed ? { layoutClean: true, layoutAreaUm2: { not: null } }
+                 : speed ? { layoutClean: true, speedState: "done", speedMhz: { not: null } }
                  : fastest ? { fmaxMhz: { not: null } } : smallest ? { areaUm2: { not: null } } : { gateCount: { not: null } }) },
-    orderBy: routed   ? [{ layoutAreaUm2: "asc" }, { createdAt: "asc" }]
+    orderBy: speed    ? [{ speedMhz: "desc" }, { createdAt: "asc" }]
+           : routed   ? [{ layoutAreaUm2: "asc" }, { createdAt: "asc" }]
            : fastest  ? [{ fmaxMhz: "desc" }, { createdAt: "asc" }]
            : smallest ? [{ areaUm2: "asc" }, { createdAt: "asc" }]
            :            [{ gateCount: "asc" }, { logicDepth: "asc" }, { createdAt: "asc" }],
     select:  { userId: true, gateCount: true, logicDepth: true, ffBits: true, fmaxMhz: true, areaUm2: true, layoutAreaUm2: true, layoutSlackNs: true,
-               createdAt: true, user: { select: { id: true, username: true, ...PRIVACY_SELECT } } },
+               speedMhz: true, speedPeriodNs: true, createdAt: true, user: { select: { id: true, username: true, ...PRIVACY_SELECT } } },
     take:    5000,
   });
 
@@ -51,6 +55,8 @@ export async function GET(request: Request, { params }: { params: { slug: string
     area:     r.areaUm2 ?? null,
     routedArea: r.layoutAreaUm2 ?? null,
     routedSlack: r.layoutSlackNs ?? null,
+    routedMhz: r.speedMhz ?? null,
+    routedPeriod: r.speedPeriodNs ?? null,
     depth:    r.logicDepth ?? 0,
     ffBits:   r.ffBits ?? 0,
     at:       r.createdAt,
