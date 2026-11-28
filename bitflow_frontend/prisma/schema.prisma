@@ -231,6 +231,16 @@ model Submission {
   layoutPeriodNs  Float?   // the clock period it was laid out at
   layoutClean     Boolean? // routing DRC, deck DRC, LVS, equivalence and antenna all passed
 
+  // Opt-in "fastest after layout" board (lib/speed.ts): after a clean layout entry, the same solution laid out
+  // again down a fixed ladder of clock periods. Ranked by speedMhz = 1000 / (period - slack) at the tightest
+  // period that met timing (typical corner) with every sign-off check passing.
+  speedJobId      String?  // the layout job running now
+  speedState      String?  // "pending" | "done" | "failed"
+  speedMessage    String?  // why it failed, in plain words
+  speedRuns       String?  // JSON stringified { top, clock, runs: [{ periodNs, jobId, pass, slackNs }] }
+  speedMhz        Float?   // the score; null until the sweep is done
+  speedPeriodNs   Float?   // the tightest period that passed
+
   // Wrong SUBMITs: shortest differing input sequence vs. the reference, as a text
   // table (lib/grading.ts counterexampleTable). Shown to the AI tutor.
   counterexample  String?
@@ -248,6 +258,7 @@ model Submission {
   @@index([accepted])
   @@index([problemId, accepted, gateCount])
   @@index([problemId, layoutClean, layoutAreaUm2])
+  @@index([problemId, speedMhz])
 }
 
 // ============================================================================
