@@ -203,10 +203,11 @@ function LayoutEntry({ slug, onDone }: { slug: string; onDone: () => void }) {
            {entry.ranked ? " · ranked" : ""}{entry.message ? ` · ${entry.message}` : ""}
          </p>)
        : entry.state === "failed" ? <p className="text-danger">{entry.message ?? "The layout failed."}</p> : null}
-      {entry.state !== "pending" && entry.state !== "done" && (
+      {entry.state !== "pending" && (
         <button onClick={start} disabled={busy}
                 className="px-2 py-0.5 border border-phosphor/60 text-phosphor hover:bg-phosphor/10 disabled:opacity-50">
-          {busy ? "Starting…" : entry.state === "failed" ? "Try the layout again" : "Lay out my solution (about a minute)"}
+          {busy ? "Starting…" : entry.state === "failed" ? "Try the layout again"
+            : entry.state === "done" ? "Lay out my latest solution again" : "Lay out my solution (about a minute)"}
         </button>
       )}
       {error && <p role="alert" className="text-danger">{error}</p>}
