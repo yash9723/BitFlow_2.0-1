@@ -239,6 +239,8 @@ export interface UseSimulationReturn {
    * null if no simulation has run, or the last run had no waveform output.
    */
   parsedVcd:   ParsedVcd | null;
+  /** The design and testbench that produced parsedVcd. */
+  vcdSource:   { design: string; testbench: string } | null;
 
   // Actions
   simulate:    () => Promise<void>;
@@ -299,6 +301,8 @@ export function useSimulation(): UseSimulationReturn {
   const [result,        setResult]        = useState<SimulateResponse | null>(null);
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   const [parsedVcd,     setParsedVcd]     = useState<ParsedVcd | null>(null);
+  // the code that produced parsedVcd, so a recording is never used for code that has changed since
+  const [vcdSource,     setVcdSource]     = useState<{ design: string; testbench: string } | null>(null);
 
   // ── Pre-warm backend in background on load ──────────────────────────────────
   useEffect(() => {
@@ -351,6 +355,7 @@ export function useSimulation(): UseSimulationReturn {
           const rawText = atob(response.waveform.vcd_base64);
           const parsed  = parseVcd(rawText);
           setParsedVcd(parsed);
+          setVcdSource({ design: projectDesign, testbench: testbenchCode });
         } catch (parseErr) {
           // Parse failure is non-fatal — terminal output still works fine.
           console.warn("[BitFlow] VCD parse error:", parseErr);
@@ -394,6 +399,7 @@ export function useSimulation(): UseSimulationReturn {
     result,
     errorMsg,
     parsedVcd, // ── NEW
+    vcdSource,
     simulate,
     clearResult,
   };

@@ -9,6 +9,44 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { TEMPLATE, mapPins, projectFiles, readiness, tilesFor, ttName, wrapper, type TtMapping } from "../lib/tinytapeout";
+import { recordReplay } from "../lib/tt-replay";
+import { parseVcd } from "../lib/vcd-parser";
+
+// recordReplay (lib/tt-replay.ts); the generated test.py itself was run under cocotb 2.1.0 + Icarus 12 on 2026-11-28:
+// a counter, a combinational adder, an active-low reset and a combinational output of a clocked design all passed,
+// and the counter's vectors failed on a counter that counts by 2.
+{
+  const ctr = "module c (input clk, input rst, input en, output reg [1:0] q);\n  always @(posedge clk) if (rst) q <= 0; else if (en) q <= q + 1;\nendmodule";
+  const m = mapPins(ctr) as TtMapping;
+  // tb.clk etc. alias tb.dut's ports: both scopes match and the deeper one is taken
+  const vcd = (enAt: number) => parseVcd(`$timescale 1ns $end
+$scope module tb $end $var reg 1 ! clk $end $var reg 1 " rst $end $var reg 1 # en $end $var wire 2 $ q $end
+$scope module dut $end $var wire 1 % clk $end $var wire 1 & rst $end $var wire 1 ' en $end $var wire 2 ( q $end $upscope $end $upscope $end
+$enddefinitions $end
+#0 0! 0% 1" 1& 0# 0' bx $ bx (
+#5 1! 1% b0 $ b0 (
+#10 0! 0% 0" 0&
+#${enAt} 1# 1'
+#15 1! 1%
+#20 0! 0%
+#25 1! 1% b1 $ b1 (
+#30 0! 0%
+`);
+  const ok = recordReplay(vcd(12), m, ctr);
+  assert.ok("vectors" in ok, JSON.stringify(ok));
+  assert.deepEqual(ok.vectors.map((v) => [v.ui, v.rstN, v.uo]), [[0, 0, "--------"], [1, 1, "------00"], [1, 1, "------00"]]);
+  // en rises on the edge at 15: the recording can't say which value the flip-flop saw
+  const race = recordReplay(vcd(15), m, ctr);
+  assert.ok("error" in race && /exactly on the clock edge at time 15/.test(race.error), JSON.stringify(race));
+  assert.match((recordReplay(vcd(12), m, ctr.replace("posedge clk", "negedge clk")) as { error: string }).error, /falling clock edge/);
+  assert.match((recordReplay(null, m, ctr) as { error: string }).error, /run your testbench first/);
+  const files = projectFiles({ design: ctr, testbench: "", map: m, user: "u", replay: ok,
+    info: { title: "c", author: "u", description: "", clockHz: 1e6, tiles: "1x1" } });
+  assert.match(files["test/test.py"], /replays 3 clock cycles/);
+  assert.match(files["test/test.py"], /\(0x01, 0x00, 1, "------00", "--------"\),/);
+  assert.equal(readiness({ pinsUsed: 3, replay: ok }).at(-1)!.state, "ok");
+  assert.match(readiness({ pinsUsed: 3, replay: race }).at(-1)!.detail, /couldn't replay your testbench/);
+}
 
 // readiness: before layout the size is an estimate and sign-off/timing are to-dos
 {

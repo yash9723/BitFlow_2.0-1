@@ -10,6 +10,7 @@
  * Matches the template's info.yaml version 6 (checked 2026-11-10). If TT changes it, update TEMPLATE and the check.
  */
 import { parseModule } from "@/lib/studio/tbgen";
+import type { Replay } from "@/lib/tt-replay";
 
 export const TEMPLATE = { repo: "TinyTapeout/ttsky-verilog-template", yamlVersion: 6 } as const;
 /** One tile is about 167 × 108 µm; placement leaves room for routing, so plan on about this much of it for cells. */
@@ -44,7 +45,8 @@ export type Check = { label: string; state: "ok" | "fail" | "todo"; detail: stri
  * The "ready to submit" checklist. Without a layout of this exact code the size is a pre-layout estimate and the
  * sign-off and timing items are to-dos; a check the layout didn't run never counts as passed.
  */
-export function readiness(opts: { pinsUsed: number; areaUm2?: number; routed?: RoutedResults | null; periodNs?: number }): Check[] {
+export function readiness(opts: { pinsUsed: number; areaUm2?: number; routed?: RoutedResults | null; periodNs?: number;
+                                   replay?: Replay | { error: string } | null }): Check[] {
   const r = opts.routed, area = r?.logic_area_um2 ?? null;
   const tiles = area != null ? tilesFor(area) : opts.areaUm2 ? tilesFor(opts.areaUm2) : null;
   const checks: Check[] = [{ label: "Pins", state: "ok", detail: `${opts.pinsUsed} of 24 used, plus clock and reset` }];
@@ -68,7 +70,10 @@ export function readiness(opts: { pinsUsed: number; areaUm2?: number; routed?: R
       : slack < 0 ? { label: "Timing after routing", state: "fail", detail: `misses ${opts.periodNs} ns by ${(-slack).toFixed(2)} ns` }
       : { label: "Timing after routing", state: "ok", detail: `meets ${opts.periodNs} ns${misses.length ? ` (misses at the ${misses.join(" and ")} corner)` : " at every corner"}` });
   }
-  checks.push({ label: "Test", state: "todo", detail: "write the checks in test/test.py so TT's test action passes" });
+  const rp = opts.replay;
+  checks.push(rp && "vectors" in rp && rp.vectors.length
+    ? { label: "Test", state: "ok", detail: `test/test.py replays ${rp.vectors.length} ${rp.clocked ? "clock cycles" : "input changes"} of your testbench on TT's pins; it checks only what your testbench exercised` }
+    : { label: "Test", state: "todo", detail: rp && "error" in rp ? `write test/test.py yourself: couldn't replay your testbench (${rp.error})` : "write the checks in test/test.py so TT's test action passes" });
   return checks;
 }
 
@@ -221,7 +226,7 @@ export function infoYaml(info: ProjectInfo, name: string, sources: string[], map
 }
 
 /** Files to copy over a fresh repo made from the TT template, by path. */
-export function projectFiles(opts: { design: string; testbench: string; info: ProjectInfo; user: string; map: TtMapping }): Record<string, string> {
+export function projectFiles(opts: { design: string; testbench: string; info: ProjectInfo; user: string; map: TtMapping; replay?: Replay | null }): Record<string, string> {
   const name = ttName(opts.user, opts.map.top);
   const sources = ["project.v", "design.v"];
   const rows = Object.entries(pinLabels(opts.map)).map(([k, v]) => `| ${k} | ${v} |`);
@@ -230,7 +235,7 @@ export function projectFiles(opts: { design: string; testbench: string; info: Pr
     "src/design.v":  opts.design,
     "info.yaml":     infoYaml(opts.info, name, sources, opts.map),
     "test/tb.v":     testbench(name),
-    "test/test.py":  cocotbTest(opts.map),
+    "test/test.py":  opts.replay?.vectors.length ? replayTest(opts.replay) : cocotbTest(opts.map),
     "test/Makefile": makefile(sources),
     ...(opts.testbench.trim() ? { "test/bitflow_tb.v": `// Your BitFlow testbench, kept for reference. TT's checks run test/test.py instead.\n${opts.testbench}` } : {}),
     "docs/info.md": [
@@ -284,6 +289,51 @@ module tb ();
   );
 
 endmodule
+`;
+
+/**
+ * test.py replaying the learner's testbench run (lib/tt-replay.ts). Clocked: after each falling edge drive the inputs,
+ * let them settle, check the outputs, then the rising edge comes. Outputs are compared as bit strings so an x on the
+ * gate-level run fails clearly instead of raising; "-" bits are not checked.
+ */
+const replayTest = (r: Replay) => `# SPDX-License-Identifier: Apache-2.0
+# Made by BitFlow: replays ${r.vectors.length} ${r.clocked ? "clock cycles" : "input changes"} recorded from your BitFlow testbench
+# on the Tiny Tapeout pins${r.truncated ? ` (the first ${r.vectors.length}; the run was longer)` : ""}. Pin map: see info.yaml.
+
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import FallingEdge, Timer
+
+# (ui_in, uio_in, rst_n, expected uo_out, expected uio_out): MSB first, "-" = not checked
+VECTORS = [
+${r.vectors.map((v) => `    (0x${v.ui.toString(16).padStart(2, "0")}, 0x${v.uio.toString(16).padStart(2, "0")}, ${v.rstN}, "${v.uo}", "${v.uioOut}"),`).join("\n")}
+]
+
+
+def check(name, signal, expected, step):
+    got = str(signal.value)
+    for g, e in zip(got, expected):
+        if e != "-" and g != e:
+            raise AssertionError(f"step {step}: {name} = {got}, expected {expected} ('-' = any)")
+
+
+@cocotb.test()
+async def replay_bitflow_testbench(dut):
+    dut.ena.value = 1
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+    dut.rst_n.value = 0
+${r.clocked ? `    cocotb.start_soon(Clock(dut.clk, 10, unit="us").start(start_high=False))
+` : `    dut.clk.value = 0
+`}    for step, (ui, uio, rst_n, uo, uio_out) in enumerate(VECTORS):
+${r.clocked ? `        await FallingEdge(dut.clk)
+` : ""}        dut.ui_in.value = ui
+        dut.uio_in.value = uio
+        dut.rst_n.value = rst_n
+        await Timer(1, unit="us")
+        check("uo_out", dut.uo_out, uo, step)
+        check("uio_out", dut.uio_out, uio_out, step)
+${r.clocked ? "" : "        await Timer(1, unit=\"us\")\n"}    dut._log.info(f"replayed {len(VECTORS)} steps of the BitFlow testbench")
 `;
 
 const cocotbTest = (map: TtMapping) => {

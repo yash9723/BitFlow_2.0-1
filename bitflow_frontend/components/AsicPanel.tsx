@@ -15,6 +15,7 @@ import TinyTapeoutSection from "@/components/TinyTapeoutSection";
 import LayoutSection, { type Routed } from "@/components/LayoutSection";
 import ChipXray from "@/components/ChipXray";
 import type { SrcLoc, YosysNetlist } from "@/lib/hardware-diagrams";
+import type { ParsedVcd } from "@/lib/vcd-parser";
 import { pathCells, slowestCell } from "@/lib/asic-path";
 
 interface Stage { pin: string; cell: string; edge: "rise" | "fall"; delay: number; arrival: number; net: string | null }
@@ -52,6 +53,8 @@ interface Props {
   onClose:        () => void;
   designCode:     string;
   testbenchCode?: string;
+  /** The last testbench run's waveform, only when it was made from exactly this code (Tiny Tapeout's test replays it). */
+  recording?:     ParsedVcd | null;
   language?:      "verilog" | "vhdl";
   /** Chip X-ray cross-probing, as in the synthesis panel: the editor's line, open a line, name a line. */
   cursor?:        { file: string; line: number } | null;
@@ -204,7 +207,7 @@ function TargetCompare({ asic, ice40 }: { asic: AsicResult; ice40: Ice40Result |
   );
 }
 
-export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode = "", language = "verilog", cursor, onOpenSource, describe }: Props) {
+export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode = "", recording = null, language = "verilog", cursor, onOpenSource, describe }: Props) {
   const [periodNs, setPeriodNs] = useState(10);
   const [routed, setRouted]     = useState<Routed | null>(null);   // the last finished layout (LayoutSection)
   const [clock, setClock]       = useState("");
@@ -409,7 +412,7 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
                 </div>
               </section>
               <TinyTapeoutSection design={designCode} testbench={testbenchCode} top={result.top} areaUm2={result.areaUm2}
-                                  fmaxMhz={t.fmaxMhz} language={language}
+                                  fmaxMhz={t.fmaxMhz} language={language} recording={recording}
                                   routed={routed?.designCode === designCode && routed.top === result.top ? routed : null} />
             </>
           )}

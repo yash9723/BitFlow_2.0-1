@@ -7,17 +7,21 @@ import { useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadBlob } from "@/lib/api";
 import { TEMPLATE, mapPins, pinLabels, projectFiles, readiness, tilesFor, ttName, type RoutedResults } from "@/lib/tinytapeout";
+import { recordReplay } from "@/lib/tt-replay";
+import type { ParsedVcd } from "@/lib/vcd-parser";
 
 const BUSES = [["ui", "Inputs (ui_in)"], ["uo", "Outputs (uo_out)"], ["uio", "Either way (uio)"]] as const;
 const MARK = { ok: ["✓", "text-phosphor"], fail: ["✗", "text-danger"], todo: ["○", "text-dim"] } as const;
 
 /** routed: a finished layout of exactly this code (AsicPanel checks), whose measured cell area replaces the estimate. */
-export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fmaxMhz, language, routed }: {
+export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fmaxMhz, language, routed, recording }: {
   design: string; testbench: string; top?: string; areaUm2?: number; fmaxMhz?: number | null; language: string;
   routed?: { results: RoutedResults; periodNs: number } | null;
+  recording?: ParsedVcd | null;   // the last testbench run of exactly this code: test.py replays it
 }) {
   const { user } = useAuth();
   const map = useMemo(() => mapPins(design, top), [design, top]);
+  const replay = useMemo(() => ("error" in map ? null : recordReplay(recording ?? null, map, design)), [map, recording, design]);
   const [title, setTitle] = useState(top ?? "My design");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,7 +40,7 @@ export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fm
     setBusy(true);
     try {
       const files = projectFiles({
-        design, testbench, map, user: user?.username ?? "",
+        design, testbench, map, user: user?.username ?? "", replay: replay && "vectors" in replay ? replay : null,
         info: { title: title.trim() || map.top, author: user?.username ?? "", description: description.trim(),
                 clockHz: map.clock ? Math.min(10_000_000, Math.round((fmaxMhz ?? 10) * 1e6)) : 0, tiles: tiles ?? "8x2" },
       });
@@ -74,7 +78,7 @@ export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fm
       <div>
         <h4 className="text-[10px] uppercase tracking-widest text-dim mb-1">Ready to submit?</h4>
         <ul className="space-y-0.5">
-          {readiness({ pinsUsed: map.pins.length, areaUm2, routed: routed?.results, periodNs: routed?.periodNs }).map((c) => (
+          {readiness({ pinsUsed: map.pins.length, areaUm2, routed: routed?.results, periodNs: routed?.periodNs, replay }).map((c) => (
             <li key={c.label} className="text-ghost">
               <span className={MARK[c.state][1]} aria-label={c.state === "ok" ? "done" : c.state === "fail" ? "problem" : "to do"}>{MARK[c.state][0]}</span>
               {" "}<span className="text-pale">{c.label}</span>: {c.detail}

@@ -381,6 +381,7 @@ function SandboxContent() {
     result,
     errorMsg,
     parsedVcd,        // ← sourced from hook; VCD is parsed once there, not again here
+    vcdSource,
     simulate,
     clearResult,
   } = useSimulation();
@@ -1051,6 +1052,7 @@ function SandboxContent() {
       <CoveragePanel isOpen={coverageOpen} onClose={() => setCoverageOpen(false)} result={result} designCode={projectDesign} />
       <AsicPanel isOpen={asicOpen} onClose={() => setAsicOpen(false)} designCode={projectDesign} language={designLanguage}
                  testbenchCode={testbenchLanguage === "verilog" ? testbenchCode : ""}
+                 recording={vcdSource?.design === projectDesign && vcdSource.testbench === testbenchCode ? parsedVcd : null}
                  cursor={designLanguage === "verilog" ? synthCursor : null}
                  describe={(loc) => { const at = loc.file === "design.v" ? synthProject.locate(loc.line) : { file: loc.file, line: loc.line }; return `${at.file}:${at.line}`; }}
                  onOpenSource={designLanguage === "verilog" ? (loc) => {
