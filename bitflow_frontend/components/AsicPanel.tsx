@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import PixelLoader, { PixelSpinner } from "@/components/pixel/PixelLoader";
 import TinyTapeoutSection from "@/components/TinyTapeoutSection";
-import LayoutSection from "@/components/LayoutSection";
+import LayoutSection, { type Routed } from "@/components/LayoutSection";
 import ChipXray from "@/components/ChipXray";
 import type { SrcLoc, YosysNetlist } from "@/lib/hardware-diagrams";
 import { pathCells, slowestCell } from "@/lib/asic-path";
@@ -206,6 +206,7 @@ function TargetCompare({ asic, ice40 }: { asic: AsicResult; ice40: Ice40Result |
 
 export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode = "", language = "verilog", cursor, onOpenSource, describe }: Props) {
   const [periodNs, setPeriodNs] = useState(10);
+  const [routed, setRouted]     = useState<Routed | null>(null);   // the last finished layout (LayoutSection)
   const [clock, setClock]       = useState("");
   const [useTb, setUseTb]       = useState(true);
   const [result, setResult]     = useState<AsicResult | null>(null);
@@ -320,7 +321,7 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
               </p>
 
               {result.top && (
-                <LayoutSection designCode={designCode} top={result.top} clock={t.clock} periodNs={t.periodNs} language={language} />
+                <LayoutSection designCode={designCode} top={result.top} clock={t.clock} periodNs={t.periodNs} language={language} onDone={setRouted} />
               )}
 
               {t.setup && t.setup.stages.length > 0 && (
@@ -408,7 +409,8 @@ export default function AsicPanel({ isOpen, onClose, designCode, testbenchCode =
                 </div>
               </section>
               <TinyTapeoutSection design={designCode} testbench={testbenchCode} top={result.top} areaUm2={result.areaUm2}
-                                  fmaxMhz={t.fmaxMhz} language={language} />
+                                  fmaxMhz={t.fmaxMhz} language={language}
+                                  routed={routed?.designCode === designCode && routed.top === result.top ? routed : null} />
             </>
           )}
         </div>

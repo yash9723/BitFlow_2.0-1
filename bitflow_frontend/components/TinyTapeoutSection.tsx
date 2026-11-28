@@ -6,19 +6,24 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { downloadBlob } from "@/lib/api";
-import { TEMPLATE, mapPins, pinLabels, projectFiles, tilesFor, ttName } from "@/lib/tinytapeout";
+import { TEMPLATE, mapPins, pinLabels, projectFiles, readiness, tilesFor, ttName, type RoutedResults } from "@/lib/tinytapeout";
 
 const BUSES = [["ui", "Inputs (ui_in)"], ["uo", "Outputs (uo_out)"], ["uio", "Either way (uio)"]] as const;
+const MARK = { ok: ["✓", "text-phosphor"], fail: ["✗", "text-danger"], todo: ["○", "text-dim"] } as const;
 
-export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fmaxMhz, language }: {
+/** routed: a finished layout of exactly this code (AsicPanel checks), whose measured cell area replaces the estimate. */
+export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fmaxMhz, language, routed }: {
   design: string; testbench: string; top?: string; areaUm2?: number; fmaxMhz?: number | null; language: string;
+  routed?: { results: RoutedResults; periodNs: number } | null;
 }) {
   const { user } = useAuth();
   const map = useMemo(() => mapPins(design, top), [design, top]);
   const [title, setTitle] = useState(top ?? "My design");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
-  const tiles = areaUm2 ? tilesFor(areaUm2) : null;
+  const measured = routed?.results.logic_area_um2 ?? null;
+  const area = measured ?? areaUm2;
+  const tiles = area ? tilesFor(area) : null;
 
   if (language === "vhdl") {
     return <TtFrame><p className="text-ghost">Tiny Tapeout export takes Verilog for now. VHDL designs are on the way.</p></TtFrame>;
@@ -49,7 +54,7 @@ export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fm
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="text-pale">Top module <code className="text-phosphor">{name}</code></span>
         <span className={tiles ? "text-phosphor" : "text-danger"}>
-          {tiles ? `Fits in ${tiles} tile${tiles === "1x1" ? "" : "s"} (estimate from ${areaUm2?.toLocaleString()} µm²)` : "Too large for the biggest tile size (8x2)"}
+          {tiles ? `Fits in ${tiles} tile${tiles === "1x1" ? "" : "s"} (${measured != null ? "from the layout's" : "estimate from"} ${area?.toLocaleString()} µm²)` : "Too large for the biggest tile size (8x2)"}
         </span>
         <span className="text-dim">clk → clk{map.clock ? ` (${map.clock})` : " (unused)"} · rst_n → {map.reset ? `${map.reset.activeLow ? "" : "~"}${map.reset.name}` : "unused"}</span>
       </div>
@@ -66,6 +71,17 @@ export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fm
         ))}
       </div>
       <p className="text-dim">Pins follow the order of your ports. To move a signal to another pin, reorder the ports in your module.</p>
+      <div>
+        <h4 className="text-[10px] uppercase tracking-widest text-dim mb-1">Ready to submit?</h4>
+        <ul className="space-y-0.5">
+          {readiness({ pinsUsed: map.pins.length, areaUm2, routed: routed?.results, periodNs: routed?.periodNs }).map((c) => (
+            <li key={c.label} className="text-ghost">
+              <span className={MARK[c.state][1]} aria-label={c.state === "ok" ? "done" : c.state === "fail" ? "problem" : "to do"}>{MARK[c.state][0]}</span>
+              {" "}<span className="text-pale">{c.label}</span>: {c.detail}
+            </li>
+          ))}
+        </ul>
+      </div>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-0.5">Project title
           <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} className="h-7 px-2 w-48 bg-void border border-rim rounded text-pale" />

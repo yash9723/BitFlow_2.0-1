@@ -8,7 +8,24 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { TEMPLATE, mapPins, projectFiles, tilesFor, ttName, wrapper, type TtMapping } from "../lib/tinytapeout";
+import { TEMPLATE, mapPins, projectFiles, readiness, tilesFor, ttName, wrapper, type TtMapping } from "../lib/tinytapeout";
+
+// readiness: before layout the size is an estimate and sign-off/timing are to-dos
+{
+  const pre = readiness({ pinsUsed: 5, areaUm2: 3000 });
+  assert.deepEqual(pre.map((c) => [c.label, c.state]), [["Pins", "ok"], ["Size", "todo"], ["Sign-off", "todo"], ["Timing after routing", "todo"], ["Test", "todo"]]);
+  // gcd layout on the server, 2026-11-28: everything passes, slow corner misses
+  const gcd = { logic_area_um2: 3590, slack_ns: 6.1, drc_violations: 0, drc_deck_violations: 0, lvs: true, lec: true, antenna_violations: 0,
+                corners: { ss: { setup: -4.49, hold: 1.52 }, tt: { setup: 6.1, hold: 0.45 }, ff: { setup: 6.82, hold: 0.3 } } };
+  const post = readiness({ pinsUsed: 5, areaUm2: 3000, routed: gcd, periodNs: 10 });
+  assert.equal(post[1].state, "ok"); assert.match(post[1].detail, /^1x1 from the layout's 3,590 µm²/);
+  assert.equal(post[2].state, "ok");
+  assert.equal(post[3].detail, "meets 10 ns (misses at the slow corner)");
+  // a check that didn't run is not a pass
+  const noLvs = readiness({ pinsUsed: 5, routed: { ...gcd, lvs: null }, periodNs: 10 });
+  assert.equal(noLvs[2].state, "fail"); assert.match(noLvs[2].detail, /^LVS/);
+  assert.equal(readiness({ pinsUsed: 5, routed: { ...gcd, slack_ns: -1.5 }, periodNs: 10 })[3].detail, "misses 10 ns by 1.50 ns");
+}
 
 const ok = (src: string, top?: string): TtMapping => {
   const m = mapPins(src, top);

@@ -32,6 +32,46 @@ export function tilesFor(areaUm2: number): (typeof TILE_SIZES)[number][0] | null
   return TILE_SIZES.find(([, n]) => areaUm2 <= n * TILE_UM2 * UTILIZATION)?.[0] ?? null;
 }
 
+/** What a finished layout reports (components/LayoutSection.tsx Results), as far as readiness needs it. */
+export interface RoutedResults {
+  logic_area_um2?: number | null; slack_ns?: number | null; wns_ns?: number | null;
+  drc_violations?: number | null; drc_deck_violations?: number | null; lvs?: boolean | null; lec?: boolean | null;
+  antenna_violations?: number | null; corners?: Record<string, { setup: number; hold: number } | null> | null;
+}
+export type Check = { label: string; state: "ok" | "fail" | "todo"; detail: string };
+
+/**
+ * The "ready to submit" checklist. Without a layout of this exact code the size is a pre-layout estimate and the
+ * sign-off and timing items are to-dos; a check the layout didn't run never counts as passed.
+ */
+export function readiness(opts: { pinsUsed: number; areaUm2?: number; routed?: RoutedResults | null; periodNs?: number }): Check[] {
+  const r = opts.routed, area = r?.logic_area_um2 ?? null;
+  const tiles = area != null ? tilesFor(area) : opts.areaUm2 ? tilesFor(opts.areaUm2) : null;
+  const checks: Check[] = [{ label: "Pins", state: "ok", detail: `${opts.pinsUsed} of 24 used, plus clock and reset` }];
+  checks.push(!tiles ? { label: "Size", state: "fail", detail: "too large for the biggest tile size (8x2)" }
+    : area != null ? { label: "Size", state: "ok", detail: `${tiles} from the layout's ${area.toLocaleString()} µm² of cells` }
+    : { label: "Size", state: "todo", detail: `${tiles} estimated before layout; lay it out to measure` });
+  if (!r) {
+    checks.push({ label: "Sign-off", state: "todo", detail: "lay it out above to run DRC, LVS, equivalence and antenna checks" });
+    checks.push({ label: "Timing after routing", state: "todo", detail: "lay it out above to time it with real wires" });
+  } else {
+    const failed: string[] = [];
+    if (r.drc_violations !== 0 || r.drc_deck_violations !== 0) failed.push("DRC");
+    if (r.lvs !== true) failed.push("LVS");
+    if (r.lec !== true) failed.push("equivalence");
+    if (r.antenna_violations !== 0) failed.push("antenna");
+    checks.push(failed.length ? { label: "Sign-off", state: "fail", detail: `${failed.join(", ")} not passed: see the sign-off above` }
+                              : { label: "Sign-off", state: "ok", detail: "DRC, LVS, equivalence and antenna all pass" });
+    const slack = r.slack_ns ?? r.wns_ns ?? null;
+    const misses = Object.entries(r.corners ?? {}).filter(([, s]) => s && (s.setup < 0 || s.hold < 0)).map(([c]) => c === "ss" ? "slow" : c === "ff" ? "fast" : "typical");
+    checks.push(slack == null ? { label: "Timing after routing", state: "fail", detail: "timing wasn't measured" }
+      : slack < 0 ? { label: "Timing after routing", state: "fail", detail: `misses ${opts.periodNs} ns by ${(-slack).toFixed(2)} ns` }
+      : { label: "Timing after routing", state: "ok", detail: `meets ${opts.periodNs} ns${misses.length ? ` (misses at the ${misses.join(" and ")} corner)` : " at every corner"}` });
+  }
+  checks.push({ label: "Test", state: "todo", detail: "write the checks in test/test.py so TT's test action passes" });
+  return checks;
+}
+
 /** "tt_um_<user>_<top>", lower case, letters, digits and underscores only. */
 export function ttName(user: string, top: string): string {
   const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");

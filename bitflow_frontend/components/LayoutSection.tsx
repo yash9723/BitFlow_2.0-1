@@ -8,8 +8,8 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelSpinner } from "@/components/pixel/PixelLoader";
 
-interface Results {
-  area_um2: number | null; utilization_pct: number | null; wns_ns: number | null; tns_ns: number | null; slack_ns?: number | null;
+export interface Results {
+  area_um2: number | null; logic_area_um2?: number | null; utilization_pct: number | null; wns_ns: number | null; tns_ns: number | null; slack_ns?: number | null;
   cells: number | null; drc_violations: number | null; core_um: number; seconds: number;
   // sign-off checks (older cached jobs lack them: shown as not checked)
   antenna_violations?: number | null; lec?: boolean | null; drc_deck_violations?: number | null; lvs?: boolean | null;
@@ -29,8 +29,12 @@ const VIEWS: [string, string][] = [
   ["final_clocks.webp", "Clock tree"], ["final_worst_path.webp", "Worst path"], ["final_congestion.webp", "Congestion"],
 ];
 
-export default function LayoutSection({ designCode, top, clock, periodNs, language }: {
+/** A finished layout and exactly what was laid out, so the Tiny Tapeout section can use it only for that code. */
+export interface Routed { results: Results; designCode: string; top: string; periodNs: number }
+
+export default function LayoutSection({ designCode, top, clock, periodNs, language, onDone }: {
   designCode: string; top: string; clock: string | null; periodNs: number; language?: "verilog" | "vhdl";
+  onDone?: (routed: Routed | null) => void;
 }) {
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +43,7 @@ export default function LayoutSection({ designCode, top, clock, periodNs, langua
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  // designCode/top/periodNs are this render's: the values the layout was started with
   const poll = (id: string) => {
     timer.current = setTimeout(async () => {
       const res = await fetch(`/api/layout/${id}`).catch(() => null);
@@ -46,12 +51,13 @@ export default function LayoutSection({ designCode, top, clock, periodNs, langua
       if (!res?.ok || !data) { setError(data?.error ?? "Lost touch with the layout service."); return; }
       setJob(data);
       if (data.state === "queued" || data.state === "running") poll(id);
+      else if (data.state === "done" && data.results) onDone?.({ results: data.results, designCode, top, periodNs: data.periodNs ?? periodNs });
     }, 2000);
   };
 
   const start = async () => {
     clearTimeout(timer.current);
-    setError(null); setJob(null); setView("final_all.webp");
+    setError(null); setJob(null); setView("final_all.webp"); onDone?.(null);
     const res = await fetch("/api/layout", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ designCode, top, clock: clock ?? "", periodNs, language }),
