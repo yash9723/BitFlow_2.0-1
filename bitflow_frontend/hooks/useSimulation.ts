@@ -19,6 +19,7 @@ import { useState, useCallback, useEffect } from "react";
 import { checkHealth } from "@/lib/api";
 import { runPreferBrowser } from "@/lib/sim/browser-sim";
 import { parseVcd } from "@/lib/vcd-parser";
+import { recordingNote } from "@/lib/tt-replay";
 import type { DesignLanguage, RunState, SimulateResponse, ParsedVcd, Simulator, TestbenchLanguage } from "@/lib/types";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { combineDesign, dataFiles, relabelOutput, type ProjectFile } from "@/lib/project-files";
@@ -86,10 +87,10 @@ module tb_counter;
     initial begin
         $display("=== Counter Test Start ===");
         rst = 1; en = 0;
-        repeat(3) @(posedge clk);
+        repeat(3) @(posedge clk); #1;   // change inputs just after the edge, not on it
 
         rst = 0; en = 1;
-        repeat(20) @(posedge clk);
+        repeat(20) @(posedge clk); #1;
 
         $display("Final count: %0d", count);
         $display("=== Test Complete ===");
@@ -239,8 +240,8 @@ export interface UseSimulationReturn {
    * null if no simulation has run, or the last run had no waveform output.
    */
   parsedVcd:   ParsedVcd | null;
-  /** The design and testbench that produced parsedVcd. */
-  vcdSource:   { design: string; testbench: string } | null;
+  /** The design and testbench that produced parsedVcd; unusable says why Tiny Tapeout can't replay it (lib/tt-replay.ts). */
+  vcdSource:   { design: string; testbench: string; unusable: string | null } | null;
 
   // Actions
   simulate:    () => Promise<void>;
@@ -302,7 +303,7 @@ export function useSimulation(): UseSimulationReturn {
   const [errorMsg,      setErrorMsg]      = useState<string | null>(null);
   const [parsedVcd,     setParsedVcd]     = useState<ParsedVcd | null>(null);
   // the code that produced parsedVcd, so a recording is never used for code that has changed since
-  const [vcdSource,     setVcdSource]     = useState<{ design: string; testbench: string } | null>(null);
+  const [vcdSource,     setVcdSource]     = useState<UseSimulationReturn["vcdSource"]>(null);
 
   // ── Pre-warm backend in background on load ──────────────────────────────────
   useEffect(() => {
@@ -355,7 +356,8 @@ export function useSimulation(): UseSimulationReturn {
           const rawText = atob(response.waveform.vcd_base64);
           const parsed  = parseVcd(rawText);
           setParsedVcd(parsed);
-          setVcdSource({ design: projectDesign, testbench: testbenchCode });
+          setVcdSource({ design: projectDesign, testbench: testbenchCode,
+                         unusable: recordingNote({ simulator, stdout: response.stdout ?? "", success: response.success }) });
         } catch (parseErr) {
           // Parse failure is non-fatal — terminal output still works fine.
           console.warn("[BitFlow] VCD parse error:", parseErr);

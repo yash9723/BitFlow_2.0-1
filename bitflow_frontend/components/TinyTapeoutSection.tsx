@@ -17,7 +17,7 @@ const MARK = { ok: ["✓", "text-phosphor"], fail: ["✗", "text-danger"], todo:
 export default function TinyTapeoutSection({ design, testbench, top, areaUm2, fmaxMhz, language, routed, recording }: {
   design: string; testbench: string; top?: string; areaUm2?: number; fmaxMhz?: number | null; language: string;
   routed?: { results: RoutedResults; periodNs: number } | null;
-  recording?: ParsedVcd | null;   // the last testbench run of exactly this code: test.py replays it
+  recording?: ParsedVcd | string | null;   // the last testbench run of exactly this code (test.py replays it), or why not
 }) {
   const { user } = useAuth();
   const map = useMemo(() => mapPins(design, top), [design, top]);

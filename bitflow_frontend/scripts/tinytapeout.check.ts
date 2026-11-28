@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { TEMPLATE, mapPins, projectFiles, readiness, tilesFor, ttName, wrapper, type TtMapping } from "../lib/tinytapeout";
-import { recordReplay } from "../lib/tt-replay";
+import { recordReplay, recordingNote } from "../lib/tt-replay";
 import { parseVcd } from "../lib/vcd-parser";
 
 // recordReplay (lib/tt-replay.ts); the generated test.py itself was run under cocotb 2.1.0 + Icarus 12 on 2026-11-28:
@@ -40,6 +40,11 @@ $enddefinitions $end
   assert.ok("error" in race && /exactly on the clock edge at time 15/.test(race.error), JSON.stringify(race));
   assert.match((recordReplay(vcd(12), m, ctr.replace("posedge clk", "negedge clk")) as { error: string }).error, /falling clock edge/);
   assert.match((recordReplay(null, m, ctr) as { error: string }).error, /run your testbench first/);
+  assert.match((recordReplay(vcd(12), m, ctr + "\nmodule d (input clk2, output reg y); always @(posedge clk2) y <= ~y; endmodule") as { error: string }).error, /more than one clock/);
+  // a run that failed, or ran on Verilator, isn't replayed
+  assert.match(recordingNote({ simulator: "browser", stdout: "FAIL: got 3", success: true })!, /reported a failure/);
+  assert.match(recordingNote({ simulator: "verilator", stdout: "", success: true })!, /Verilator/);
+  assert.equal(recordingNote({ simulator: "icarus", stdout: "ALL TESTS PASSED", success: true }), null);
   const files = projectFiles({ design: ctr, testbench: "", map: m, user: "u", replay: ok,
     info: { title: "c", author: "u", description: "", clockHz: 1e6, tiles: "1x1" } });
   assert.match(files["test/test.py"], /replays 3 clock cycles/);

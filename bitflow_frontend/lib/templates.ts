@@ -555,9 +555,10 @@ module tb_uart_echo;
     task send(input [7:0] b);
         integer i;
         begin
-            rx = 0; repeat (CPB) @(posedge clk);
-            for (i = 0; i < 8; i = i + 1) begin rx = b[i]; repeat (CPB) @(posedge clk); end
-            rx = 1; repeat (CPB) @(posedge clk);
+            // each change 1 ns after the clock edge, so it never races the edge
+            #1 rx = 0; repeat (CPB) @(posedge clk);
+            for (i = 0; i < 8; i = i + 1) begin #1 rx = b[i]; repeat (CPB) @(posedge clk); end
+            #1 rx = 1; repeat (CPB) @(posedge clk);
         end
     endtask
 
@@ -578,7 +579,7 @@ module tb_uart_echo;
     initial begin
         $dumpfile("dump.vcd");
         $dumpvars(0, tb_uart_echo);
-        repeat (4) @(posedge clk);
+        repeat (4) @(posedge clk); #1;
         rst = 0;
         for (k = 4; k >= 0; k = k - 1) begin
             fork send(msg[8*k +: 8]); receive; join
@@ -729,9 +730,10 @@ module tb_uart_echo;
     task send(input [7:0] b);
         integer i;
         begin
-            rx = 0; repeat (CPB) @(posedge clk);
-            for (i = 0; i < 8; i = i + 1) begin rx = b[i]; repeat (CPB) @(posedge clk); end
-            rx = 1; repeat (CPB) @(posedge clk);
+            // each change 1 ns after the clock edge, so it never races the edge
+            #1 rx = 0; repeat (CPB) @(posedge clk);
+            for (i = 0; i < 8; i = i + 1) begin #1 rx = b[i]; repeat (CPB) @(posedge clk); end
+            #1 rx = 1; repeat (CPB) @(posedge clk);
         end
     endtask
 
@@ -752,7 +754,7 @@ module tb_uart_echo;
     initial begin
         $dumpfile("dump.vcd");
         $dumpvars(0, tb_uart_echo);
-        repeat (4) @(posedge clk);
+        repeat (4) @(posedge clk); #1;
         rst = 0;
         for (k = 4; k >= 0; k = k - 1) begin
             fork send(msg[8*k +: 8]); receive; join

@@ -53,8 +53,9 @@ interface Props {
   onClose:        () => void;
   designCode:     string;
   testbenchCode?: string;
-  /** The last testbench run's waveform, only when it was made from exactly this code (Tiny Tapeout's test replays it). */
-  recording?:     ParsedVcd | null;
+  /** The last testbench run's waveform, only when it was made from exactly this code (Tiny Tapeout's test replays it),
+   *  or why it can't be replayed (lib/tt-replay.ts recordingNote). */
+  recording?:     ParsedVcd | string | null;
   language?:      "verilog" | "vhdl";
   /** Chip X-ray cross-probing, as in the synthesis panel: the editor's line, open a line, name a line. */
   cursor?:        { file: string; line: number } | null;

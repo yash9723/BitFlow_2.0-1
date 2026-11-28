@@ -31,10 +31,21 @@ function valueBefore(s: VcdSignal, t: number): string {
   return bits(v, s.width);
 }
 
-export function recordReplay(vcd: ParsedVcd | null, map: TtMapping, design: string): Replay | { error: string } {
+/** A run's recording can be replayed only if the run passed and came from Icarus (as TT's test does): Verilator
+ * starts registers at 0 where Icarus gives x, and a failing run would lock in the wrong outputs. */
+export function recordingNote(src: { simulator: string; stdout: string; success: boolean }): string | null {
+  if (src.simulator === "verilator") return "it ran on Verilator, which starts registers at 0 where TT's simulator gives x; run it on Icarus";
+  if (!src.success || /\bFAIL|TESTS FAILED|\bERROR\b/.test(src.stdout)) return "your last run reported a failure; fix it and run again";
+  return null;
+}
+
+export function recordReplay(vcd: ParsedVcd | string | null, map: TtMapping, design: string): Replay | { error: string } {
+  if (typeof vcd === "string") return { error: vcd };
   if (!vcd) return { error: "run your testbench first (with $dumpvars) so there's a recording to replay" };
   if (map.clock && new RegExp(`negedge\\s+${map.clock}\\b`).test(design))
     return { error: "the design uses the falling clock edge; TT's test can't replay that reliably" };
+  const clocks = new Set([...design.matchAll(/posedge\s+(\w+)/g)].map((m) => m[1]).filter((n) => n !== map.reset?.name));
+  if (clocks.size > 1) return { error: `the design has more than one clock (${[...clocks].join(", ")}); TT gives one` };
 
   // The instance of the design: the one scope that has every mapped port at the right width
   const want = new Map<string, number>();
@@ -71,6 +82,20 @@ export function recordReplay(vcd: ParsedVcd | null, map: TtMapping, design: stri
     const changes = [...new Set(inputSigs.flatMap((s) => s.changes.map((c) => c.time)))].sort((a, b) => a - b);
     if (!changes.length) return { error: "the inputs never change in the recording" };
     times = [...changes.slice(1), vcd.maxTime + 1];   // just before the next change: everything has settled
+  }
+
+  // A reset pulse that starts and ends between two snapshots is never replayed; with an asynchronous reset the
+  // design would then not be reset at all
+  if (map.reset) {
+    const ch = sig.get(map.reset.name)!.changes;
+    const perGap = new Map<number, number>();
+    for (let i = 1; i < ch.length; i++) {
+      if (ch[i].value === ch[i - 1].value) continue;
+      const gap = times.filter((t) => t <= ch[i].time).length;
+      perGap.set(gap, (perGap.get(gap) ?? 0) + 1);
+    }
+    if ([...perGap.values()].some((n) => n > 1))
+      return { error: `${map.reset.name} pulses between two clock edges; hold the reset across at least one rising edge` };
   }
 
   const truncated = times.length > MAX_VECTORS;

@@ -72,7 +72,7 @@ export function readiness(opts: { pinsUsed: number; areaUm2?: number; routed?: R
   }
   const rp = opts.replay;
   checks.push(rp && "vectors" in rp && rp.vectors.length
-    ? { label: "Test", state: "ok", detail: `test/test.py replays ${rp.vectors.length} ${rp.clocked ? "clock cycles" : "input changes"} of your testbench on TT's pins; it checks only what your testbench exercised` }
+    ? { label: "Test", state: "ok", detail: `test/test.py replays what your design did in your last passing run (${rp.vectors.length} ${rp.clocked ? "clock cycles" : "input changes"}) on TT's pins; it covers only what your testbench exercised` }
     : { label: "Test", state: "todo", detail: rp && "error" in rp ? `write test/test.py yourself: couldn't replay your testbench (${rp.error})` : "write the checks in test/test.py so TT's test action passes" });
   return checks;
 }
@@ -244,7 +244,7 @@ export function projectFiles(opts: { design: string; testbench: string; info: Pr
       "| Pin | Signal |", "|-----|--------|", ...rows, "",
       "## External hardware", "", "None.", "",
     ].join("\n"),
-    "BITFLOW_README.md": readme(name),
+    "BITFLOW_README.md": readme(name, !!opts.replay?.vectors.length),
   };
 }
 
@@ -323,10 +323,11 @@ async def replay_bitflow_testbench(dut):
     dut.ui_in.value = 0
     dut.uio_in.value = 0
     dut.rst_n.value = 0
-${r.clocked ? `    cocotb.start_soon(Clock(dut.clk, 10, unit="us").start(start_high=False))
+${r.clocked ? `    cocotb.start_soon(Clock(dut.clk, 10, unit="us").start(start_high=False))  # first rising edge at 5 us
 ` : `    dut.clk.value = 0
 `}    for step, (ui, uio, rst_n, uo, uio_out) in enumerate(VECTORS):
-${r.clocked ? `        await FallingEdge(dut.clk)
+${r.clocked ? `        if step > 0:  # step 0 is what the design shows before the first rising edge
+            await FallingEdge(dut.clk)
 ` : ""}        dut.ui_in.value = ui
         dut.uio_in.value = uio
         dut.rst_n.value = rst_n
@@ -404,7 +405,7 @@ COCOTB_TEST_MODULES = test
 include $(shell cocotb-config --makefiles)/Makefile.sim
 `;
 
-const readme = (name: string) => `# Your BitFlow design, ready for Tiny Tapeout
+const readme = (name: string, replayed: boolean) => `# Your BitFlow design, ready for Tiny Tapeout
 
 Top module: \`${name}\`
 
@@ -412,7 +413,9 @@ Top module: \`${name}\`
 2. Copy every file from this zip into it, replacing the files with the same name. Commit and push.
 3. In the repository's **Settings → Pages**, set the source to **GitHub Actions**. The **gds** action then builds your
    chip's layout; the **Actions** tab shows whether it passed.
-4. Edit \`test/test.py\` so it checks what your design should do, and make sure the **test** action passes.
+4. ${replayed
+  ? "`test/test.py` replays what your design did in your last passing BitFlow run, on TT's pins. Check that the **test** action passes; add your own checks for anything that run didn't exercise."
+  : "Edit `test/test.py` so it checks what your design should do, and make sure the **test** action passes."}
 5. When a shuttle is open, submit the repository at https://app.tinytapeout.com. Deadlines and the price per tile are
    on https://tinytapeout.com.
 
